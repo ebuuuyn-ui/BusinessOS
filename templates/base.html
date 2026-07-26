@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Business OS{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
+    <nav>
+      <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">⌂ <span>Ana Sayfa</span></a>
+      <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}">▤ <span>Siparişler</span></a>
+      <a class="{{ 'active' if request.endpoint in ['customers','customer_detail'] }}" href="{{ url_for('customers') }}">♙ <span>Cariler</span></a>
+      <a class="{{ 'active' if request.endpoint == 'products' }}" href="{{ url_for('products') }}">□ <span>Ürünler</span></a>
+      <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}">₺ <span>Masraflar</span></a>
+      <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}">▣ <span>Kasa & Çekler</span></a>
+    </nav>
+    <div class="sidebar-foot">v1.0 · Yerel ve bağımsız</div>
+  </aside>
+  <main>
+    <header class="topbar"><button class="menu" onclick="document.body.classList.toggle('nav-open')">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div>{% block header_action %}{% endblock %}</header>
+    <section class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+  <script>
+    function prepareNumericInput(input){
+      if(!input || !input.matches('input[type="number"]')) return;
+      input.dataset.numericInput='true';
+      input.dataset.numericStep=input.getAttribute('step')||'';
+      if(['amount','unit_price','unit_price[]','purchase_price'].includes(input.name)) input.dataset.moneyInput='true';
+      input.type='text';
+      input.inputMode=input.dataset.numericStep==='1'?'numeric':'decimal';
+      if(input.dataset.moneyInput==='true') input.value=formatMoneyInput(input.value);
+    }
+    function formatMoneyInput(value){
+      let raw=String(value??'').replace(/[^0-9,.-]/g,'').replace(/-/g,'');
+      let integer=raw,decimal='',hasDecimal=false;
+      if(raw.includes(',')){
+        const parts=raw.split(',');integer=parts.shift();decimal=parts.join('').replace(/\D/g,'').slice(0,2);hasDecimal=true;
+      }else{
+        const dots=(raw.match(/\./g)||[]).length,last=raw.lastIndexOf('.'),tail=last>=0?raw.slice(last+1):'';
+        if(dots===1&&tail.length>0&&tail.length<=2){integer=raw.slice(0,last);decimal=tail;hasDecimal=true}
+      }
+      integer=integer.replace(/\D/g,'').replace(/^0+(?=\d)/,'')||'0';
+      integer=integer.replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+      return integer+(hasDecimal?','+decimal:'');
+    }
+    function moneyNumber(value){
+      const normalized=String(value??'0').replace(/\./g,'').replace(',','.').replace(/[^0-9.-]/g,'');
+      return Number(normalized)||0;
+    }
+    function selectNumericValue(input){
+      if(input && input.matches('input[data-numeric-input="true"]')) requestAnimationFrame(()=>input.select());
+    }
+    document.querySelectorAll('input[type="number"]').forEach(prepareNumericInput);
+    new MutationObserver(mutations=>mutations.forEach(mutation=>mutation.addedNodes.forEach(node=>{
+      if(node.nodeType!==1) return;
+      if(node.matches && node.matches('input[type="number"]')) prepareNumericInput(node);
+      if(node.querySelectorAll) node.querySelectorAll('input[type="number"]').forEach(prepareNumericInput);
+    }))).observe(document.body,{childList:true,subtree:true});
+    document.addEventListener('focusin',event=>selectNumericValue(event.target));
+    document.addEventListener('click',event=>selectNumericValue(event.target));
+    document.addEventListener('input',event=>{
+      if(event.target.matches('input[data-money-input="true"]')){
+        event.target.value=formatMoneyInput(event.target.value);
+        event.target.setSelectionRange(event.target.value.length,event.target.value.length);
+      }
+    });
+    document.addEventListener('mouseup',event=>{
+      if(event.target.matches('input[data-numeric-input="true"]')){
+        event.preventDefault();
+        event.target.select();
+      }
+    });
+  </script>
+</body>
+</html>

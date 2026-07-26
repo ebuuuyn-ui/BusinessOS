@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Masraflar · Business OS{% endblock %}
+{% block heading %}Masraf Modülü{% endblock %}{% block subheading %}Fatura, yemek ve diğer işletme giderlerini takip edin{% endblock %}
+{% block content %}
+<form method="post" class="panel expense-create-panel">
+  <div class="panel-head"><div><h2>Yeni Masraf</h2><p>Ödemeyi kaydedin; zorunlu alanlar * ile işaretlidir.</p></div></div>
+  <div class="expense-create-grid">
+    <div class="expense-section expense-main"><span class="expense-section-title">Ödeme Bilgileri</span><div class="expense-fields four-fields"><label>Tarih *<input type="date" name="expense_date" value="{{ today }}" required></label><label>Kategori *<select name="category" required>{% for category in categories %}<option>{{ category }}</option>{% endfor %}</select></label><label>Ödeme Şekli *<select name="payment_method" required>{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select></label><label>Tutar (₺) *<input class="expense-amount-input" type="number" name="amount" min="0.01" step="0.01" value="0" onfocus="this.select()" required></label></div></div>
+    <div class="expense-section expense-detail"><span class="expense-section-title">Masraf Ayrıntıları</span><div class="expense-fields detail-fields"><label>Belge / Fatura No<input name="document_no" placeholder="Varsa"></label><label>Ödenen Kişi / Firma<input name="payee" placeholder="Örn. elektrik firması"></label><label>Açıklama *<input name="description" placeholder="Masrafın kısa açıklaması" required></label><button class="button primary expense-submit" type="submit">Masrafı Kaydet</button></div></div>
+  </div>
+</form>
+
+<div class="panel recurring-panel" id="aylik-odemeler">
+  <div class="panel-head"><div><h2>Aylık Standart Ödemeler</h2><p>Her ay tekrarlanan ödemelerinizi ve ödeme günlerini takip edin.</p></div><b>{{ recurring_due|length }} plan</b></div>
+  <form method="post" action="{{ url_for('add_recurring_expense') }}" class="recurring-form">
+    <label>Açıklama *<input name="description" placeholder="Örn. iş yeri kirası" required></label>
+    <label>Ödenen Kişi / Firma<input name="payee" placeholder="Varsa"></label>
+    <label>Kategori *<select name="category" required>{% for category in categories %}<option>{{ category }}</option>{% endfor %}</select></label>
+    <label>Ödeme Şekli *<select name="payment_method" required>{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select></label>
+    <label>Her Ayın Günü *<input type="number" name="payment_day" min="1" max="31" value="1" required></label>
+    <label>Tutar (₺) *<input class="expense-amount-input" type="number" name="amount" min="0.01" step="0.01" value="0" required></label>
+    <button class="button primary" type="submit">Aylık Plan Ekle</button>
+  </form>
+  {% if recurring_due %}<div class="table-wrap"><table class="compact-table recurring-table"><thead><tr><th>Bu Ay Ödeme Tarihi</th><th>Açıklama</th><th>Firma</th><th>Kategori</th><th>Ödeme</th><th class="number-cell">Tutar</th><th>Durum / İşlem</th></tr></thead><tbody>
+  {% for item in recurring_due %}<tr class="{{ 'recurring-recorded' if item.recorded else ('recurring-overdue' if item.due_date < current_date else '') }}"><td><b>{{ item.due_date.strftime('%d.%m.%Y') }}</b><small>Her ayın {{ item.expense.payment_day }}. günü</small></td><td>{{ item.expense.description }}</td><td>{{ item.expense.payee or '—' }}</td><td><span class="expense-badge">{{ item.expense.category }}</span></td><td>{{ item.expense.payment_method }}</td><td class="number-cell expense-value">₺{{ item.expense.amount|money }}</td><td><div class="row-actions">{% if item.recorded %}<span class="recurring-done">Bu ay işlendi</span>{% else %}<form method="post" action="{{ url_for('record_recurring_expense', plan_id=item.expense.id) }}"><button class="button small primary">Masraf Olarak İşle</button></form>{% endif %}<form method="post" action="{{ url_for('delete_recurring_expense', plan_id=item.expense.id) }}" onsubmit="return confirm('Bu aylık ödeme planı silinsin mi?')"><button class="button small danger-text">Sil</button></form></div></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty compact">Henüz aylık standart ödeme planı yok.</div>{% endif %}
+</div>
+
+<div class="panel">
+  <div class="panel-head expense-list-head"><div><h2>Masraf Kayıtları</h2><p>{{ expenses|length }} kayıt · Filtrelenen toplam: <b>₺{{ total|money }}</b></p></div></div>
+  <form method="get" class="filters expense-filters">
+    <input name="q" value="{{ query }}" placeholder="Açıklama, firma veya belge no ara">
+    <select name="category"><option value="">Tüm kategoriler</option>{% for category in categories %}<option value="{{ category }}" {{ 'selected' if selected_category == category }}>{{ category }}</option>{% endfor %}</select>
+    <input type="date" name="start_date" value="{{ start_date }}" title="Başlangıç tarihi">
+    <input type="date" name="end_date" value="{{ end_date }}" title="Bitiş tarihi">
+    <button type="submit">Ara</button><a class="button" href="{{ url_for('expenses') }}">Temizle</a>
+  </form>
+  {% if expenses %}<div class="table-wrap"><table class="compact-table expense-table"><thead><tr><th>Tarih</th><th>Kategori</th><th>Belge No</th><th>Ödenen</th><th>Açıklama</th><th>Ödeme</th><th class="number-cell">Tutar</th><th>İşlem</th></tr></thead><tbody>
+  {% for expense in expenses %}<tr><td>{{ expense.expense_date.strftime('%d.%m.%Y') }}</td><td><span class="expense-badge">{{ expense.category }}</span></td><td>{{ expense.document_no or '—' }}</td><td>{{ expense.payee or '—' }}</td><td><b>{{ expense.description }}</b></td><td>{{ expense.payment_method }}</td><td class="number-cell expense-value">₺{{ expense.amount|money }}</td><td><div class="row-actions"><a class="button small" href="{{ url_for('edit_expense', expense_id=expense.id) }}">Düzenle</a><form method="post" action="{{ url_for('delete_expense', expense_id=expense.id) }}" onsubmit="return confirm('Bu masraf kaydı silinsin mi?')"><button class="button small danger-text">Sil</button></form></div></td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<div class="empty"><span>₺</span><h3>Masraf kaydı bulunamadı</h3><p>Yeni bir masraf ekleyebilir veya filtreleri temizleyebilirsiniz.</p></div>{% endif %}
+</div>
+{% endblock %}

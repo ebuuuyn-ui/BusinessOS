@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Müşteri Düzenle · Business OS{% endblock %}
+{% block heading %}Müşteri Düzenle{% endblock %}
+{% block subheading %}{{ customer.name }}{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('customer_detail', customer_id=customer.id) }}">← Müşteri Kartına Dön</a>{% endblock %}
+{% block content %}
+<form method="post" class="panel form-panel edit-form">
+  <h2>Müşteri Bilgileri</h2>
+  <div class="form-grid"><label>Müşteri / Firma Adı *<input name="name" value="{{ customer.name }}" required></label><label>Cari Kodu<input name="code" value="{{ customer.code or '' }}"></label></div>
+  <div class="form-grid"><label>Yetkili<input name="contact_name" value="{{ customer.contact_name or '' }}"></label><label>Telefon<input name="phone" value="{{ customer.phone or '' }}"></label><label>Cep Telefonu<input name="mobile" value="{{ customer.mobile or '' }}"></label><label>E-posta<input name="email" type="email" value="{{ customer.email or '' }}"></label><label>Şehir<input name="city" value="{{ customer.city or '' }}"></label></div>
+  <label>Adres<textarea name="address" rows="3">{{ customer.address or '' }}</textarea></label><label>Not<textarea name="notes" rows="3">{{ customer.notes or '' }}</textarea></label>
+  <div class="actions"><a class="button" href="{{ url_for('customer_detail', customer_id=customer.id) }}">Vazgeç</a><button class="button primary">Değişiklikleri Kaydet</button></div>
+</form>
+{% endblock %}

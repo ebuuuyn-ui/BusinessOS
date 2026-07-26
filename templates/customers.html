@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% block title %}Cariler · Business OS{% endblock %}{% block heading %}Cariler{% endblock %}{% block subheading %}Cari kartları, sipariş geçmişleri ve güncel bakiyeler{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('import_customers') }}">Excel'den Aktar</a>{% endblock %}
+{% block content %}
+<div class="order-tabs customer-tabs">
+  <a class="{{ 'active' if view == 'cards' }}" href="{{ url_for('customers') }}">Cari Kartları</a>
+  <a class="{{ 'active' if view == 'balances' }}" href="{{ url_for('customers', view='balances') }}">Bakiyeler</a>
+</div>
+{% if view == 'balances' %}
+<div class="balance-overview">
+  <div class="balance-overview-card debit"><small>Gösterilen Carilerin Borcu</small><strong>₺{{ visible_debit_total|money }}</strong></div>
+  <div class="balance-overview-card credit"><small>Gösterilen Carilerin Alacağı</small><strong>₺{{ visible_credit_total|money }}</strong></div>
+</div>
+<div class="panel customer-balance-panel">
+  <div class="panel-head"><div><h2>{{ 'Borçlu Cariler' if balance_filter == 'debit' else 'Alacaklı Cariler' if balance_filter == 'credit' else 'Bakiyesi Olan Cariler' }}</h2><p>{{ customers|length }} cari listeleniyor</p></div></div>
+  <form method="get" class="filters customer-balance-filters"><input type="hidden" name="view" value="balances"><input name="q" value="{{ query }}" placeholder="Cari adı veya cari kodu ara"><select name="balance"><option value="">Tüm bakiyeler</option><option value="debit" {{ 'selected' if balance_filter == 'debit' }}>Borçlu cariler</option><option value="credit" {{ 'selected' if balance_filter == 'credit' }}>Alacaklı cariler</option></select><select name="sort"><option value="amount_desc" {{ 'selected' if balance_sort == 'amount_desc' }}>Bakiye: Büyükten küçüğe</option><option value="amount_asc" {{ 'selected' if balance_sort == 'amount_asc' }}>Bakiye: Küçükten büyüğe</option><option value="name" {{ 'selected' if balance_sort == 'name' }}>Cari adına göre</option></select><button class="button">Filtrele</button><a class="button" href="{{ url_for('customers', view='balances') }}">Temizle</a></form>
+  {% if customers %}<div class="table-wrap"><table class="compact-table customer-balance-table"><thead><tr><th>Cari Kodu</th><th>Cari Adı</th><th>Şehir</th><th>Telefon</th><th>Bakiye Türü</th><th class="number-cell">Bakiye</th><th></th></tr></thead><tbody>{% for customer in customers %}{% set balance = customer_balances[customer.id] %}<tr><td>{{ customer.code or '—' }}</td><td><b>{{ customer.name }}</b></td><td>{{ customer.city or '—' }}</td><td>{{ customer.mobile or customer.phone or '—' }}</td><td><span class="balance-kind {{ 'credit' if balance < 0 }}">{{ 'Borçlu' if balance > 0 else 'Alacaklı' }}</span></td><td class="number-cell {{ 'debit-text' if balance > 0 else 'credit-text' }}"><b>₺{{ (balance|abs)|money }}</b></td><td><a class="table-action" href="{{ url_for('customer_account', customer_id=customer.id) }}">Hesap Hareketleri →</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty compact"><b>Bu filtrelere uygun bakiyeli cari bulunamadı.</b><br>Filtreleri temizleyerek tekrar deneyebilirsiniz.</div>{% endif %}
+</div>
+{% else %}
+<div class="split">
+ <div class="panel"><div class="panel-head"><div><h2>Cari Listesi</h2><p>{{ customers|length }} kayıt</p></div><form class="search"><input name="q" value="{{ query }}" placeholder="Ad, cari kod, telefon veya şehir"><button>Ara</button>{% if query %}<a class="button" href="{{ url_for('customers') }}">Aramayı Temizle</a>{% endif %}</form></div>
+ {% if customers %}<div class="cards customer-cards">{% for customer in customers %}{% set balance = customer_balances[customer.id] %}<a class="record-card" href="{{ url_for('customer_detail', customer_id=customer.id) }}"><span class="avatar">{{ customer.name[:1]|upper }}</span><div><b>{{ customer.name }}</b><small>{{ customer.code or 'Cari kod yok' }} · {{ customer.city or 'Şehir belirtilmedi' }} · {{ customer.mobile or customer.phone or 'Telefon yok' }}</small></div><span class="customer-balance {{ 'credit' if balance < 0 }}">{{ 'Borç' if balance >= 0 else 'Alacak' }}<b>₺{{ (balance|abs)|money }}</b></span><span>→</span></a>{% endfor %}</div>{% else %}<div class="empty compact"><b>Aradığınız cari bulunamadı.</b><br>Farklı bir ad, cari kod, telefon veya şehir deneyin.</div>{% endif %}</div>
+ <form method="post" class="panel form-panel"><div class="panel-head"><div><h2>Yeni Cari</h2><p>Temel iletişim bilgileri</p></div></div>
+  <div class="form-grid"><label>Müşteri / Firma Adı *<input name="name" required></label><label>Cari Kodu<input name="code"></label></div><div class="form-grid"><label>Yetkili<input name="contact_name"></label><label>Telefon<input name="phone"></label><label>Cep Telefonu<input name="mobile"></label><label>E-posta<input name="email" type="email"></label><label>Şehir<input name="city"></label></div><label>Adres<textarea name="address" rows="2"></textarea></label><label>Not<textarea name="notes" rows="2"></textarea></label><button class="button primary full">Cari Kartı Oluştur</button>
+ </form>
+</div>
+{% endif %}{% endblock %}

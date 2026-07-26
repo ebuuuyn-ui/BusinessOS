@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Müşteri Aktarımı · Business OS{% endblock %}
+{% block heading %}Excel'den Müşteri Aktar{% endblock %}
+{% block subheading %}DİA cari kart listenizi toplu olarak yükleyin{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('customers') }}">← Müşterilere Dön</a>{% endblock %}
+{% block content %}
+<div class="import-layout">
+  <form method="post" enctype="multipart/form-data" class="panel form-panel">
+    <h2>Excel Dosyası Seçin</h2>
+    <p class="help-text">DİA'dan dışarı aktardığınız <b>.xlsx</b> dosyasını seçebilirsiniz.</p>
+    <label class="file-drop">Excel dosyası<input type="file" name="file" accept=".xlsx" required></label>
+    <button class="button primary full">Müşterileri Aktar</button>
+  </form>
+  <div class="panel import-info">
+    <h2>Aktarılan Alanlar</h2>
+    <ul><li>Cari Kodu</li><li>Ünvan</li><li>Telefon 1</li><li>Cep Tel</li><li>E-Posta</li><li>Şehir</li></ul>
+    <div class="note"><b>Akıllı güncelleme</b><p>Aynı cari kod varsa ikinci müşteri oluşturulmaz; ünvan, telefon, cep telefonu, e-posta ve şehir bilgileri Excel'deki güncel değerlerle yenilenir.</p></div>
+  </div>
+</div>
+{% endblock %}
