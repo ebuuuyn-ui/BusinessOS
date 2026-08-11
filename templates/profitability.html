@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Kâr / Zarar · Business OS{% endblock %}
+{% block heading %}Kâr / Zarar Analizi{% endblock %}
+{% block subheading %}Gerçekleşmiş satışların maliyet ve kârlılık görünümü{% endblock %}
+{% block content %}
+<div class="profit-toolbar panel">
+  <div class="period-tabs">
+    <a class="{{ 'active' if period == 'day' }}" href="{{ url_for('profitability', period='day', date=selected.isoformat()) }}">Günlük</a>
+    <a class="{{ 'active' if period == 'month' }}" href="{{ url_for('profitability', period='month', date=selected.isoformat()) }}">Aylık</a>
+    <a class="{{ 'active' if period == 'year' }}" href="{{ url_for('profitability', period='year', date=selected.isoformat()) }}">Yıllık</a>
+  </div>
+  <form method="get"><input type="hidden" name="period" value="{{ period }}"><label>Dönem tarihi<input type="date" name="date" value="{{ selected.isoformat() }}"></label><button>Göster</button></form>
+</div>
+
+<div class="profit-summary">
+  <div class="profit-card revenue"><small>Net Satış (KDV Hariç)</small><strong>₺{{ revenue|money }}</strong><span>{{ sales|length }} gerçekleşmiş satış</span></div>
+  <div class="profit-card cost"><small>Satışların Maliyeti</small><strong>₺{{ cost|money }}</strong><span>Ürün kartı alış fiyatlarına göre</span></div>
+  <div class="profit-card gross {{ 'negative' if gross_profit < 0 }}"><small>Brüt Kâr</small><strong>₺{{ gross_profit|money }}</strong><span>Mark-up: {{ ('%' ~ (markup|money)) if markup is not none else '—' }}</span></div>
+  <div class="profit-card expense"><small>İşletme Masrafları</small><strong>₺{{ expenses_total|money }}</strong><span>Masraf modülündeki kayıtlar</span></div>
+  <div class="profit-card net {{ 'negative' if net_profit < 0 }}"><small>{{ 'Net Zarar' if net_profit < 0 else 'Net Kâr' }}</small><strong>₺{{ (net_profit|abs)|money }}</strong><span>{{ title }} dönem sonucu</span></div>
+</div>
+
+{% if missing_cost_items %}<div class="profit-warning">{{ missing_cost_items }} satış kalemi için daha önce teslim edilmiş eşleşen bir satın alma bulunamadı. Bu kalemler ₺0,00 maliyetle gösteriliyor.</div>{% endif %}
+
+<div class="panel profit-chart-panel">
+  <div class="panel-head"><div><h2>{{ title }} Dönem Dağılımı</h2><p>Satış, maliyet ve net sonuç</p></div><div class="profit-legend"><span><i class="rev"></i>Satış</span><span><i class="cost"></i>Maliyet</span><span><i class="net"></i>Net</span></div></div>
+  <div class="profit-chart {{ period }}">{% for item in timeline %}<div class="profit-column"><div class="profit-bars"><i class="rev" style="height:{{ (item.revenue / chart_max * 100)|abs|round }}%" title="Satış ₺{{ item.revenue|money }}"></i><i class="cost" style="height:{{ (item.cost / chart_max * 100)|abs|round }}%" title="Maliyet ₺{{ item.cost|money }}"></i><i class="net {{ 'negative' if item.net < 0 }}" style="height:{{ (item.net / chart_max * 100)|abs|round }}%" title="Net ₺{{ item.net|money }}"></i></div><b>{{ item.label }}</b><small>₺{{ item.net|money }}</small></div>{% endfor %}</div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><div><h2>Satış Bazında Kârlılık</h2><p>Yalnızca sevk edilmiş veya teslim edilmiş satışlar</p></div></div>
+  <div class="order-profit-totals">
+    <div><small>Toplam Net Satış</small><strong>₺{{ revenue|money }}</strong></div>
+    <div><small>Toplam Maliyet</small><strong>₺{{ cost|money }}</strong></div>
+    <div class="{{ 'negative' if gross_profit < 0 }}"><small>Toplam Brüt Kâr</small><strong>₺{{ gross_profit|money }}</strong></div>
+    <div><small>Toplam Mark-up</small><strong>{{ ('%' ~ (markup|money)) if markup is not none else '—' }}</strong></div>
+  </div>
+  {% if sales %}<div class="table-wrap"><table class="compact-table"><thead><tr><th>Çıkış Tarihi</th><th>Sipariş</th><th>Cari</th><th class="number-cell">Net Satış</th><th class="number-cell">Maliyet</th><th class="number-cell">Brüt Kâr</th><th class="number-cell">Mark-up</th></tr></thead><tbody>{% for order in sales %}{% set costs = namespace(total=0) %}{% for item in order.items %}{% set costs.total = costs.total + effective_sales_item_cost(item, order_realization_date(order)) * item.quantity %}{% endfor %}{% set order_cost = costs.total %}{% set order_profit = order.net_amount - order_cost %}<tr><td>{{ order_realization_date(order).strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('order_detail', order_id=order.id) }}"><b>{{ order.order_no }}</b></a></td><td>{{ order.customer.name }}</td><td class="number-cell">₺{{ order.net_amount|money }}</td><td class="number-cell">₺{{ order_cost|money }}</td><td class="number-cell {{ 'loss-text' if order_profit < 0 else 'profit-text' }}">₺{{ order_profit|money }}</td><td class="number-cell">{{ ('%' ~ ((order_profit / order_cost * 100)|money)) if order_cost else '—' }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><h3>Bu dönemde gerçekleşmiş satış yok</h3><p>Sevk Edildi veya Teslim Edildi durumundaki satışlar burada görünür.</p></div>{% endif %}
+</div>
+{% endblock %}

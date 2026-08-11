@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Yedekler · Business OS{% endblock %}
+{% block heading %}Veri Güvenliği{% endblock %}{% block subheading %}Business OS veritabanı ve tüm hesaplarınız için yedekler{% endblock %}
+{% block header_action %}<a class="button primary" href="{{ url_for('download_current_backup') }}">Güncel Yedeği İndir</a>{% endblock %}
+{% block content %}
+<section class="backup-status-grid">
+  <article class="backup-status safe"><small>OTOMATİK YEDEKLEME</small><strong>Etkin</strong><p>Business OS kullanılırken her saat güncel bir yedek oluşturulur.</p></article>
+  <article class="backup-status"><small>AYRI ARŞİV</small><strong>Her gün</strong><p>Günlük kopya <b>Belgeler › Business OS Yedekleri</b> klasöründe saklanır.</p></article>
+  <article class="backup-status"><small>SAKLAMA</small><strong>90 günlük</strong><p>Günlük arşivler 90 gün, uygulama içi yedekler son 250 kopya boyunca korunur.</p></article>
+</section>
+<div class="backup-note"><b>Önemli:</b> Bilgisayarın tamamen bozulmasına karşı zaman zaman “Güncel Yedeği İndir” düğmesini kullanıp dosyayı harici diske veya kendi bulut hesabınıza kopyalayın.</div>
+<section class="panel">
+  <div class="panel-head"><div><h2>Yedek Geçmişi</h2><p>{{ files|length }} son yedek gösteriliyor.</p></div><form method="post" action="{{ url_for('create_manual_backup') }}"><button class="button primary" type="submit">Şimdi Yedek Oluştur</button></form></div>
+  {% if files %}<div class="table-wrap"><table class="compact-table backup-table"><thead><tr><th>Yedek</th><th>Oluşturulma</th><th>Boyut</th><th></th></tr></thead><tbody>{% for file in files %}<tr><td><b>{{ file.name }}</b></td><td>{{ file.modified.strftime('%d.%m.%Y %H:%M:%S') }}</td><td>{{ '%.1f'|format(file.size / 1024 / 1024) }} MB</td><td><a class="button small" href="{{ url_for('download_backup', filename=file.name) }}">İndir</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty compact">Henüz yedek bulunamadı.</div>{% endif %}
+</section>
+{% endblock %}

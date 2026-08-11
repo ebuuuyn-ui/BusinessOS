@@ -4,18 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Business OS{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='ios-20260810-3') }}">
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>
-      <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}">⌂ <span>Ana Sayfa</span></a>
-      <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}">▤ <span>Siparişler</span></a>
-      <a class="{{ 'active' if request.endpoint in ['customers','customer_detail'] }}" href="{{ url_for('customers') }}">♙ <span>Cariler</span></a>
-      <a class="{{ 'active' if request.endpoint == 'products' }}" href="{{ url_for('products') }}">□ <span>Ürünler</span></a>
-      <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}">₺ <span>Masraflar</span></a>
-      <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}">▣ <span>Kasa & Çekler</span></a>
+      <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}"><i class="nav-icon">⌂</i><span>Ana Sayfa</span></a>
+      <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}"><i class="nav-icon">▤</i><span>Siparişler</span></a>
+      <a class="{{ 'active' if request.endpoint in ['customers','customer_detail','customer_account','quick_collection','quick_payment'] }}" href="{{ url_for('customers') }}"><i class="nav-icon">♙</i><span>Cariler</span></a>
+      <a class="{{ 'active' if request.endpoint == 'products' }}" href="{{ url_for('products') }}"><i class="nav-icon">□</i><span>Ürünler</span></a>
+      <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}"><i class="nav-icon">₺</i><span>Masraflar</span></a>
+      <a class="{{ 'active' if request.endpoint == 'profitability' }}" href="{{ url_for('profitability') }}"><i class="nav-icon">↗</i><span>Kâr / Zarar</span></a>
+      <a class="{{ 'active' if request.endpoint == 'financial_statements' }}" href="{{ url_for('financial_statements') }}"><i class="nav-icon">▥</i><span>Mali Tablolar</span></a>
+      <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}"><i class="nav-icon">▣</i><span>Kasa & Çekler</span></a>
+      <a class="{{ 'active' if request.endpoint == 'personal_finance' }}" href="{{ url_for('personal_finance') }}"><i class="nav-icon">◆</i><span>Şahsi Hesaplar</span></a>
+      <a class="{{ 'active' if request.endpoint in ['backups','download_current_backup','download_backup'] }}" href="{{ url_for('backups') }}"><i class="nav-icon">↻</i><span>Yedekler</span></a>
     </nav>
     <div class="sidebar-foot">v1.0 · Yerel ve bağımsız</div>
   </aside>
@@ -31,7 +35,7 @@
       if(!input || !input.matches('input[type="number"]')) return;
       input.dataset.numericInput='true';
       input.dataset.numericStep=input.getAttribute('step')||'';
-      if(['amount','unit_price','unit_price[]','purchase_price'].includes(input.name)) input.dataset.moneyInput='true';
+      if(input.classList.contains('personal-money') || ['amount','purchase_price'].includes(input.name) || input.name.startsWith('unit_price')) input.dataset.moneyInput='true';
       input.type='text';
       input.inputMode=input.dataset.numericStep==='1'?'numeric':'decimal';
       if(input.dataset.moneyInput==='true') input.value=formatMoneyInput(input.value);

@@ -1,0 +1,23 @@
+#!/bin/zsh
+set -e
+
+APP_DIR="${BUSINESSOS_APP_DIR:-$HOME/Documents/BusinessOS}"
+PORT="5000"
+
+if [[ ! -x "$APP_DIR/.venv/bin/python" || ! -f "$APP_DIR/app.py" ]]; then
+  echo "Business OS uygulama klasörü bulunamadı: $APP_DIR"
+  exit 1
+fi
+
+for pid in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null); do
+  kill "$pid" 2>/dev/null || true
+done
+sleep 1
+
+cd "$APP_DIR"
+(sleep 2; open -a Safari "http://127.0.0.1:$PORT") &
+
+echo "Business OS başlatılıyor: http://127.0.0.1:$PORT"
+echo "Programı durdurmak için bu pencerede Control + C tuşlarına basın."
+
+exec "$APP_DIR/.venv/bin/python" app.py

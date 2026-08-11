@@ -3,11 +3,11 @@ import sqlite3
 import unicodedata
 import csv
 import calendar
-from io import StringIO
+from io import BytesIO, StringIO
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, flash, make_response, redirect, render_template, request, url_for
+from flask import Flask, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Engine
@@ -29,7 +29,9 @@ ORDER_TYPES = ["Satış", "Satın Alma"]
 FINANCIAL_ORDER_STATUSES = ["Sevk Edildi", "Teslim Edildi"]
 EXPENSE_CATEGORIES = ["Fatura Ödemeleri", "Yemek", "Ulaşım", "Kira", "Personel", "Vergi / Harç", "Bakım / Onarım", "Ofis Giderleri", "Kargo / Nakliye", "Pazarlama", "Diğer"]
 PAYMENT_METHODS = ["Nakit", "Kredi Kartı"]
-ACCOUNT_PAYMENT_METHODS = ["Nakit", "Çek", "Banka"]
+COLLECTION_PAYMENT_METHODS = ["Nakit", "Çek", "Banka"]
+ACCOUNT_PAYMENT_METHODS = COLLECTION_PAYMENT_METHODS + ["Kredi Kartı"]
+CARD_OWNER_TYPES = ["Kendi Kartımız", "Müşteri Kartı"]
 CHECK_STATUSES = ["Bekliyor", "Tahsil Edildi", "Ödendi", "İade Edildi", "Karşılıksız"]
 
 
@@ -92,7 +94,7 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     order_no = db.Column(db.String(30), unique=True, nullable=False, index=True)
     order_type = db.Column(db.String(30), default="Satış", nullable=False, index=True)
-    source_order_id = db.Column(db.Integer, nullable=True, unique=True, index=True)
+    source_order_id = db.Column(db.Integer, nullable=True, index=True)
     customer_id = db.Column(db.Integer, db.ForeignKey("customer.id"), nullable=False)
     order_date = db.Column(db.Date, default=date.today, nullable=False)
     delivery_date = db.Column(db.Date)
@@ -125,6 +127,7 @@ class OrderItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey("order.id", ondelete="CASCADE"), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=True)
+    source_order_item_id = db.Column(db.Integer, nullable=True, index=True)
     product_name = db.Column(db.String(160), nullable=False)
     description = db.Column(db.Text)
     variant = db.Column(db.String(120))
@@ -133,6 +136,9 @@ class OrderItem(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     unit = db.Column(db.String(30), default="Adet", nullable=False)
     unit_price = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    # Satış anındaki birim maliyet. Ürün kartındaki alış fiyatı sonradan
+    # değişse bile geçmiş dönem kârlılığı bu değer sayesinde değişmez.
+    cost_unit_price = db.Column(db.Numeric(12, 2), default=0, nullable=False)
     vat_rate = db.Column(db.Numeric(5, 2), default=10, nullable=False)
     note = db.Column(db.Text)
     order = db.relationship("Order", back_populates="items")
@@ -149,6 +155,10 @@ class OrderItem(db.Model):
     @property
     def total_amount(self):
         return self.net_amount + self.vat_amount
+
+    @property
+    def cost_amount(self):
+        return (self.cost_unit_price or Decimal("0")) * self.quantity
 
 
 class OrderHistory(db.Model):
@@ -174,6 +184,10 @@ class AccountTransaction(db.Model):
     check_bank = db.Column(db.String(120))
     check_due_date = db.Column(db.Date, index=True)
     check_status = db.Column(db.String(40))
+    card_installments = db.Column(db.Integer)
+    card_owner_type = db.Column(db.String(40))
+    card_customer_id = db.Column(db.Integer)
+    card_customer_name = db.Column(db.String(160))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     customer = db.relationship("Customer", back_populates="account_transactions")
 
@@ -220,6 +234,53 @@ class CashMovement(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class PersonalMonth(db.Model):
+    month = db.Column(db.String(7), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    entries = db.relationship("PersonalPayment", back_populates="month_record", cascade="all, delete-orphan", order_by="PersonalPayment.sort_order")
+
+
+class PersonalPayment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    month = db.Column(db.String(7), db.ForeignKey("personal_month.month", ondelete="CASCADE"), nullable=False, index=True)
+    kind = db.Column(db.String(20), default="other", nullable=False)
+    name = db.Column(db.String(160), nullable=False)
+    credit_limit = db.Column(db.Numeric(14, 2))
+    debt = db.Column(db.Numeric(14, 2))
+    minimum_payment = db.Column(db.Numeric(14, 2))
+    payment = db.Column(db.Numeric(14, 2))
+    available_limit = db.Column(db.Numeric(14, 2))
+    remaining_debt = db.Column(db.Numeric(14, 2))
+    due_day = db.Column(db.Integer)
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    month_record = db.relationship("PersonalMonth", back_populates="entries")
+
+    @property
+    def calculated_remaining(self):
+        if self.kind == "card" and self.credit_limit is not None and self.available_limit is not None:
+            return max(self.credit_limit - self.available_limit, Decimal("0"))
+        return self.remaining_debt or Decimal("0")
+
+
+class PersonalPerson(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    transactions = db.relationship("PersonalLedgerTransaction", back_populates="person", cascade="all, delete-orphan", order_by="PersonalLedgerTransaction.transaction_date")
+
+
+class PersonalLedgerTransaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    person_id = db.Column(db.Integer, db.ForeignKey("personal_person.id", ondelete="CASCADE"), nullable=False, index=True)
+    transaction_date = db.Column(db.Date)
+    description = db.Column(db.String(240), default="", nullable=False)
+    sent_amount = db.Column(db.Numeric(14, 2))
+    received_amount = db.Column(db.Numeric(14, 2))
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    person = db.relationship("PersonalPerson", back_populates="transactions")
+
+
 def parse_date(value):
     return datetime.strptime(value, "%Y-%m-%d").date() if value else None
 
@@ -236,6 +297,82 @@ def parse_money(value):
         return Decimal(normalized)
     except InvalidOperation:
         return Decimal("0")
+
+
+def card_payment_details(payment_method, transaction_type):
+    """Validate and normalize the optional credit-card payment fields."""
+    if payment_method != "Kredi Kartı":
+        return {}, None
+    if transaction_type != "Ödeme":
+        return {}, "Kredi kartı yalnızca tedarikçiye yapılan ödemelerde kullanılabilir."
+    owner_type = request.form.get("card_owner_type", "")
+    try:
+        installments = int(request.form.get("card_installments", "0"))
+    except (TypeError, ValueError):
+        installments = 0
+    if owner_type not in CARD_OWNER_TYPES:
+        return {}, "Kartın kime ait olduğunu seçin."
+    if not 1 <= installments <= 36:
+        return {}, "Taksit sayısı 1 ile 36 arasında olmalıdır."
+    details = {
+        "card_installments": installments,
+        "card_owner_type": owner_type,
+        "card_customer_id": None,
+        "card_customer_name": None,
+    }
+    if owner_type == "Müşteri Kartı":
+        card_customer_id = request.form.get("card_customer_id", type=int)
+        card_customer = db.session.get(Customer, card_customer_id) if card_customer_id else None
+        if not card_customer:
+            return {}, "Kart sahibi müşteriyi seçin."
+        details["card_customer_id"] = card_customer.id
+        details["card_customer_name"] = card_customer.name
+    return details, None
+
+
+def import_personal_finance_data(app):
+    """Eski bağımsız Ödeme Takibi verilerini Business OS'a bir kez aktarır."""
+    if app.config.get("TESTING") or PersonalMonth.query.first() or PersonalPerson.query.first():
+        return
+    source_path = os.path.expanduser("~/Library/Application Support/OdemeTakibi/odemeler.db")
+    if not os.path.isfile(source_path):
+        return
+    source = sqlite3.connect(source_path)
+    source.row_factory = sqlite3.Row
+    try:
+        table_names = {row[0] for row in source.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if {"months", "entries"}.issubset(table_names):
+            for row in source.execute("SELECT * FROM months ORDER BY month"):
+                db.session.add(PersonalMonth(month=row["month"]))
+            db.session.flush()
+            for row in source.execute("SELECT * FROM entries ORDER BY month,sort_order,id"):
+                db.session.add(PersonalPayment(
+                    month=row["month"], kind=row["kind"], name=row["name"], credit_limit=row["credit_limit"],
+                    debt=row["debt"], minimum_payment=row["minimum_payment"], payment=row["payment"],
+                    available_limit=row["available_limit"], remaining_debt=row["remaining_debt"],
+                    due_day=row["due_day"], sort_order=row["sort_order"],
+                ))
+        person_map = {}
+        if "people" in table_names:
+            for row in source.execute("SELECT * FROM people ORDER BY id"):
+                person = PersonalPerson(name=row["name"])
+                db.session.add(person)
+                db.session.flush()
+                person_map[row["id"]] = person.id
+        if "ledger_transactions" in table_names:
+            for row in source.execute("SELECT * FROM ledger_transactions ORDER BY person_id,sort_order,id"):
+                if row["person_id"] in person_map:
+                    db.session.add(PersonalLedgerTransaction(
+                        person_id=person_map[row["person_id"]], transaction_date=parse_date(row["transaction_date"]),
+                        description=row["description"], sent_amount=row["sent_amount"], received_amount=row["received_amount"],
+                        sort_order=row["sort_order"],
+                    ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    finally:
+        source.close()
 
 
 def calculate_treasury(today=None):
@@ -297,6 +434,10 @@ def build_account_statement(customer):
             "check_no": transaction.check_no,
             "check_due_date": transaction.check_due_date,
             "check_status": transaction.check_status,
+            "card_installments": transaction.card_installments,
+            "card_owner_type": transaction.card_owner_type,
+            "card_customer_id": transaction.card_customer_id,
+            "card_customer_name": transaction.card_customer_name,
         })
     entries.sort(key=lambda entry: (entry["date"], entry["sort_time"], entry["reference"]))
     balance = Decimal("0")
@@ -319,6 +460,75 @@ def calculate_customer_balances(customer_ids=None):
     for transaction in AccountTransaction.query.filter(AccountTransaction.customer_id.in_(ids)).all():
         balances[transaction.customer_id] += (transaction.debit or 0) - (transaction.credit or 0)
     return balances
+
+
+def procurement_summary(sales_order, converted_orders=None):
+    """Return quantity-based purchasing coverage for a sales order."""
+    if sales_order.order_type != "Satış":
+        return None
+    linked_orders = converted_orders
+    if linked_orders is None:
+        linked_orders = Order.query.filter_by(source_order_id=sales_order.id).order_by(Order.id).all()
+    active_orders = [order for order in linked_orders if order.status != "İptal Edildi"]
+    required = {item.id: item.quantity for item in sales_order.items}
+    covered = {item.id: 0 for item in sales_order.items}
+    legacy_items = []
+    for purchase in active_orders:
+        for purchase_item in purchase.items:
+            if purchase_item.source_order_item_id in covered:
+                covered[purchase_item.source_order_item_id] += purchase_item.quantity
+            else:
+                legacy_items.append(purchase_item)
+
+    # Eski dönüştürülmüş satın almalarda satır bağlantısı bulunmadığından ürün
+    # kartı/adı ve ayrıntıları üzerinden geriye dönük eşleştirme yapılır.
+    def item_key(item):
+        return (
+            item.product_id or 0,
+            normalize_search_text(item.product_name),
+            normalize_search_text(item.variant),
+            normalize_search_text(item.detail_2),
+            normalize_search_text(item.detail_3),
+            normalize_search_text(item.unit),
+        )
+
+    sale_groups = {}
+    for sale_item in sales_order.items:
+        sale_groups.setdefault(item_key(sale_item), []).append(sale_item)
+    for purchase_item in legacy_items:
+        remaining = purchase_item.quantity
+        for sale_item in sale_groups.get(item_key(purchase_item), []):
+            available = max(required[sale_item.id] - covered[sale_item.id], 0)
+            allocated = min(remaining, available)
+            covered[sale_item.id] += allocated
+            remaining -= allocated
+            if remaining <= 0:
+                break
+
+    required_quantity = sum(required.values())
+    covered_quantity = sum(min(covered[item_id], quantity) for item_id, quantity in required.items())
+    if covered_quantity <= 0:
+        code, label = "none", "Satın Alma Verilmedi"
+    elif covered_quantity < required_quantity:
+        code, label = "partial", "Kısmi Satın Alma"
+    else:
+        code, label = "complete", "Satın Alma Tamam"
+    return {
+        "code": code,
+        "label": label,
+        "required_quantity": required_quantity,
+        "covered_quantity": covered_quantity,
+        "linked_orders": linked_orders,
+        "active_orders": active_orders,
+        "items": {
+            item_id: {
+                "required": quantity,
+                "covered": min(covered[item_id], quantity),
+                "remaining": max(quantity - covered[item_id], 0),
+            }
+            for item_id, quantity in required.items()
+        },
+    }
 
 
 def calculate_pending_delivery_amounts(orders=None):
@@ -358,14 +568,14 @@ def next_order_no(order_type="Satış"):
     return f"{prefix}{sequence:05d}"
 
 
-def create_database_backup(app, label="automatic"):
+def create_database_backup(app, label="automatic", target_dir=None, keep=250):
     """Create a consistent SQLite snapshot without depending on external services."""
     if db.engine.dialect.name != "sqlite":
         return None
     database_path = db.engine.url.database
     if not database_path or database_path == ":memory:" or not os.path.exists(database_path):
         return None
-    backup_dir = os.path.join(app.instance_path, "backups")
+    backup_dir = target_dir or os.path.join(app.instance_path, "backups")
     os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
     backup_path = os.path.join(backup_dir, f"business_os_{label}_{timestamp}.db")
@@ -376,7 +586,230 @@ def create_database_backup(app, label="automatic"):
     finally:
         destination.close()
         source.close()
+    backups = sorted(
+        (os.path.join(backup_dir, name) for name in os.listdir(backup_dir) if name.endswith(".db")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    for old_backup in backups[keep:]:
+        try:
+            os.remove(old_backup)
+        except OSError:
+            pass
     return backup_path
+
+
+def ensure_scheduled_backups(app):
+    """Create one hourly local snapshot and one daily copy outside the project."""
+    now = datetime.now()
+    backup_dir = os.path.join(app.instance_path, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    hourly_prefix = f"business_os_hourly_{now.strftime('%Y-%m-%d_%H-')}"
+    if not any(name.startswith(hourly_prefix) for name in os.listdir(backup_dir)):
+        create_database_backup(app, "hourly", keep=250)
+    archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
+    daily_prefix = f"business_os_daily_{now.strftime('%Y-%m-%d_')}"
+    try:
+        os.makedirs(archive_dir, exist_ok=True)
+        if not any(name.startswith(daily_prefix) for name in os.listdir(archive_dir)):
+            create_database_backup(app, "daily", target_dir=archive_dir, keep=90)
+    except OSError:
+        # Harici arşiv klasörü kullanılamasa bile yerel saatlik yedek devam eder.
+        pass
+
+
+def personal_ledger_totals(person):
+    sent = sum((item.sent_amount or Decimal("0") for item in person.transactions), Decimal("0"))
+    received = sum((item.received_amount or Decimal("0") for item in person.transactions), Decimal("0"))
+    return sent, received, received - sent
+
+
+def safe_export_name(value):
+    cleaned = "".join(character if character.isalnum() or character in "-_" else "-" for character in value.strip())
+    return cleaned.strip("-") or "Kisi"
+
+
+def build_personal_ledger_pdf(person):
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    regular_font = "/System/Library/Fonts/Supplemental/Arial.ttf"
+    bold_font = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+    font_name, bold_name = "Helvetica", "Helvetica-Bold"
+    if os.path.isfile(regular_font) and os.path.isfile(bold_font):
+        pdfmetrics.registerFont(TTFont("BusinessArial", regular_font))
+        pdfmetrics.registerFont(TTFont("BusinessArial-Bold", bold_font))
+        font_name, bold_name = "BusinessArial", "BusinessArial-Bold"
+
+    stream = BytesIO()
+    document = SimpleDocTemplate(stream, pagesize=landscape(A4), leftMargin=15*mm, rightMargin=15*mm,
+                                 topMargin=15*mm, bottomMargin=15*mm, title=f"{person.name} Borç-Alacak Ekstresi")
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("TitleTR", parent=styles["Title"], fontName=bold_name, fontSize=18, leading=22, textColor=colors.HexColor("#14213d"), alignment=TA_LEFT)
+    meta_style = ParagraphStyle("MetaTR", parent=styles["BodyText"], fontName=font_name, fontSize=8, textColor=colors.HexColor("#6b7280"))
+    cell_style = ParagraphStyle("CellTR", parent=styles["BodyText"], fontName=font_name, fontSize=8, leading=10)
+    cell_right = ParagraphStyle("CellRightTR", parent=cell_style, alignment=TA_RIGHT)
+    cell_center = ParagraphStyle("CellCenterTR", parent=cell_style, alignment=TA_CENTER)
+    header_left = ParagraphStyle("HeaderLeftTR", parent=cell_style, fontName=bold_name, textColor=colors.white)
+    header_right = ParagraphStyle("HeaderRightTR", parent=header_left, alignment=TA_RIGHT)
+    header_center = ParagraphStyle("HeaderCenterTR", parent=header_left, alignment=TA_CENTER)
+    sent, received, balance = personal_ledger_totals(person)
+
+    def amount(value):
+        return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " TL"
+
+    if balance > 0:
+        balance_text = f"Siz {person.name} kişisine {amount(balance)} borçlusunuz."
+    elif balance < 0:
+        balance_text = f"{person.name} size {amount(-balance)} borçlu."
+    else:
+        balance_text = f"{person.name} ile hesabınız dengede."
+
+    story = [Paragraph(f"{person.name} - Borç / Alacak Ekstresi", title_style),
+             Paragraph(f"Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Business OS", meta_style), Spacer(1, 5*mm)]
+    summary = Table([
+        ["TOPLAM GÖNDERİLEN", "TOPLAM GELEN", "NET FARK"],
+        [amount(sent), amount(received), amount(abs(balance))],
+        ["", "", balance_text],
+    ], colWidths=[85*mm, 85*mm, 85*mm])
+    summary.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#e8eef9")), ("TEXTCOLOR", (0,0), (-1,0), colors.HexColor("#526074")),
+        ("FONTNAME", (0,0), (-1,0), bold_name), ("FONTSIZE", (0,0), (-1,0), 8),
+        ("FONTNAME", (0,1), (-1,1), bold_name), ("FONTSIZE", (0,1), (-1,1), 14),
+        ("FONTNAME", (0,2), (-1,2), font_name), ("FONTSIZE", (0,2), (-1,2), 8),
+        ("ALIGN", (0,0), (-1,-1), "CENTER"), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BOX", (0,0), (-1,-1), .5, colors.HexColor("#c9d3e3")), ("INNERGRID", (0,0), (-1,-1), .25, colors.HexColor("#dce3ec")),
+        ("TOPPADDING", (0,0), (-1,-1), 6), ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+    ]))
+    story.extend([KeepTogether(summary), Spacer(1, 6*mm)])
+    rows = [[Paragraph("TARİH", header_center), Paragraph("AÇIKLAMA", header_left), Paragraph("GÖNDERİLEN PARA", header_right), Paragraph("GELEN PARA", header_right)]]
+    for item in person.transactions:
+        rows.append([Paragraph(item.transaction_date.strftime("%d.%m.%Y") if item.transaction_date else "-", cell_center),
+                     Paragraph(item.description or "-", cell_style),
+                     Paragraph(amount(item.sent_amount or Decimal("0")), cell_right),
+                     Paragraph(amount(item.received_amount or Decimal("0")), cell_right)])
+    rows.append(["", Paragraph("TOPLAM", ParagraphStyle("TotalLabel", parent=cell_style, fontName=bold_name)),
+                 Paragraph(amount(sent), ParagraphStyle("TotalSent", parent=cell_right, fontName=bold_name)),
+                 Paragraph(amount(received), ParagraphStyle("TotalReceived", parent=cell_right, fontName=bold_name))])
+    ledger_table = Table(rows, colWidths=[31*mm, 129*mm, 48*mm, 48*mm], repeatRows=1)
+    ledger_table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#14213d")), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), bold_name), ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0,1), (-1,-2), [colors.white, colors.HexColor("#f6f8fb")]),
+        ("LINEBELOW", (0,0), (-1,-2), .25, colors.HexColor("#dce3ec")),
+        ("BACKGROUND", (0,-1), (-1,-1), colors.HexColor("#e8eef9")), ("LINEABOVE", (0,-1), (-1,-1), 1, colors.HexColor("#14213d")),
+        ("TOPPADDING", (0,0), (-1,-1), 5), ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+    ]))
+    story.append(ledger_table)
+
+    def footer(canvas, doc):
+        canvas.saveState(); canvas.setFont(font_name, 7); canvas.setFillColor(colors.HexColor("#6b7280"))
+        canvas.drawString(15*mm, 8*mm, f"Business OS | {person.name} Borç-Alacak Ekstresi")
+        canvas.drawRightString(landscape(A4)[0]-15*mm, 8*mm, f"Sayfa {doc.page}"); canvas.restoreState()
+    document.build(story, onFirstPage=footer, onLaterPages=footer)
+    stream.seek(0)
+    return stream
+
+
+def build_personal_ledger_xlsx(person):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Borç-Alacak Ekstresi"
+    sheet.sheet_view.showGridLines = False
+    sheet.freeze_panes = "A8"
+    sent, received, balance = personal_ledger_totals(person)
+    navy, blue, pale, green, line = "14213D", "2563EB", "E8EEF9", "14735A", "DCE3EC"
+    thin = Side(style="thin", color=line)
+    sheet.merge_cells("A1:D1"); sheet["A1"] = f"{person.name} - Borç / Alacak Ekstresi"
+    sheet["A1"].font = Font(name="Arial", size=18, bold=True, color=navy); sheet["A1"].alignment = Alignment(horizontal="left")
+    sheet.row_dimensions[1].height = 30
+    sheet.merge_cells("A2:D2"); sheet["A2"] = f"Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')} | Business OS"
+    sheet["A2"].font = Font(name="Arial", size=9, color="6B7280")
+    sheet["A4"], sheet["B4"], sheet["C4"], sheet["D4"] = "TOPLAM GÖNDERİLEN", "TOPLAM GELEN", "NET FARK", "GÜNCEL DURUM"
+    for cell in sheet[4]:
+        cell.fill = PatternFill("solid", fgColor=pale); cell.font = Font(name="Arial", size=9, bold=True, color="526074"); cell.alignment = Alignment(horizontal="center")
+    start_row = 8
+    end_data_row = start_row + len(person.transactions) - 1
+    total_row = max(end_data_row + 1, start_row)
+    sheet["A5"] = f"=C{total_row}"; sheet["B5"] = f"=D{total_row}"; sheet["C5"] = "=ABS(B5-A5)"
+    if balance > 0: status = f"Siz {person.name} kişisine borçlusunuz"
+    elif balance < 0: status = f"{person.name} size borçlu"
+    else: status = "Hesap dengede"
+    sheet["D5"] = status
+    for cell in sheet[5]:
+        cell.font = Font(name="Arial", size=12, bold=True, color=green if cell.column != 4 else navy); cell.alignment = Alignment(horizontal="center")
+    sheet.row_dimensions[5].height = 25
+    headers = ["Tarih", "Açıklama", "Gönderilen Para", "Gelen Para"]
+    for column, header in enumerate(headers, 1):
+        cell = sheet.cell(start_row-1, column, header); cell.fill = PatternFill("solid", fgColor=navy); cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF"); cell.alignment = Alignment(horizontal="center")
+    sheet.row_dimensions[start_row-1].height = 24
+    for row_index, item in enumerate(person.transactions, start_row):
+        sheet.cell(row_index, 1, item.transaction_date)
+        sheet.cell(row_index, 2, item.description)
+        sheet.cell(row_index, 3, float(item.sent_amount or 0))
+        sheet.cell(row_index, 4, float(item.received_amount or 0))
+        for cell in sheet[row_index]: cell.border = Border(bottom=thin); cell.font = Font(name="Arial", size=10)
+    sheet.cell(total_row, 2, "TOPLAM")
+    sheet.cell(total_row, 3, f"=SUM(C{start_row}:C{end_data_row})" if person.transactions else "=0")
+    sheet.cell(total_row, 4, f"=SUM(D{start_row}:D{end_data_row})" if person.transactions else "=0")
+    for cell in sheet[total_row]: cell.fill = PatternFill("solid", fgColor=pale); cell.font = Font(name="Arial", size=10, bold=True); cell.border = Border(top=Side(style="medium", color=navy))
+    currency_format = '₺#,##0.00;[Red]-₺#,##0.00;₺-'
+    for row in range(5, total_row+1):
+        for column in (3,4): sheet.cell(row,column).number_format = currency_format
+    for cell in (sheet["A5"], sheet["B5"], sheet["C5"]): cell.number_format = currency_format
+    for row in range(start_row, end_data_row+1): sheet.cell(row,1).number_format = "dd.mm.yyyy"
+    sheet.column_dimensions["A"].width = 16; sheet.column_dimensions["B"].width = 55; sheet.column_dimensions["C"].width = 23; sheet.column_dimensions["D"].width = 36
+    sheet.auto_filter.ref = f"A{start_row-1}:D{max(end_data_row,start_row-1)}"
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True; sheet.page_setup.orientation = "landscape"; sheet.page_setup.fitToWidth = 1; sheet.page_setup.fitToHeight = 0
+    sheet.print_title_rows = f"1:{start_row-1}"; sheet.print_area = f"A1:D{total_row}"
+    workbook.calculation.fullCalcOnLoad = True; workbook.calculation.forceFullCalc = True; workbook.calculation.calcMode = "auto"
+    stream = BytesIO(); workbook.save(stream); stream.seek(0)
+    return stream
+
+
+def product_cost(product_id):
+    product = db.session.get(Product, product_id) if product_id else None
+    return product.purchase_price if product else Decimal("0")
+
+
+def order_realization_date(order):
+    events = [event.created_at.date() for event in order.history if event.status in FINANCIAL_ORDER_STATUSES]
+    return min(events) if events else (order.updated_at or order.created_at).date()
+
+
+def latest_delivered_purchase_cost(item, cutoff_date=None):
+    """Return the latest realized purchase price for the same product."""
+    query = OrderItem.query.join(Order).filter(
+        Order.order_type == "Satın Alma",
+        Order.status.in_(FINANCIAL_ORDER_STATUSES),
+    )
+    if item.product_id:
+        query = query.filter(OrderItem.product_id == item.product_id)
+    else:
+        query = query.filter(db.func.normalize_tr(OrderItem.product_name) == normalize_search_text(item.product_name))
+    candidates = query.all()
+    if cutoff_date:
+        candidates = [candidate for candidate in candidates if order_realization_date(candidate.order) <= cutoff_date]
+    if not candidates:
+        return Decimal("0")
+    latest = max(candidates, key=lambda candidate: (order_realization_date(candidate.order), candidate.order.id, candidate.id))
+    return latest.unit_price or Decimal("0")
+
+
+def effective_sales_item_cost(item, sale_date=None):
+    # Kârlılıkta ürün kartındaki sabit alış fiyatı kullanılmaz. Satış tarihine
+    # kadar gerçekleşmiş en son satın alma siparişinin net birim fiyatı alınır.
+    return latest_delivered_purchase_cost(item, sale_date)
 
 
 def create_app(test_config=None):
@@ -390,6 +823,10 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     db.init_app(app)
+
+    @app.before_request
+    def scheduled_database_backup():
+        ensure_scheduled_backups(app)
 
     @app.template_filter("money")
     def money(value):
@@ -530,6 +967,157 @@ def create_app(test_config=None):
             week_max=week_max,
         )
 
+    @app.get("/yedekler")
+    def backups():
+        backup_dir = os.path.join(app.instance_path, "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        files = []
+        backup_names = [item for item in os.listdir(backup_dir) if item.endswith(".db")]
+        backup_names.sort(key=lambda item: os.path.getmtime(os.path.join(backup_dir, item)), reverse=True)
+        for name in backup_names[:80]:
+            path = os.path.join(backup_dir, name)
+            files.append({"name": name, "size": os.path.getsize(path), "modified": datetime.fromtimestamp(os.path.getmtime(path))})
+        archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
+        return render_template("backups.html", files=files, archive_dir=archive_dir)
+
+    @app.post("/yedekler/olustur")
+    def create_manual_backup():
+        backup_path = create_database_backup(app, "manual")
+        archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
+        create_database_backup(app, "manual", target_dir=archive_dir, keep=90)
+        flash("Yeni yedek oluşturuldu ve Belgeler klasörüne de kopyalandı.", "success")
+        return redirect(url_for("backups"))
+
+    @app.get("/yedekler/guncel-indir")
+    def download_current_backup():
+        backup_path = create_database_backup(app, "download")
+        return send_file(backup_path, as_attachment=True, download_name=f"Business-OS-Yedek-{date.today().isoformat()}.db")
+
+    @app.get("/yedekler/<path:filename>/indir")
+    def download_backup(filename):
+        safe_name = os.path.basename(filename)
+        backup_dir = os.path.realpath(os.path.join(app.instance_path, "backups"))
+        backup_path = os.path.realpath(os.path.join(backup_dir, safe_name))
+        if not backup_path.startswith(backup_dir + os.sep) or not os.path.isfile(backup_path):
+            return "Yedek bulunamadı", 404
+        return send_file(backup_path, as_attachment=True, download_name=safe_name)
+
+    @app.get("/kar-zarar")
+    def profitability():
+        today = date.today()
+        period = request.args.get("period", "month")
+        if period not in {"day", "month", "year"}:
+            period = "month"
+        selected = parse_date(request.args.get("date")) or today
+        if period == "day":
+            start = end = selected
+            title = selected.strftime("%d.%m.%Y")
+        elif period == "year":
+            start, end = date(selected.year, 1, 1), date(selected.year, 12, 31)
+            title = str(selected.year)
+        else:
+            start = date(selected.year, selected.month, 1)
+            end = date(selected.year, selected.month, calendar.monthrange(selected.year, selected.month)[1])
+            title = start.strftime("%m.%Y")
+
+        realized_sales = Order.query.filter(Order.order_type == "Satış", Order.status.in_(FINANCIAL_ORDER_STATUSES)).all()
+        sales = [order for order in realized_sales if start <= order_realization_date(order) <= end]
+        revenue = sum((order.net_amount for order in sales), Decimal("0"))
+        cost = sum((sum((effective_sales_item_cost(item, order_realization_date(order)) * item.quantity for item in order.items), Decimal("0")) for order in sales), Decimal("0"))
+        gross_profit = revenue - cost
+        expenses = Expense.query.filter(Expense.expense_date >= start, Expense.expense_date <= end).all()
+        expenses_total = sum((item.amount for item in expenses), Decimal("0"))
+        net_profit = gross_profit - expenses_total
+        markup = (gross_profit / cost * 100) if cost else None
+        missing_cost_items = sum(1 for order in sales for item in order.items if not effective_sales_item_cost(item, order_realization_date(order)))
+
+        buckets = {}
+        if period == "year":
+            for month in range(1, 13):
+                buckets[(selected.year, month)] = {"label": f"{month:02d}.{selected.year}", "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
+        elif period == "month":
+            for day_no in range(1, end.day + 1):
+                day_value = date(selected.year, selected.month, day_no)
+                buckets[day_value] = {"label": day_value.strftime("%d.%m"), "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
+        else:
+            buckets[selected] = {"label": selected.strftime("%d.%m.%Y"), "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
+        for order in sales:
+            realized = order_realization_date(order)
+            key = (realized.year, realized.month) if period == "year" else realized
+            buckets[key]["revenue"] += order.net_amount
+            buckets[key]["cost"] += sum((effective_sales_item_cost(item, realized) * item.quantity for item in order.items), Decimal("0"))
+        for expense in expenses:
+            key = (expense.expense_date.year, expense.expense_date.month) if period == "year" else expense.expense_date
+            buckets[key]["expense"] += expense.amount
+        timeline = []
+        for bucket in buckets.values():
+            bucket["gross"] = bucket["revenue"] - bucket["cost"]
+            bucket["net"] = bucket["gross"] - bucket["expense"]
+            timeline.append(bucket)
+        chart_max = max((max(abs(item["revenue"]), abs(item["cost"]), abs(item["net"])) for item in timeline), default=Decimal("1")) or Decimal("1")
+        sales.sort(key=order_realization_date, reverse=True)
+        return render_template("profitability.html", period=period, selected=selected, start=start, end=end, title=title,
+            revenue=revenue, cost=cost, gross_profit=gross_profit, expenses_total=expenses_total, net_profit=net_profit,
+            markup=markup, missing_cost_items=missing_cost_items, sales=sales, timeline=timeline, chart_max=chart_max,
+            order_realization_date=order_realization_date, effective_sales_item_cost=effective_sales_item_cost)
+
+    @app.get("/mali-tablolar")
+    def financial_statements():
+        today = date.today()
+        selected = parse_date(request.args.get("date")) or today
+        period = request.args.get("period", "month")
+        if period not in {"month", "year"}:
+            period = "month"
+        if period == "year":
+            period_start = date(selected.year, 1, 1)
+            period_title = str(selected.year)
+        else:
+            period_start = date(selected.year, selected.month, 1)
+            period_title = period_start.strftime("%m.%Y")
+        period_end = selected
+
+        realized_orders = Order.query.filter(Order.status.in_(FINANCIAL_ORDER_STATUSES)).all()
+        period_sales = [order for order in realized_orders if order.order_type == "Satış" and period_start <= order_realization_date(order) <= period_end]
+        sales_revenue = sum((order.net_amount for order in period_sales), Decimal("0"))
+        sales_cost = sum((sum((effective_sales_item_cost(item, order_realization_date(order)) * item.quantity for item in order.items), Decimal("0")) for order in period_sales), Decimal("0"))
+        gross_profit = sales_revenue - sales_cost
+        period_expenses = Expense.query.filter(Expense.expense_date >= period_start, Expense.expense_date <= period_end).all()
+        expense_by_category = {}
+        for expense in period_expenses:
+            expense_by_category.setdefault(expense.category, Decimal("0"))
+            expense_by_category[expense.category] += expense.amount
+        operating_expenses = sum(expense_by_category.values(), Decimal("0"))
+        net_profit = gross_profit - operating_expenses
+
+        balances = {customer.id: Decimal("0") for customer in Customer.query.all()}
+        for order in realized_orders:
+            if order_realization_date(order) <= selected:
+                balances[order.customer_id] += order.total_amount if order.order_type == "Satış" else -order.total_amount
+        transactions = AccountTransaction.query.filter(AccountTransaction.transaction_date <= selected).all()
+        for transaction in transactions:
+            balances[transaction.customer_id] += (transaction.debit or Decimal("0")) - (transaction.credit or Decimal("0"))
+        receivables = sum((balance for balance in balances.values() if balance > 0), Decimal("0"))
+        payables = sum((-balance for balance in balances.values() if balance < 0), Decimal("0"))
+
+        cash_collections = sum((item.credit or Decimal("0") for item in transactions if item.transaction_type == "Tahsilat" and item.payment_method == "Nakit"), Decimal("0"))
+        cash_payments = sum((item.debit or Decimal("0") for item in transactions if item.transaction_type == "Ödeme" and item.payment_method == "Nakit"), Decimal("0"))
+        cash_expenses = sum((item.amount for item in Expense.query.filter(Expense.expense_date <= selected, Expense.payment_method == "Nakit").all()), Decimal("0"))
+        cash_movements = CashMovement.query.filter(CashMovement.movement_date <= selected).all()
+        manual_cash = sum((item.amount if item.movement_type == "Giriş" else -item.amount for item in cash_movements), Decimal("0"))
+        cash_balance = cash_collections - cash_payments - cash_expenses + manual_cash
+        pending_checks = [item for item in transactions if item.payment_method == "Çek" and item.check_status == "Bekliyor"]
+        incoming_checks = sum((item.credit or Decimal("0") for item in pending_checks if item.transaction_type == "Tahsilat"), Decimal("0"))
+        outgoing_checks = sum((item.debit or Decimal("0") for item in pending_checks if item.transaction_type == "Ödeme"), Decimal("0"))
+        total_assets = cash_balance + receivables + incoming_checks
+        total_liabilities = payables + outgoing_checks
+        calculated_equity = total_assets - total_liabilities
+        return render_template("financial_statements.html", selected=selected, period=period, period_start=period_start,
+            period_end=period_end, period_title=period_title, sales_revenue=sales_revenue, sales_cost=sales_cost,
+            gross_profit=gross_profit, expense_by_category=sorted(expense_by_category.items()), operating_expenses=operating_expenses,
+            net_profit=net_profit, cash_balance=cash_balance, receivables=receivables, incoming_checks=incoming_checks,
+            payables=payables, outgoing_checks=outgoing_checks, total_assets=total_assets,
+            total_liabilities=total_liabilities, calculated_equity=calculated_equity)
+
     @app.route("/tahsilat-girisi", methods=["GET", "POST"])
     def quick_collection():
         customers = Customer.query.order_by(Customer.name).all()
@@ -543,7 +1131,7 @@ def create_app(test_config=None):
                 flash("Lütfen listeden geçerli bir cari seçin.", "error")
             elif amount <= 0:
                 flash("Tahsilat tutarı sıfırdan büyük olmalıdır.", "error")
-            elif payment_method not in ACCOUNT_PAYMENT_METHODS:
+            elif payment_method not in COLLECTION_PAYMENT_METHODS:
                 flash("Tahsilat şekli olarak Nakit, Çek veya Banka seçin.", "error")
             elif payment_method == "Çek" and (not request.form.get("check_no", "").strip() or not check_due_date):
                 flash("Çek numarası ve vade tarihi zorunludur.", "error")
@@ -567,7 +1155,50 @@ def create_app(test_config=None):
                 db.session.commit()
                 flash(f"{customer.name} için ₺{amount:,.2f} tahsilat kaydedildi.", "success")
                 return redirect(url_for("dashboard"))
-        return render_template("quick_collection.html", customers=customers, today=date.today().isoformat())
+        return render_template("quick_collection.html", customers=customers, today=date.today().isoformat(), is_payment=False)
+
+    @app.route("/odeme-girisi", methods=["GET", "POST"])
+    def quick_payment():
+        customers = Customer.query.order_by(Customer.name).all()
+        if request.method == "POST":
+            customer_id = request.form.get("customer_id", type=int)
+            customer = db.session.get(Customer, customer_id) if customer_id else None
+            amount = parse_money(request.form.get("amount"))
+            payment_method = request.form.get("payment_method", "")
+            check_due_date = parse_date(request.form.get("check_due_date"))
+            card_details, card_error = card_payment_details(payment_method, "Ödeme")
+            if not customer:
+                flash("Lütfen listeden geçerli bir cari seçin.", "error")
+            elif amount <= 0:
+                flash("Ödeme tutarı sıfırdan büyük olmalıdır.", "error")
+            elif payment_method not in ACCOUNT_PAYMENT_METHODS:
+                flash("Ödeme şekli olarak Nakit, Çek, Banka veya Kredi Kartı seçin.", "error")
+            elif payment_method == "Çek" and (not request.form.get("check_no", "").strip() or not check_due_date):
+                flash("Çek numarası ve vade tarihi zorunludur.", "error")
+            elif card_error:
+                flash(card_error, "error")
+            else:
+                create_database_backup(app, "before_quick_payment")
+                transaction = AccountTransaction(
+                    customer=customer,
+                    transaction_date=parse_date(request.form.get("transaction_date")) or date.today(),
+                    transaction_type="Ödeme",
+                    reference_no=request.form.get("reference_no", "").strip(),
+                    description=request.form.get("description", "").strip() or "Ödeme",
+                    debit=amount,
+                    credit=0,
+                    payment_method=payment_method,
+                    check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None,
+                    check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None,
+                    check_due_date=check_due_date if payment_method == "Çek" else None,
+                    check_status="Bekliyor" if payment_method == "Çek" else None,
+                    **card_details,
+                )
+                db.session.add(transaction)
+                db.session.commit()
+                flash(f"{customer.name} için ₺{amount:,.2f} ödeme kaydedildi.", "success")
+                return redirect(url_for("dashboard"))
+        return render_template("quick_collection.html", customers=customers, today=date.today().isoformat(), is_payment=True)
 
     @app.route("/musteriler", methods=["GET", "POST"])
     def customers():
@@ -707,7 +1338,7 @@ def create_app(test_config=None):
         period_debit = sum((entry["debit"] for entry in entries), Decimal("0"))
         period_credit = sum((entry["credit"] for entry in entries), Decimal("0"))
         closing_balance = opening_balance + period_debit - period_credit
-        return render_template("customer_account.html", customer=customer, entries=entries, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""), opening_balance=opening_balance, period_debit=period_debit, period_credit=period_credit, closing_balance=closing_balance, today=date.today().isoformat())
+        return render_template("customer_account.html", customer=customer, all_customers=Customer.query.order_by(Customer.name).all(), entries=entries, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""), opening_balance=opening_balance, period_debit=period_debit, period_credit=period_credit, closing_balance=closing_balance, today=date.today().isoformat())
 
     @app.post("/musteriler/<int:customer_id>/cari-hesap/hareket")
     def add_account_transaction(customer_id):
@@ -718,17 +1349,22 @@ def create_app(test_config=None):
         credit_types = {"Tahsilat", "Alacak Dekontu", "Alacak Devir"}
         payment_method = request.form.get("payment_method", "") if transaction_type in {"Tahsilat", "Ödeme"} else None
         check_due_date = parse_date(request.form.get("check_due_date"))
+        card_details, card_error = card_payment_details(payment_method, transaction_type)
         if transaction_type not in debit_types | credit_types:
             flash("Lütfen geçerli bir hareket türü seçin.", "error")
         elif amount <= 0:
             flash("Tutar sıfırdan büyük olmalıdır.", "error")
-        elif transaction_type in {"Tahsilat", "Ödeme"} and payment_method not in ACCOUNT_PAYMENT_METHODS:
-            flash("Tahsilat veya ödeme için Nakit, Çek ya da Banka seçin.", "error")
+        elif transaction_type == "Tahsilat" and payment_method not in COLLECTION_PAYMENT_METHODS:
+            flash("Tahsilat için Nakit, Çek veya Banka seçin.", "error")
+        elif transaction_type == "Ödeme" and payment_method not in ACCOUNT_PAYMENT_METHODS:
+            flash("Ödeme için Nakit, Çek, Banka veya Kredi Kartı seçin.", "error")
         elif payment_method == "Çek" and (not request.form.get("check_no", "").strip() or not check_due_date):
             flash("Çek numarası ve vade tarihi zorunludur.", "error")
+        elif card_error:
+            flash(card_error, "error")
         else:
             create_database_backup(app, "before_account_transaction")
-            transaction = AccountTransaction(customer=customer, transaction_date=parse_date(request.form.get("transaction_date")) or date.today(), transaction_type=transaction_type, reference_no=request.form.get("reference_no", "").strip(), description=request.form.get("description", "").strip() or transaction_type, debit=amount if transaction_type in debit_types else 0, credit=amount if transaction_type in credit_types else 0, payment_method=payment_method, check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None, check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None, check_due_date=check_due_date if payment_method == "Çek" else None, check_status="Bekliyor" if payment_method == "Çek" else None)
+            transaction = AccountTransaction(customer=customer, transaction_date=parse_date(request.form.get("transaction_date")) or date.today(), transaction_type=transaction_type, reference_no=request.form.get("reference_no", "").strip(), description=request.form.get("description", "").strip() or transaction_type, debit=amount if transaction_type in debit_types else 0, credit=amount if transaction_type in credit_types else 0, payment_method=payment_method, check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None, check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None, check_due_date=check_due_date if payment_method == "Çek" else None, check_status="Bekliyor" if payment_method == "Çek" else None, **card_details)
             db.session.add(transaction)
             db.session.commit()
             flash(f"{transaction_type} hareketi cari hesaba kaydedildi.", "success")
@@ -1199,6 +1835,16 @@ def create_app(test_config=None):
         order_type = request.args.get("type", "").strip()
         active_only = request.args.get("active") == "1"
         delivery_pending = request.args.get("delivery_pending") == "1"
+        status_summary = {
+            kind: {order_status: {"count": 0, "total": Decimal("0")} for order_status in ORDER_STATUSES}
+            for kind in ORDER_TYPES
+        }
+        for summary_order in Order.query.all():
+            if summary_order.order_type not in status_summary or summary_order.status not in status_summary[summary_order.order_type]:
+                continue
+            bucket = status_summary[summary_order.order_type][summary_order.status]
+            bucket["count"] += 1
+            bucket["total"] += summary_order.total_amount
         records = Order.query.join(Customer)
         if query:
             records = records.filter(db.or_(Order.order_no.ilike(f"%{query}%"), Customer.name.ilike(f"%{query}%")))
@@ -1221,9 +1867,18 @@ def create_app(test_config=None):
         else:
             counts = {kind: Order.query.filter_by(order_type=kind).count() for kind in ORDER_TYPES}
         listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all() if delivery_pending else records.order_by(Order.order_date.desc(), Order.id.desc()).all()
+        listed_sales_ids = [order.id for order in listed_orders if order.order_type == "Satış"]
+        linked_by_source = {order_id: [] for order_id in listed_sales_ids}
+        if listed_sales_ids:
+            for linked_order in Order.query.filter(Order.source_order_id.in_(listed_sales_ids)).order_by(Order.id).all():
+                linked_by_source[linked_order.source_order_id].append(linked_order)
+        procurement_summaries = {
+            order.id: procurement_summary(order, linked_by_source.get(order.id, []))
+            for order in listed_orders if order.order_type == "Satış"
+        }
         pending_expected = pending_expected if delivery_pending else {}
         listed_total = sum((pending_expected.get(order.id, order.total_amount) for order in listed_orders), Decimal("0"))
-        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, selected_status=status, selected_type=order_type, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts)
+        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, selected_status=status, selected_type=order_type, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries)
 
     @app.route("/siparisler/yeni", methods=["GET", "POST"])
     def new_order():
@@ -1256,7 +1911,8 @@ def create_app(test_config=None):
                         continue
                     quantity = int(quantities[i]) if i < len(quantities) and quantities[i].isdigit() else 1
                     vat_rate = parse_money(vat_rates[i] if i < len(vat_rates) else "10")
-                    order.items.append(OrderItem(product_id=int(product_ids[i]) if i < len(product_ids) and product_ids[i].isdigit() else None, product_name=name.strip(), description="", variant=variants[i] if i < len(variants) else "", detail_2=details_2[i] if i < len(details_2) else "", detail_3=details_3[i] if i < len(details_3) else "", quantity=max(quantity, 1), unit=units[i] if i < len(units) and units[i] else "Adet", unit_price=parse_money(prices[i] if i < len(prices) else "0"), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[i] if i < len(item_notes) else ""))
+                    product_id = int(product_ids[i]) if i < len(product_ids) and product_ids[i].isdigit() else None
+                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[i] if i < len(variants) else "", detail_2=details_2[i] if i < len(details_2) else "", detail_3=details_3[i] if i < len(details_3) else "", quantity=max(quantity, 1), unit=units[i] if i < len(units) and units[i] else "Adet", unit_price=parse_money(prices[i] if i < len(prices) else "0"), cost_unit_price=Decimal("0"), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[i] if i < len(item_notes) else ""))
                 order.history.append(OrderHistory(status="Bekliyor", note="Sipariş oluşturuldu"))
                 db.session.commit()
                 flash(f"{order.order_no} numaralı sipariş oluşturuldu.", "success")
@@ -1266,8 +1922,156 @@ def create_app(test_config=None):
     @app.get("/siparisler/<int:order_id>")
     def order_detail(order_id):
         order = db.get_or_404(Order, order_id)
-        converted_order = Order.query.filter_by(source_order_id=order.id).first() if order.order_type == "Satış" else None
-        return render_template("order_detail.html", order=order, converted_order=converted_order, statuses=ORDER_STATUSES)
+        converted_orders = Order.query.filter_by(source_order_id=order.id).order_by(Order.id).all() if order.order_type == "Satış" else []
+        procurement = procurement_summary(order, converted_orders) if order.order_type == "Satış" else None
+        return render_template("order_detail.html", order=order, converted_orders=converted_orders, procurement=procurement, statuses=ORDER_STATUSES)
+
+    @app.get("/siparisler/<int:order_id>/excel")
+    def export_order_excel(order_id):
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+        order = db.get_or_404(Order, order_id)
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Sipariş"
+        sheet.sheet_view.showGridLines = False
+        sheet.freeze_panes = "A9"
+        blue, navy, pale, line = "2563EB", "172033", "EEF4FF", "D8E0EC"
+        sheet.merge_cells("A1:K1")
+        sheet["A1"] = f"BUSINESS OS - {order.order_type.upper()} SİPARİŞİ"
+        sheet["A1"].font = Font(name="Arial", size=18, bold=True, color="FFFFFF")
+        sheet["A1"].fill = PatternFill("solid", fgColor=navy)
+        sheet["A1"].alignment = Alignment(vertical="center")
+        sheet.row_dimensions[1].height = 34
+        info = [
+            ("Sipariş No", order.order_no, "Cari", order.customer.name),
+            ("Sipariş Tarihi", order.order_date, "Teslim Tarihi", order.delivery_date or "Belirtilmedi"),
+            ("Durum", order.status, "Tür", order.order_type),
+        ]
+        for row_no, values in enumerate(info, 3):
+            sheet.cell(row_no, 1, values[0]); sheet.cell(row_no, 2, values[1])
+            sheet.cell(row_no, 6, values[2]); sheet.cell(row_no, 7, values[3])
+            sheet.merge_cells(start_row=row_no, start_column=2, end_row=row_no, end_column=5)
+            sheet.merge_cells(start_row=row_no, start_column=7, end_row=row_no, end_column=11)
+            for col in (1, 6):
+                sheet.cell(row_no, col).font = Font(name="Arial", bold=True, color="64748B")
+            for col in (2, 7):
+                sheet.cell(row_no, col).font = Font(name="Arial", bold=True, color=navy)
+        for cell_ref in ("B4", "G4"):
+            if hasattr(sheet[cell_ref].value, "year"):
+                sheet[cell_ref].number_format = "dd.mm.yyyy"
+        headers = ["Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim", "Birim Fiyat", "KDV %", "KDV Tutarı", "KDV Dahil Toplam"]
+        header_row = 8
+        for column, heading in enumerate(headers, 1):
+            cell = sheet.cell(header_row, column, heading)
+            cell.font = Font(name="Arial", bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=blue)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        sheet.row_dimensions[header_row].height = 30
+        thin = Side(style="thin", color=line)
+        first_data_row = header_row + 1
+        for index, item in enumerate(order.items, 1):
+            row_no = header_row + index
+            values = [index, item.product_name, item.variant or "", item.detail_2 or "", item.detail_3 or "", item.quantity, item.unit, float(item.unit_price or 0), float(item.vat_rate or 0) / 100]
+            for column, value in enumerate(values, 1):
+                cell = sheet.cell(row_no, column, value)
+                cell.font = Font(name="Arial", size=10)
+                cell.alignment = Alignment(vertical="top", wrap_text=column in (2, 3, 4, 5))
+                cell.border = Border(bottom=thin)
+            sheet.cell(row_no, 10, f"=F{row_no}*H{row_no}*I{row_no}")
+            sheet.cell(row_no, 11, f"=F{row_no}*H{row_no}+J{row_no}")
+            for column in (8, 10, 11):
+                sheet.cell(row_no, column).number_format = '₺#,##0.00'
+            sheet.cell(row_no, 9).number_format = "0.00%"
+            sheet.row_dimensions[row_no].height = 30
+        last_data_row = header_row + len(order.items)
+        total_row = last_data_row + 2
+        sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=7)
+        sheet.cell(total_row, 8, "Ara Toplam")
+        sheet.cell(total_row, 11, f"=SUMPRODUCT(F{first_data_row}:F{last_data_row},H{first_data_row}:H{last_data_row})")
+        sheet.cell(total_row + 1, 8, "Toplam KDV")
+        sheet.cell(total_row + 1, 11, f"=SUM(J{first_data_row}:J{last_data_row})")
+        sheet.cell(total_row + 2, 8, "Genel Toplam")
+        sheet.cell(total_row + 2, 11, f"=SUM(K{first_data_row}:K{last_data_row})")
+        for row_no in range(total_row, total_row + 3):
+            sheet.merge_cells(start_row=row_no, start_column=8, end_row=row_no, end_column=10)
+            sheet.cell(row_no, 8).font = Font(name="Arial", bold=True, color=navy)
+            sheet.cell(row_no, 11).font = Font(name="Arial", bold=True, color=blue, size=12 if row_no == total_row + 2 else 10)
+            sheet.cell(row_no, 11).number_format = '₺#,##0.00'
+            sheet.cell(row_no, 8).fill = sheet.cell(row_no, 11).fill = PatternFill("solid", fgColor=pale)
+        if order.notes:
+            note_row = total_row + 4
+            sheet.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=11)
+            sheet.cell(note_row, 1, f"Sipariş Notu: {order.notes}")
+            sheet.cell(note_row, 1).alignment = Alignment(wrap_text=True, vertical="top")
+            sheet.cell(note_row, 1).fill = PatternFill("solid", fgColor="FFF8E8")
+            sheet.row_dimensions[note_row].height = 36
+        widths = [7, 30, 18, 18, 18, 10, 10, 15, 10, 15, 18]
+        for column, width in enumerate(widths, 1):
+            sheet.column_dimensions[chr(64 + column)].width = width
+        sheet.auto_filter.ref = f"A8:K{last_data_row}"
+        sheet.print_title_rows = "1:8"
+        sheet.page_setup.orientation = "landscape"
+        sheet.page_setup.fitToWidth = 1
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return send_file(output, as_attachment=True, download_name=f"{order.order_no}.xlsx", mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    @app.get("/siparisler/<int:order_id>/pdf")
+    def export_order_pdf(order_id):
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+        order = db.get_or_404(Order, order_id)
+        regular_font = "/System/Library/Fonts/Supplemental/Arial.ttf"
+        bold_font = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+        if os.path.exists(regular_font) and os.path.exists(bold_font):
+            pdfmetrics.registerFont(TTFont("BusinessArial", regular_font))
+            pdfmetrics.registerFont(TTFont("BusinessArialBold", bold_font))
+            font_name, bold_name = "BusinessArial", "BusinessArialBold"
+        else:
+            font_name, bold_name = "Helvetica", "Helvetica-Bold"
+        output = BytesIO()
+        document = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=12*mm, leftMargin=12*mm, topMargin=12*mm, bottomMargin=12*mm, title=order.order_no)
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle("TitleTR", parent=styles["Title"], fontName=bold_name, fontSize=17, leading=20, textColor=colors.HexColor("#172033"), alignment=TA_LEFT)
+        body_style = ParagraphStyle("BodyTR", parent=styles["BodyText"], fontName=font_name, fontSize=7.5, leading=9)
+        body_bold = ParagraphStyle("BodyBoldTR", parent=body_style, fontName=bold_name)
+        header_style = ParagraphStyle("HeaderTR", parent=body_bold, textColor=colors.white, alignment=TA_LEFT)
+        right_style = ParagraphStyle("RightTR", parent=body_style, alignment=TA_RIGHT)
+        story = [Paragraph(f"BUSINESS OS - {order.order_type.upper()} SİPARİŞİ", title_style), Spacer(1, 4*mm)]
+        info_data = [[Paragraph("Sipariş No", body_bold), Paragraph(order.order_no, body_style), Paragraph("Cari", body_bold), Paragraph(order.customer.name, body_style)], [Paragraph("Sipariş Tarihi", body_bold), Paragraph(order.order_date.strftime("%d.%m.%Y"), body_style), Paragraph("Teslim Tarihi", body_bold), Paragraph(order.delivery_date.strftime("%d.%m.%Y") if order.delivery_date else "Belirtilmedi", body_style)], [Paragraph("Durum", body_bold), Paragraph(order.status, body_style), Paragraph("Tür", body_bold), Paragraph(order.order_type, body_style)]]
+        info_table = Table(info_data, colWidths=[28*mm, 70*mm, 28*mm, 125*mm])
+        info_table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#EEF4FF")),("BACKGROUND",(2,0),(2,-1),colors.HexColor("#EEF4FF")),("FONTNAME",(0,0),(-1,-1),font_name),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+        story.extend([info_table, Spacer(1, 5*mm)])
+        headers = ["Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim", "Birim Fiyat", "KDV %", "KDV", "Toplam"]
+        data = [[Paragraph(value, header_style) for value in headers]]
+        money_text = lambda value: f"TL {Decimal(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        for index, item in enumerate(order.items, 1):
+            data.append([Paragraph(str(index), body_style), Paragraph(item.product_name, body_style), Paragraph(item.variant or "-", body_style), Paragraph(item.detail_2 or "-", body_style), Paragraph(item.detail_3 or "-", body_style), Paragraph(str(item.quantity), right_style), Paragraph(item.unit, body_style), Paragraph(money_text(item.unit_price or 0), right_style), Paragraph(f"%{item.vat_rate}", right_style), Paragraph(money_text(item.vat_amount), right_style), Paragraph(money_text(item.total_amount), right_style)])
+        item_table = Table(data, repeatRows=1, colWidths=[10*mm, 44*mm, 29*mm, 29*mm, 29*mm, 13*mm, 15*mm, 24*mm, 15*mm, 23*mm, 25*mm])
+        item_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#2563EB")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONTNAME",(0,0),(-1,-1),font_name),("VALIGN",(0,0),(-1,-1),"TOP"),("LINEBELOW",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8FAFC")]),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+        story.extend([item_table, Spacer(1, 4*mm)])
+        totals = [[Paragraph("Ara Toplam", body_bold), Paragraph(money_text(order.net_amount), right_style)], [Paragraph("Toplam KDV", body_bold), Paragraph(money_text(order.vat_amount), right_style)], [Paragraph("KDV Dahil Genel Toplam", body_bold), Paragraph(money_text(order.total_amount), right_style)]]
+        totals_table = Table(totals, colWidths=[55*mm, 38*mm], hAlign="RIGHT")
+        totals_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#EEF4FF")),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("FONTNAME",(0,0),(-1,-1),font_name),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+        story.append(totals_table)
+        if order.notes:
+            story.extend([Spacer(1, 4*mm), Paragraph(f"Sipariş Notu: {order.notes}", body_bold)])
+        def page_number(canvas, doc):
+            canvas.saveState(); canvas.setFont(font_name, 7); canvas.setFillColor(colors.HexColor("#64748B")); canvas.drawRightString(landscape(A4)[0]-12*mm, 7*mm, f"Sayfa {doc.page}"); canvas.restoreState()
+        document.build(story, onFirstPage=page_number, onLaterPages=page_number)
+        output.seek(0)
+        return send_file(output, as_attachment=True, download_name=f"{order.order_no}.pdf", mimetype="application/pdf")
 
     @app.route("/siparisler/<int:order_id>/duzenle", methods=["GET", "POST"])
     def edit_order(order_id):
@@ -1288,6 +2092,7 @@ def create_app(test_config=None):
                 order.order_date = parse_date(request.form.get("order_date")) or order.order_date
                 order.delivery_date = parse_date(request.form.get("delivery_date"))
                 order.notes = request.form.get("notes", "").strip()
+                previous_costs = {(item.product_id, item.product_name): item.cost_unit_price for item in order.items}
                 order.items.clear()
                 product_ids = request.form.getlist("product_id[]")
                 variants = request.form.getlist("variant[]")
@@ -1307,7 +2112,9 @@ def create_app(test_config=None):
                         quantity = 1
                     product_id = int(product_ids[index]) if index < len(product_ids) and product_ids[index].isdigit() else None
                     vat_rate = parse_money(vat_rates[index] if index < len(vat_rates) else "10")
-                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[index] if index < len(variants) else "", detail_2=details_2[index] if index < len(details_2) else "", detail_3=details_3[index] if index < len(details_3) else "", quantity=quantity, unit=units[index] if index < len(units) and units[index] else "Adet", unit_price=parse_money(prices[index] if index < len(prices) else "0"), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[index] if index < len(item_notes) else ""))
+                    saved_cost = previous_costs.get((product_id, name.strip()))
+                    cost = saved_cost if saved_cost is not None else Decimal("0")
+                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[index] if index < len(variants) else "", detail_2=details_2[index] if index < len(details_2) else "", detail_3=details_3[index] if index < len(details_3) else "", quantity=quantity, unit=units[index] if index < len(units) and units[index] else "Adet", unit_price=parse_money(prices[index] if index < len(prices) else "0"), cost_unit_price=cost, vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[index] if index < len(item_notes) else ""))
                 order.history.append(OrderHistory(status=order.status, note="Sipariş bilgileri düzenlendi"))
                 db.session.commit()
                 flash(f"{order.order_no} numaralı sipariş güncellendi.", "success")
@@ -1321,33 +2128,32 @@ def create_app(test_config=None):
         if source_order.order_type != "Satış":
             flash("Yalnızca satış siparişleri satın alma siparişine dönüştürülebilir.", "error")
             return redirect(url_for("order_detail", order_id=source_order.id))
-        existing = Order.query.filter_by(source_order_id=source_order.id).first()
-        if existing:
-            flash(f"Bu satış siparişi daha önce {existing.order_no} numaralı satın alma siparişine dönüştürülmüş.", "error")
-            return redirect(url_for("order_detail", order_id=existing.id))
         suppliers = Customer.query.order_by(Customer.name).all()
+        converted_orders = Order.query.filter_by(source_order_id=source_order.id).order_by(Order.id).all()
+        procurement = procurement_summary(source_order, converted_orders)
         if request.method == "POST":
             supplier_id = request.form.get("customer_id", type=int)
+            selected_ids = {value for value in request.form.getlist("source_item_id[]") if value.isdigit()}
+            selected_items = [item for item in source_order.items if str(item.id) in selected_ids and procurement["items"][item.id]["remaining"] > 0]
             if not supplier_id or not db.session.get(Customer, supplier_id):
                 flash("Lütfen bir tedarikçi seçin.", "error")
+            elif not selected_items:
+                flash("Satın alma siparişine aktarılacak en az bir ürün seçin.", "error")
             else:
                 create_database_backup(app, "before_order_conversion")
                 purchase = Order(order_no=next_order_no("Satın Alma"), order_type="Satın Alma", source_order_id=source_order.id, customer_id=supplier_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), notes=request.form.get("notes", "").strip(), status="Bekliyor")
-                prices = request.form.getlist("unit_price[]")
-                vat_rates = request.form.getlist("vat_rate[]")
-                detail_1 = request.form.getlist("variant[]")
-                detail_2 = request.form.getlist("detail_2[]")
-                detail_3 = request.form.getlist("detail_3[]")
-                notes = request.form.getlist("item_note[]")
-                for index, source_item in enumerate(source_order.items):
-                    vat_rate = parse_money(vat_rates[index] if index < len(vat_rates) else "10")
-                    purchase.items.append(OrderItem(product_id=source_item.product_id, product_name=source_item.product_name, description="", variant=detail_1[index] if index < len(detail_1) else source_item.variant, detail_2=detail_2[index] if index < len(detail_2) else source_item.detail_2, detail_3=detail_3[index] if index < len(detail_3) else source_item.detail_3, quantity=source_item.quantity, unit=source_item.unit, unit_price=parse_money(prices[index] if index < len(prices) else "0"), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=notes[index] if index < len(notes) else source_item.note))
+                for source_item in selected_items:
+                    item_id = source_item.id
+                    vat_rate = parse_money(request.form.get(f"vat_rate_{item_id}", "10"))
+                    remaining_quantity = procurement["items"][source_item.id]["remaining"]
+                    quantity = request.form.get(f"quantity_{item_id}", type=int) or remaining_quantity
+                    purchase.items.append(OrderItem(source_order_item_id=source_item.id, product_id=source_item.product_id, product_name=source_item.product_name, description="", variant=request.form.get(f"variant_{item_id}", source_item.variant), detail_2=request.form.get(f"detail_2_{item_id}", source_item.detail_2), detail_3=request.form.get(f"detail_3_{item_id}", source_item.detail_3), quantity=max(1, min(quantity, remaining_quantity)), unit=source_item.unit, unit_price=parse_money(request.form.get(f"unit_price_{item_id}", "0")), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=request.form.get(f"item_note_{item_id}", source_item.note)))
                 purchase.history.append(OrderHistory(status="Bekliyor", note="Satış siparişindeki ürün detaylarından oluşturuldu"))
                 db.session.add(purchase)
                 db.session.commit()
                 flash(f"{purchase.order_no} numaralı satın alma siparişi oluşturuldu. Satış müşterisi ve satış fiyatları aktarılmadı.", "success")
                 return redirect(url_for("order_detail", order_id=purchase.id))
-        return render_template("order_convert.html", source_order=source_order, suppliers=suppliers, today=date.today().isoformat())
+        return render_template("order_convert.html", source_order=source_order, suppliers=suppliers, converted_orders=converted_orders, procurement=procurement, today=date.today().isoformat())
 
     @app.post("/siparisler/<int:order_id>/durum")
     def update_order_status(order_id):
@@ -1357,10 +2163,169 @@ def create_app(test_config=None):
             flash("Geçersiz sipariş durumu.", "error")
         elif status != order.status:
             order.status = status
+            if order.order_type == "Satış" and status in FINANCIAL_ORDER_STATUSES:
+                for item in order.items:
+                    if not item.cost_unit_price:
+                        item.cost_unit_price = latest_delivered_purchase_cost(item)
             order.history.append(OrderHistory(status=status, note=request.form.get("note", "").strip() or "Durum güncellendi"))
             db.session.commit()
             flash("Sipariş durumu güncellendi.", "success")
         return redirect(url_for("order_detail", order_id=order.id))
+
+    @app.route("/sahsi-hesaplar", methods=["GET", "POST"])
+    def personal_finance():
+        tab = request.values.get("tab", "payments")
+        selected_month = request.values.get("month")
+        selected_person_id = request.values.get("person_id", type=int)
+
+        def optional_money(field_name):
+            raw = request.form.get(field_name, "").strip()
+            return parse_money(raw) if raw else None
+
+        if request.method == "POST":
+            action = request.form.get("action")
+            if action == "save_payments":
+                create_database_backup(app, "before_personal_payments")
+                for entry_id in request.form.getlist("entry_id"):
+                    entry = db.session.get(PersonalPayment, int(entry_id))
+                    if not entry:
+                        continue
+                    entry.name = request.form.get(f"name_{entry.id}", "").strip() or entry.name
+                    entry.kind = request.form.get(f"kind_{entry.id}", entry.kind)
+                    entry.due_day = request.form.get(f"due_day_{entry.id}", type=int)
+                    entry.credit_limit = optional_money(f"credit_limit_{entry.id}")
+                    entry.debt = optional_money(f"debt_{entry.id}")
+                    entry.minimum_payment = optional_money(f"minimum_payment_{entry.id}")
+                    entry.payment = optional_money(f"payment_{entry.id}")
+                    entry.available_limit = optional_money(f"available_limit_{entry.id}")
+                    entry.remaining_debt = optional_money(f"remaining_debt_{entry.id}") if entry.kind != "card" else None
+                db.session.commit()
+                flash("Şahsi ödeme tablosu kaydedildi.", "success")
+            elif action == "add_payment":
+                order = db.session.query(db.func.max(PersonalPayment.sort_order)).filter_by(month=selected_month).scalar() or 0
+                db.session.add(PersonalPayment(month=selected_month, kind="other", name="Yeni ödeme", sort_order=order + 1))
+                db.session.commit()
+            elif action == "delete_payment":
+                entry = db.session.get(PersonalPayment, request.form.get("entry_id", type=int))
+                if entry:
+                    db.session.delete(entry)
+                    db.session.commit()
+            elif action == "new_month":
+                new_month = request.form.get("new_month", "")
+                source = db.session.get(PersonalMonth, selected_month)
+                if len(new_month) == 7 and not db.session.get(PersonalMonth, new_month):
+                    target = PersonalMonth(month=new_month)
+                    db.session.add(target)
+                    db.session.flush()
+                    for entry in source.entries if source else []:
+                        db.session.add(PersonalPayment(month=new_month, kind=entry.kind, name=entry.name,
+                            credit_limit=entry.credit_limit, due_day=entry.due_day, sort_order=entry.sort_order))
+                    db.session.commit()
+                    selected_month = new_month
+                    flash("Yeni dönem oluşturuldu.", "success")
+                else:
+                    flash("Dönem oluşturulamadı veya zaten mevcut.", "error")
+            elif action == "add_person":
+                name = request.form.get("person_name", "").strip()
+                if name and not PersonalPerson.query.filter(db.func.normalize_tr(PersonalPerson.name) == normalize_search_text(name)).first():
+                    person = PersonalPerson(name=name)
+                    db.session.add(person)
+                    db.session.commit()
+                    selected_person_id = person.id
+                    flash(f"{name} kişi hesabı eklendi.", "success")
+                else:
+                    flash("Kişi adı boş veya zaten mevcut.", "error")
+            elif action == "save_ledger":
+                create_database_backup(app, "before_personal_ledger")
+                for transaction_id in request.form.getlist("transaction_id"):
+                    transaction = db.session.get(PersonalLedgerTransaction, int(transaction_id))
+                    if not transaction:
+                        continue
+                    transaction.transaction_date = parse_date(request.form.get(f"transaction_date_{transaction.id}"))
+                    transaction.description = request.form.get(f"description_{transaction.id}", "").strip()
+                    transaction.sent_amount = optional_money(f"sent_amount_{transaction.id}")
+                    transaction.received_amount = optional_money(f"received_amount_{transaction.id}")
+                    if transaction.sent_amount:
+                        transaction.received_amount = None
+                new_dates = request.form.getlist("new_transaction_date[]")
+                new_descriptions = request.form.getlist("new_description[]")
+                new_sent = request.form.getlist("new_sent_amount[]")
+                new_received = request.form.getlist("new_received_amount[]")
+                order = db.session.query(db.func.max(PersonalLedgerTransaction.sort_order)).filter_by(person_id=selected_person_id).scalar() or 0
+                for index, description in enumerate(new_descriptions):
+                    sent = parse_money(new_sent[index]) if index < len(new_sent) and new_sent[index].strip() else None
+                    received = parse_money(new_received[index]) if index < len(new_received) and new_received[index].strip() else None
+                    if not description.strip() and not sent and not received:
+                        continue
+                    order += 1
+                    db.session.add(PersonalLedgerTransaction(person_id=selected_person_id,
+                        transaction_date=parse_date(new_dates[index]) if index < len(new_dates) else date.today(),
+                        description=description.strip(), sent_amount=sent, received_amount=None if sent else received, sort_order=order))
+                db.session.commit()
+                flash("Borç–alacak hesabı kaydedildi.", "success")
+            elif action == "delete_transaction":
+                transaction = db.session.get(PersonalLedgerTransaction, request.form.get("transaction_id", type=int))
+                if transaction:
+                    selected_person_id = transaction.person_id
+                    db.session.delete(transaction)
+                    db.session.commit()
+            return redirect(url_for("personal_finance", tab=tab, month=selected_month, person_id=selected_person_id))
+
+        months = PersonalMonth.query.order_by(PersonalMonth.month.desc()).all()
+        if not months:
+            selected_month = date.today().strftime("%Y-%m")
+            db.session.add(PersonalMonth(month=selected_month))
+            db.session.commit()
+            months = PersonalMonth.query.all()
+        if not selected_month or not db.session.get(PersonalMonth, selected_month):
+            selected_month = months[0].month
+        entries = PersonalPayment.query.filter_by(month=selected_month).order_by(PersonalPayment.sort_order, PersonalPayment.id).all()
+        payment_totals = {
+            "debt": sum((item.debt or Decimal("0") for item in entries), Decimal("0")),
+            "minimum": sum((item.minimum_payment or Decimal("0") for item in entries), Decimal("0")),
+            "payment": sum((item.payment or Decimal("0") for item in entries), Decimal("0")),
+            "available_limit": sum((item.available_limit or Decimal("0") for item in entries if item.kind == "card"), Decimal("0")),
+            "remaining": sum((item.calculated_remaining for item in entries), Decimal("0")),
+        }
+        people = PersonalPerson.query.order_by(PersonalPerson.name).all()
+        person = db.session.get(PersonalPerson, selected_person_id) if selected_person_id else (people[0] if people else None)
+        transactions = list(person.transactions) if person else []
+        sent_total = sum((item.sent_amount or Decimal("0") for item in transactions), Decimal("0"))
+        received_total = sum((item.received_amount or Decimal("0") for item in transactions), Decimal("0"))
+        return render_template("personal_finance.html", tab=tab, months=months, selected_month=selected_month,
+            entries=entries, payment_totals=payment_totals, people=people, person=person, transactions=transactions,
+            sent_total=sent_total, received_total=received_total, balance=received_total-sent_total, today=date.today().isoformat())
+
+    @app.post("/sahsi-hesaplar/odeme/<int:entry_id>/sil")
+    def delete_personal_payment(entry_id):
+        entry = db.get_or_404(PersonalPayment, entry_id)
+        month = entry.month
+        db.session.delete(entry)
+        db.session.commit()
+        flash("Ödeme satırı silindi.", "success")
+        return redirect(url_for("personal_finance", tab="payments", month=month))
+
+    @app.post("/sahsi-hesaplar/hareket/<int:transaction_id>/sil")
+    def delete_personal_transaction(transaction_id):
+        transaction = db.get_or_404(PersonalLedgerTransaction, transaction_id)
+        person_id = transaction.person_id
+        db.session.delete(transaction)
+        db.session.commit()
+        flash("Hareket silindi.", "success")
+        return redirect(url_for("personal_finance", tab="ledger", person_id=person_id))
+
+    @app.get("/sahsi-hesaplar/borc-alacak/<int:person_id>/pdf")
+    def export_personal_ledger_pdf(person_id):
+        person = db.get_or_404(PersonalPerson, person_id)
+        filename = f"{safe_export_name(person.name)}-Borc-Alacak-Ekstresi.pdf"
+        return send_file(build_personal_ledger_pdf(person), mimetype="application/pdf", as_attachment=True, download_name=filename)
+
+    @app.get("/sahsi-hesaplar/borc-alacak/<int:person_id>/excel")
+    def export_personal_ledger_xlsx(person_id):
+        person = db.get_or_404(PersonalPerson, person_id)
+        filename = f"{safe_export_name(person.name)}-Borc-Alacak-Ekstresi.xlsx"
+        return send_file(build_personal_ledger_xlsx(person),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=filename)
 
     @app.cli.command("init-db")
     def init_db_command():
@@ -1370,6 +2335,7 @@ def create_app(test_config=None):
     with app.app_context():
         create_database_backup(app, "startup")
         db.create_all()
+        import_personal_finance_data(app)
         # Küçük SQLite kurulumlarında ayrıca bir migration aracı gerektirmeden
         # eski müşteri tablolarını yeni alanlarla uyumlu hale getirir.
         if db.engine.dialect.name == "sqlite":
@@ -1399,7 +2365,10 @@ def create_app(test_config=None):
                 db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_product_include_in_price_list ON product (include_in_price_list)"))
             if "source_order_id" not in order_columns:
                 db.session.execute(text("ALTER TABLE 'order' ADD COLUMN source_order_id INTEGER"))
-                db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_order_source_order_id ON 'order' (source_order_id)"))
+            source_index = next((item for item in inspect(db.engine).get_indexes("order") if item["name"] == "ix_order_source_order_id"), None)
+            if source_index and source_index.get("unique"):
+                db.session.execute(text("DROP INDEX ix_order_source_order_id"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_order_source_order_id ON 'order' (source_order_id)"))
             item_columns = {column["name"] for column in inspect(db.engine).get_columns("order_item")}
             if "detail_2" not in item_columns:
                 db.session.execute(text("ALTER TABLE order_item ADD COLUMN detail_2 VARCHAR(160)"))
@@ -1408,6 +2377,21 @@ def create_app(test_config=None):
             if "vat_rate" not in item_columns:
                 # Eski siparişlerin toplamını değiştirmemek için geçmiş kalemlerde KDV %0 kalır.
                 db.session.execute(text("ALTER TABLE order_item ADD COLUMN vat_rate NUMERIC(5, 2) NOT NULL DEFAULT 0"))
+            if "cost_unit_price" not in item_columns:
+                db.session.execute(text("ALTER TABLE order_item ADD COLUMN cost_unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0"))
+                # Mevcut satış kalemleri için ürün kartındaki güncel alış fiyatını
+                # bir defaya mahsus başlangıç maliyeti olarak sabitler.
+                db.session.execute(text("""
+                    UPDATE order_item
+                    SET cost_unit_price = COALESCE((
+                        SELECT product.purchase_price FROM product
+                        WHERE product.id = order_item.product_id
+                    ), 0)
+                    WHERE order_id IN (SELECT id FROM 'order' WHERE order_type = 'Satış')
+                """))
+            if "source_order_item_id" not in item_columns:
+                db.session.execute(text("ALTER TABLE order_item ADD COLUMN source_order_item_id INTEGER"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_order_item_source_order_item_id ON order_item (source_order_item_id)"))
             account_columns = {column["name"] for column in inspect(db.engine).get_columns("account_transaction")}
             if "payment_method" not in account_columns:
                 db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN payment_method VARCHAR(30)"))
@@ -1420,6 +2404,14 @@ def create_app(test_config=None):
                 db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_account_transaction_check_due_date ON account_transaction (check_due_date)"))
             if "check_status" not in account_columns:
                 db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN check_status VARCHAR(40)"))
+            if "card_installments" not in account_columns:
+                db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN card_installments INTEGER"))
+            if "card_owner_type" not in account_columns:
+                db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN card_owner_type VARCHAR(40)"))
+            if "card_customer_id" not in account_columns:
+                db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN card_customer_id INTEGER"))
+            if "card_customer_name" not in account_columns:
+                db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN card_customer_name VARCHAR(160)"))
             db.session.commit()
     return app
 

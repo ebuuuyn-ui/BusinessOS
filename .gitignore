@@ -4,8 +4,12 @@ __pycache__/
 instance/
 .env
 
-
 # Runtime files
 .business_os.pid
 outputs/*.log
 .DS_Store
+
+# Temporary / test files
+tmp/
+work/export_qa/
+**/node_modules/

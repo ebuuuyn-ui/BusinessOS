@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Gün Sonu Dashboard · Business OS{% endblock %}
 {% block heading %}Gün Sonu Dashboard{% endblock %}{% block subheading %}{{ today.strftime('%d.%m.%Y') }} tarihli işletme özeti{% endblock %}
-{% block header_action %}<div class="header-actions"><a class="button collection-button" href="{{ url_for('quick_collection') }}">+ Tahsilat Girişi</a><a class="button primary" href="{{ url_for('new_order') }}">+ Yeni Sipariş</a></div>{% endblock %}
+{% block header_action %}<div class="header-actions"><a class="button payment-button" href="{{ url_for('quick_payment') }}">− Ödeme Girişi</a><a class="button collection-button" href="{{ url_for('quick_collection') }}">+ Tahsilat Girişi</a><a class="button primary" href="{{ url_for('new_order') }}">+ Yeni Sipariş</a></div>{% endblock %}
 {% block content %}
 <div class="daily-summary">
   <a href="{{ url_for('orders', type='Satış') }}" class="daily-card sale"><small>Bugünkü Satış Siparişleri</small><strong>₺{{ today_sales_amount|money }}</strong><span>{{ today_sales_count }} sipariş</span></a>

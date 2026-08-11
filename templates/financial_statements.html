@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Mali Tablolar · Business OS{% endblock %}
+{% block heading %}Bilanço ve Gelir Tablosu{% endblock %}
+{% block subheading %}Kayıtlı işlemlerden otomatik hazırlanan yönetim raporları{% endblock %}
+{% block content %}
+<div class="statement-toolbar panel">
+  <div class="period-tabs"><a class="{{ 'active' if period == 'month' }}" href="{{ url_for('financial_statements', period='month', date=selected.isoformat()) }}">Aylık</a><a class="{{ 'active' if period == 'year' }}" href="{{ url_for('financial_statements', period='year', date=selected.isoformat()) }}">Yıllık</a></div>
+  <form method="get"><input type="hidden" name="period" value="{{ period }}"><label>Rapor tarihi<input type="date" name="date" value="{{ selected.isoformat() }}"></label><button>Göster</button></form>
+</div>
+
+<div class="statement-note"><b>Yönetim raporu:</b> Bu tablolar yalnızca Business OS’ye girilmiş sipariş, cari hareket, çek, kasa ve masraf kayıtlarını içerir. Stok mevcudu, banka, demirbaş, sermaye ve vergi hesapları sisteme eklenene kadar resmî mali tablo yerine iç yönetim amacıyla kullanılmalıdır.</div>
+
+<div class="statements-layout">
+  <section class="panel statement-sheet income-sheet">
+    <div class="panel-head"><div><h2>Gelir Tablosu</h2><p>{{ period_start.strftime('%d.%m.%Y') }} – {{ period_end.strftime('%d.%m.%Y') }}</p></div><span class="sheet-result {{ 'negative' if net_profit < 0 }}">{{ 'Net Zarar' if net_profit < 0 else 'Net Kâr' }} · ₺{{ (net_profit|abs)|money }}</span></div>
+    <div class="statement-lines">
+      <div><span>Net Satışlar (KDV hariç)</span><b>₺{{ sales_revenue|money }}</b></div>
+      <div class="subtraction"><span>Satışların Maliyeti</span><b>− ₺{{ sales_cost|money }}</b></div>
+      <div class="statement-total gross"><span>Brüt Kâr / Zarar</span><strong>₺{{ gross_profit|money }}</strong></div>
+      <div class="statement-section-title">Faaliyet Giderleri</div>
+      {% for category, amount in expense_by_category %}<div class="detail"><span>{{ category }}</span><b>₺{{ amount|money }}</b></div>{% else %}<div class="detail muted"><span>Bu dönemde masraf kaydı yok</span><b>₺0,00</b></div>{% endfor %}
+      <div class="statement-total expense-total"><span>Toplam Faaliyet Gideri</span><strong>− ₺{{ operating_expenses|money }}</strong></div>
+      <div class="statement-grand {{ 'negative' if net_profit < 0 }}"><span>Dönem Net {{ 'Zararı' if net_profit < 0 else 'Kârı' }}</span><strong>₺{{ (net_profit|abs)|money }}</strong></div>
+    </div>
+  </section>
+
+  <section class="panel statement-sheet balance-sheet">
+    <div class="panel-head"><div><h2>Yönetim Bilançosu</h2><p>{{ selected.strftime('%d.%m.%Y') }} tarihi itibarıyla</p></div><span class="sheet-result">Toplam Varlık · ₺{{ total_assets|money }}</span></div>
+    <div class="balance-columns">
+      <div class="balance-side assets"><h3>Varlıklar</h3><div><span>Nakit Kasa</span><b>₺{{ cash_balance|money }}</b></div><div><span>Cari Alacaklar</span><b>₺{{ receivables|money }}</b></div><div><span>Alınan Bekleyen Çekler</span><b>₺{{ incoming_checks|money }}</b></div><div class="balance-total"><span>Toplam Varlıklar</span><strong>₺{{ total_assets|money }}</strong></div></div>
+      <div class="balance-side liabilities"><h3>Kaynaklar</h3><div><span>Cari Borçlar</span><b>₺{{ payables|money }}</b></div><div><span>Verilen Bekleyen Çekler</span><b>₺{{ outgoing_checks|money }}</b></div><div><span>Hesaplanan Net İşletme Değeri</span><b class="{{ 'negative-text' if calculated_equity < 0 }}">₺{{ calculated_equity|money }}</b></div><div class="balance-total"><span>Toplam Kaynaklar</span><strong>₺{{ (total_liabilities + calculated_equity)|money }}</strong></div></div>
+    </div>
+  </section>
+</div>
+{% endblock %}

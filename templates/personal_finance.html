@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block title %}Şahsi Hesaplar · Business OS{% endblock %}
+{% block heading %}Şahsi Hesaplar{% endblock %}{% block subheading %}Aylık ödemeleriniz ve kişi bazlı borç–alacak hesaplarınız{% endblock %}
+{% block content %}
+<nav class="personal-tabs">
+  <a class="{{ 'active' if tab == 'payments' }}" href="{{ url_for('personal_finance', tab='payments', month=selected_month) }}">Aylık Ödemeler</a>
+  <a class="{{ 'active' if tab == 'ledger' }}" href="{{ url_for('personal_finance', tab='ledger', person_id=person.id if person else '') }}">Borç – Alacak</a>
+</nav>
+
+{% if tab == 'payments' %}
+<div class="panel personal-toolbar">
+  <form method="get"><input type="hidden" name="tab" value="payments"><label>Dönem<select name="month" onchange="this.form.submit()">{% for item in months %}<option value="{{ item.month }}" {{ 'selected' if item.month == selected_month }}>{{ item.month[5:7] }} / {{ item.month[:4] }}</option>{% endfor %}</select></label></form>
+  <form method="post"><input type="hidden" name="tab" value="payments"><input type="hidden" name="month" value="{{ selected_month }}"><input type="hidden" name="action" value="new_month"><label>Yeni dönem<input type="month" name="new_month" required></label><button class="button" type="submit">Dönem Oluştur</button></form>
+  <form method="post" class="toolbar-right"><input type="hidden" name="tab" value="payments"><input type="hidden" name="month" value="{{ selected_month }}"><button class="button" name="action" value="add_payment">+ Satır Ekle</button></form>
+</div>
+
+<section class="personal-summary">
+  <div><small>TOPLAM DÖNEM BORCU</small><strong>₺{{ payment_totals.debt|money }}</strong></div>
+  <div><small>TOPLAM ASGARİ TUTAR</small><strong>₺{{ payment_totals.minimum|money }}</strong></div>
+  <div class="paid"><small>YAPILAN ÖDEME</small><strong>₺{{ payment_totals.payment|money }}</strong></div>
+  <div class="available"><small>TOPLAM KULLANILABİLİR LİMİT</small><strong>₺{{ payment_totals.available_limit|money }}</strong></div>
+  <div><small>TOPLAM KALAN BORÇ</small><strong>₺{{ payment_totals.remaining|money }}</strong></div>
+</section>
+
+<form method="post" class="panel personal-sheet" id="paymentForm">
+  <input type="hidden" name="tab" value="payments"><input type="hidden" name="month" value="{{ selected_month }}"><input type="hidden" name="action" value="save_payments">
+  <div class="panel-head"><div><h2>{{ selected_month[5:7] }} / {{ selected_month[:4] }} Ödeme Tablosu</h2><p>Kartlarda kalan borç, Limit − Kullanılabilir Limit olarak otomatik hesaplanır.</p></div><button class="button primary" type="submit">Değişiklikleri Kaydet</button></div>
+  {% if entries %}<div class="payment-selection-bar"><div class="selection-title"><span>Seçilen ödemeler</span><small id="selectedPaymentCount">0 satır seçildi</small></div><div class="selection-amount"><small>DÖNEM BORCU</small><strong id="selectedDebtTotal">₺0,00</strong></div><div class="selection-amount minimum"><small>ASGARİ TUTAR</small><strong id="selectedMinimumTotal">₺0,00</strong></div><div class="selection-amount payment"><small>ÖDEME TOPLAMI</small><strong id="selectedPaymentTotal">₺0,00</strong></div><button type="button" class="button small" id="clearPaymentSelection">Seçimi Temizle</button></div><div class="table-wrap"><table class="personal-payment-table"><thead><tr><th class="payment-check-cell"><input type="checkbox" id="selectAllPayments" title="Tüm ödemeleri seç" aria-label="Tüm ödemeleri seç"></th><th>Ödeme / Borç</th><th>Tür</th><th>Gün</th><th>Limit</th><th>Dönem Borcu</th><th>Asgari</th><th>Ödeme</th><th>Kull. Limit</th><th>Kalan Borç</th><th></th></tr></thead><tbody>
+  {% for item in entries %}<tr class="personal-kind-{{ item.kind }}"><td class="payment-check-cell"><input type="checkbox" class="payment-row-check" aria-label="{{ item.name }} ödemesini seç"></td><td><input type="hidden" name="entry_id" value="{{ item.id }}"><input name="name_{{ item.id }}" value="{{ item.name }}" required></td><td><select name="kind_{{ item.id }}"><option value="card" {{ 'selected' if item.kind == 'card' }}>Kart</option><option value="loan" {{ 'selected' if item.kind == 'loan' }}>Kredi</option><option value="expense" {{ 'selected' if item.kind == 'expense' }}>Gider</option><option value="other" {{ 'selected' if item.kind == 'other' }}>Diğer</option></select></td><td><input type="number" name="due_day_{{ item.id }}" min="1" max="31" step="1" value="{{ item.due_day or '' }}"></td><td><input class="personal-money" type="number" name="credit_limit_{{ item.id }}" value="{{ item.credit_limit if item.credit_limit is not none else '' }}" {{ 'disabled' if item.kind != 'card' }}></td><td><input class="personal-money debt-value" type="number" name="debt_{{ item.id }}" value="{{ item.debt if item.debt is not none else '' }}"></td><td><input class="personal-money minimum-value" type="number" name="minimum_payment_{{ item.id }}" value="{{ item.minimum_payment if item.minimum_payment is not none else '' }}"></td><td><input class="personal-money payment-value" type="number" name="payment_{{ item.id }}" value="{{ item.payment if item.payment is not none else '' }}"></td><td><input class="personal-money" type="number" name="available_limit_{{ item.id }}" value="{{ item.available_limit if item.available_limit is not none else '' }}" {{ 'disabled' if item.kind != 'card' }}></td><td>{% if item.kind == 'card' %}<b class="personal-calculated">₺{{ item.calculated_remaining|money }}</b>{% else %}<input class="personal-money" type="number" name="remaining_debt_{{ item.id }}" value="{{ item.remaining_debt if item.remaining_debt is not none else '' }}">{% endif %}</td><td><button class="row-delete" type="submit" formaction="{{ url_for('delete_personal_payment', entry_id=item.id) }}" formmethod="post" onclick="return confirm('Bu satır silinsin mi?')">×</button></td></tr>{% endfor %}
+  </tbody><tfoot><tr><td></td><td colspan="4">TOPLAM</td><td>₺{{ payment_totals.debt|money }}</td><td>₺{{ payment_totals.minimum|money }}</td><td>₺{{ payment_totals.payment|money }}</td><td>₺{{ payment_totals.available_limit|money }}</td><td>₺{{ payment_totals.remaining|money }}</td><td></td></tr></tfoot></table></div>{% else %}<div class="empty compact">Bu dönem için henüz satır yok.</div>{% endif %}
+</form>
+
+{% else %}
+<div class="panel personal-toolbar ledger-toolbar">
+  <form method="get"><input type="hidden" name="tab" value="ledger"><label>Kişi<select name="person_id" onchange="this.form.submit()">{% for item in people %}<option value="{{ item.id }}" {{ 'selected' if person and item.id == person.id }}>{{ item.name }}</option>{% endfor %}</select></label></form>
+  <form method="post"><input type="hidden" name="tab" value="ledger"><input type="hidden" name="action" value="add_person"><label>Yeni kişi<input name="person_name" placeholder="Kişinin adı" required></label><button class="button" type="submit">Kişi Ekle</button></form>
+</div>
+
+{% if person %}
+<section class="personal-balance-banner">
+  <div><small>GÜNCEL DURUM</small><strong>₺{{ balance|abs|money }}</strong></div>
+  <p>{% if balance > 0 %}Siz <b>{{ person.name }}</b> kişisine ₺{{ balance|money }} borçlusunuz.{% elif balance < 0 %}<b>{{ person.name }}</b> size ₺{{ (balance * -1)|money }} borçlu.{% else %}{{ person.name }} ile hesabınız dengede.{% endif %}</p>
+</section>
+<section class="personal-summary three"><div><small>TOPLAM GÖNDERİLEN</small><strong>₺{{ sent_total|money }}</strong></div><div><small>TOPLAM GELEN</small><strong>₺{{ received_total|money }}</strong></div><div class="paid"><small>NET FARK</small><strong>₺{{ balance|abs|money }}</strong></div></section>
+
+<form method="post" class="panel personal-sheet" id="ledgerForm">
+  <input type="hidden" name="tab" value="ledger"><input type="hidden" name="person_id" value="{{ person.id }}"><input type="hidden" name="action" value="save_ledger">
+  <div class="panel-head"><div><h2>{{ person.name }} Hesabı</h2><p>Her satırda yalnızca gönderilen veya gelen para alanlarından birini doldurun.</p></div><div class="personal-actions"><a class="button export-pdf" href="{{ url_for('export_personal_ledger_pdf', person_id=person.id) }}">PDF İndir</a><a class="button export-excel" href="{{ url_for('export_personal_ledger_xlsx', person_id=person.id) }}">Excel İndir</a><button class="button" type="button" id="addLedgerRow">+ Hareket Ekle</button><button class="button primary" type="submit">Değişiklikleri Kaydet</button></div></div>
+  <div class="table-wrap"><table class="personal-ledger-table"><thead><tr><th>Tarih</th><th>Açıklama</th><th>Gönderilen Para</th><th>Gelen Para</th><th></th></tr></thead><tbody id="ledgerRows">
+  {% for item in transactions %}<tr><td><input type="hidden" name="transaction_id" value="{{ item.id }}"><input type="date" name="transaction_date_{{ item.id }}" value="{{ item.transaction_date or '' }}"></td><td><input name="description_{{ item.id }}" value="{{ item.description }}"></td><td><input class="personal-money paired-money" data-pair="received_amount_{{ item.id }}" type="number" name="sent_amount_{{ item.id }}" value="{{ item.sent_amount if item.sent_amount is not none else '' }}"></td><td><input class="personal-money paired-money" data-pair="sent_amount_{{ item.id }}" type="number" name="received_amount_{{ item.id }}" value="{{ item.received_amount if item.received_amount is not none else '' }}"></td><td><button class="row-delete" type="submit" formaction="{{ url_for('delete_personal_transaction', transaction_id=item.id) }}" formmethod="post" onclick="return confirm('Bu hareket silinsin mi?')">×</button></td></tr>{% endfor %}
+  </tbody><tfoot><tr><td></td><td>TOPLAM</td><td>₺{{ sent_total|money }}</td><td>₺{{ received_total|money }}</td><td></td></tr></tfoot></table></div>
+</form>
+{% else %}<div class="panel empty"><h3>İlk kişiyi ekleyin</h3><p>Borç–alacak hesabına başlamak için yukarıdaki alana kişi adını yazın.</p></div>{% endif %}
+{% endif %}
+
+<template id="ledgerRowTemplate"><tr><td><input type="date" name="new_transaction_date[]" value="{{ today }}"></td><td><input name="new_description[]" placeholder="İşlem açıklaması"></td><td><input class="personal-money paired-new" type="number" name="new_sent_amount[]"></td><td><input class="personal-money paired-new" type="number" name="new_received_amount[]"></td><td><button class="row-delete" type="button" onclick="this.closest('tr').remove()">×</button></td></tr></template>
+<script>
+  const paymentChecks=[...document.querySelectorAll('.payment-row-check')];
+  const selectAllPayments=document.getElementById('selectAllPayments');
+  const selectedPaymentTotal=document.getElementById('selectedPaymentTotal');
+  const selectedDebtTotal=document.getElementById('selectedDebtTotal');
+  const selectedMinimumTotal=document.getElementById('selectedMinimumTotal');
+  const selectedPaymentCount=document.getElementById('selectedPaymentCount');
+  function updateSelectedPayments(){
+    const selected=paymentChecks.filter(item=>item.checked);
+    const sumField=selector=>selected.reduce((sum,item)=>sum+moneyNumber(item.closest('tr').querySelector(selector)?.value||0),0);
+    const currency=value=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(value);
+    if(selectedDebtTotal) selectedDebtTotal.textContent=currency(sumField('.debt-value'));
+    if(selectedMinimumTotal) selectedMinimumTotal.textContent=currency(sumField('.minimum-value'));
+    if(selectedPaymentTotal) selectedPaymentTotal.textContent=currency(sumField('.payment-value'));
+    if(selectedPaymentCount) selectedPaymentCount.textContent=`${selected.length} satır seçildi`;
+    if(selectAllPayments){selectAllPayments.checked=paymentChecks.length>0&&selected.length===paymentChecks.length;selectAllPayments.indeterminate=selected.length>0&&selected.length<paymentChecks.length;}
+  }
+  paymentChecks.forEach(item=>item.addEventListener('change',updateSelectedPayments));
+  selectAllPayments?.addEventListener('change',()=>{paymentChecks.forEach(item=>item.checked=selectAllPayments.checked);updateSelectedPayments()});
+  document.getElementById('clearPaymentSelection')?.addEventListener('click',()=>{paymentChecks.forEach(item=>item.checked=false);updateSelectedPayments()});
+  document.addEventListener('input',event=>{if(event.target.matches('.debt-value,.minimum-value,.payment-value')&&event.target.closest('tr').querySelector('.payment-row-check')?.checked)updateSelectedPayments()});
+  const ledgerAdd=document.getElementById('addLedgerRow');
+  if(ledgerAdd) ledgerAdd.addEventListener('click',()=>{
+    const row=document.getElementById('ledgerRowTemplate').content.cloneNode(true);
+    document.getElementById('ledgerRows').appendChild(row);
+    document.querySelectorAll('#ledgerRows tr:last-child input[type="number"]').forEach(prepareNumericInput);
+    document.querySelector('#ledgerRows tr:last-child input[name="new_description[]"]').focus();
+  });
+  document.addEventListener('input',event=>{
+    if(event.target.matches('.paired-money') && moneyNumber(event.target.value)>0){
+      const pair=document.querySelector(`[name="${event.target.dataset.pair}"]`);if(pair)pair.value='';
+    }
+    if(event.target.matches('.paired-new') && moneyNumber(event.target.value)>0){
+      const cells=event.target.closest('tr').querySelectorAll('.paired-new');cells.forEach(item=>{if(item!==event.target)item.value=''});
+    }
+  });
+</script>
+{% endblock %}
