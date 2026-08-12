@@ -112,7 +112,7 @@ class Order(db.Model):
 
     @property
     def net_amount(self):
-        return sum((item.unit_price or 0) * item.quantity for item in self.items)
+        return sum((item.net_amount for item in self.items), Decimal("0"))
 
     @property
     def vat_amount(self):
@@ -136,6 +136,7 @@ class OrderItem(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     unit = db.Column(db.String(30), default="Adet", nullable=False)
     unit_price = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    discount_rate = db.Column(db.Numeric(5, 2), default=0, nullable=False)
     # Satış anındaki birim maliyet. Ürün kartındaki alış fiyatı sonradan
     # değişse bile geçmiş dönem kârlılığı bu değer sayesinde değişmez.
     cost_unit_price = db.Column(db.Numeric(12, 2), default=0, nullable=False)
@@ -146,7 +147,9 @@ class OrderItem(db.Model):
 
     @property
     def net_amount(self):
-        return (self.unit_price or Decimal("0")) * self.quantity
+        gross = (self.unit_price or Decimal("0")) * self.quantity
+        discount = max(Decimal("0"), min(self.discount_rate or Decimal("0"), Decimal("100")))
+        return gross * (Decimal("100") - discount) / Decimal("100")
 
     @property
     def vat_amount(self):
@@ -1904,6 +1907,7 @@ def create_app(test_config=None):
                 details_3 = request.form.getlist("detail_3[]")
                 units = request.form.getlist("unit[]")
                 prices = request.form.getlist("unit_price[]")
+                discount_rates = request.form.getlist("discount_rate[]")
                 vat_rates = request.form.getlist("vat_rate[]")
                 item_notes = request.form.getlist("item_note[]")
                 for i, name in enumerate(names):
@@ -1911,8 +1915,9 @@ def create_app(test_config=None):
                         continue
                     quantity = int(quantities[i]) if i < len(quantities) and quantities[i].isdigit() else 1
                     vat_rate = parse_money(vat_rates[i] if i < len(vat_rates) else "10")
+                    discount_rate = parse_money(discount_rates[i] if i < len(discount_rates) else "0")
                     product_id = int(product_ids[i]) if i < len(product_ids) and product_ids[i].isdigit() else None
-                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[i] if i < len(variants) else "", detail_2=details_2[i] if i < len(details_2) else "", detail_3=details_3[i] if i < len(details_3) else "", quantity=max(quantity, 1), unit=units[i] if i < len(units) and units[i] else "Adet", unit_price=parse_money(prices[i] if i < len(prices) else "0"), cost_unit_price=Decimal("0"), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[i] if i < len(item_notes) else ""))
+                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[i] if i < len(variants) else "", detail_2=details_2[i] if i < len(details_2) else "", detail_3=details_3[i] if i < len(details_3) else "", quantity=max(quantity, 1), unit=units[i] if i < len(units) and units[i] else "Adet", unit_price=parse_money(prices[i] if i < len(prices) else "0"), discount_rate=max(Decimal("0"), min(discount_rate, Decimal("100"))), cost_unit_price=Decimal("0"), vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[i] if i < len(item_notes) else ""))
                 order.history.append(OrderHistory(status="Bekliyor", note="Sipariş oluşturuldu"))
                 db.session.commit()
                 flash(f"{order.order_no} numaralı sipariş oluşturuldu.", "success")
@@ -2100,6 +2105,7 @@ def create_app(test_config=None):
                 details_3 = request.form.getlist("detail_3[]")
                 units = request.form.getlist("unit[]")
                 prices = request.form.getlist("unit_price[]")
+                discount_rates = request.form.getlist("discount_rate[]")
                 vat_rates = request.form.getlist("vat_rate[]")
                 item_notes = request.form.getlist("item_note[]")
                 for index, name in enumerate(names):
@@ -2112,14 +2118,15 @@ def create_app(test_config=None):
                         quantity = 1
                     product_id = int(product_ids[index]) if index < len(product_ids) and product_ids[index].isdigit() else None
                     vat_rate = parse_money(vat_rates[index] if index < len(vat_rates) else "10")
+                    discount_rate = parse_money(discount_rates[index] if index < len(discount_rates) else "0")
                     saved_cost = previous_costs.get((product_id, name.strip()))
                     cost = saved_cost if saved_cost is not None else Decimal("0")
-                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[index] if index < len(variants) else "", detail_2=details_2[index] if index < len(details_2) else "", detail_3=details_3[index] if index < len(details_3) else "", quantity=quantity, unit=units[index] if index < len(units) and units[index] else "Adet", unit_price=parse_money(prices[index] if index < len(prices) else "0"), cost_unit_price=cost, vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[index] if index < len(item_notes) else ""))
+                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[index] if index < len(variants) else "", detail_2=details_2[index] if index < len(details_2) else "", detail_3=details_3[index] if index < len(details_3) else "", quantity=quantity, unit=units[index] if index < len(units) and units[index] else "Adet", unit_price=parse_money(prices[index] if index < len(prices) else "0"), discount_rate=max(Decimal("0"), min(discount_rate, Decimal("100"))), cost_unit_price=cost, vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), note=item_notes[index] if index < len(item_notes) else ""))
                 order.history.append(OrderHistory(status=order.status, note="Sipariş bilgileri düzenlendi"))
                 db.session.commit()
                 flash(f"{order.order_no} numaralı sipariş güncellendi.", "success")
                 return redirect(url_for("order_detail", order_id=order.id))
-        initial_items = [{"product_id": item.product_id, "product_name": item.product_name, "product_label": (f"{item.product.name} · {item.product.code}" if item.product and item.product.code else item.product.name if item.product else ""), "variant": item.variant or "", "detail_2": item.detail_2 or "", "detail_3": item.detail_3 or "", "quantity": item.quantity, "unit": item.unit, "unit_price": str(item.unit_price or 0), "vat_rate": str(item.vat_rate or 0), "note": item.note or ""} for item in order.items]
+        initial_items = [{"product_id": item.product_id, "product_name": item.product_name, "product_label": (f"{item.product.name} · {item.product.code}" if item.product and item.product.code else item.product.name if item.product else ""), "variant": item.variant or "", "detail_2": item.detail_2 or "", "detail_3": item.detail_3 or "", "quantity": item.quantity, "unit": item.unit, "unit_price": str(item.unit_price or 0), "discount_rate": str(item.discount_rate or 0), "vat_rate": str(item.vat_rate or 0), "note": item.note or ""} for item in order.items]
         return render_template("order_form.html", order=order, initial_items=initial_items, customers=customers_list, products=products_list, order_types=ORDER_TYPES, selected_type=order.order_type, today=order.order_date.isoformat())
 
     @app.route("/siparisler/<int:order_id>/satinalmaya-donustur", methods=["GET", "POST"])
@@ -2377,6 +2384,8 @@ def create_app(test_config=None):
             if "vat_rate" not in item_columns:
                 # Eski siparişlerin toplamını değiştirmemek için geçmiş kalemlerde KDV %0 kalır.
                 db.session.execute(text("ALTER TABLE order_item ADD COLUMN vat_rate NUMERIC(5, 2) NOT NULL DEFAULT 0"))
+            if "discount_rate" not in item_columns:
+                db.session.execute(text("ALTER TABLE order_item ADD COLUMN discount_rate NUMERIC(5, 2) NOT NULL DEFAULT 0"))
             if "cost_unit_price" not in item_columns:
                 db.session.execute(text("ALTER TABLE order_item ADD COLUMN cost_unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0"))
                 # Mevcut satış kalemleri için ürün kartındaki güncel alış fiyatını

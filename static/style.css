@@ -1010,3 +1010,18 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 .payment-selection-bar+.table-wrap .personal-payment-table thead th{top:142px}
 @media(max-width:900px){.personal-payment-table thead th{top:72px}.personal-sheet>.table-wrap{overflow-x:auto}.personal-summary{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:750px){.payment-selection-bar{align-items:flex-start;flex-wrap:wrap}.payment-selection-bar .selection-title{width:100%}.payment-selection-bar .selection-amount{min-width:30%;padding-left:8px}.payment-selection-bar .button{margin-left:0}}
+
+/* Kompakt sipariş kalemi */
+.compact-order-item{margin:12px 16px;padding:12px 14px;border-radius:13px}
+.compact-order-item .item-title{margin-bottom:9px}
+.compact-order-item .item-title b{font-size:12px}
+.compact-order-item .remove-row{font-size:10px}
+.compact-item-grid{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:9px 10px;align-items:end}
+.compact-item-grid label{min-width:0;font-size:9px}
+.compact-item-grid input,.compact-item-grid select{width:100%;min-height:35px;margin-top:3px;padding:6px 8px;border-radius:9px;font-size:11px}
+.compact-item-grid .product-picker-field{grid-column:span 3}.compact-item-grid .price-field{grid-column:span 2}
+.compact-item-grid .detail-field{grid-column:span 3}
+.compact-order-item .line-totals{gap:17px;padding-top:9px;font-size:10px}
+.compact-order-item .line-discount{color:#b46808}
+@media(max-width:900px){.compact-item-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.compact-item-grid .product-picker-field{grid-column:span 3}.compact-item-grid .price-field{grid-column:span 2}.compact-item-grid .discount-field,.compact-item-grid .vat-field{grid-column:span 1}.compact-item-grid .detail-field{grid-column:span 2}}
+@media(max-width:600px){.compact-item-grid{grid-template-columns:1fr 1fr}.compact-item-grid .product-picker-field,.compact-item-grid .price-field,.compact-item-grid .detail-field{grid-column:1/-1}.compact-item-grid .quantity-field,.compact-item-grid .unit-field,.compact-item-grid .discount-field,.compact-item-grid .vat-field{grid-column:span 1}.compact-order-item .line-totals{align-items:stretch}.compact-order-item .line-totals span{display:flex;justify-content:space-between}}
