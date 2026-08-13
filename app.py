@@ -29,8 +29,8 @@ ORDER_TYPES = ["Satış", "Satın Alma"]
 FINANCIAL_ORDER_STATUSES = ["Sevk Edildi", "Teslim Edildi"]
 EXPENSE_CATEGORIES = ["Fatura Ödemeleri", "Yemek", "Ulaşım", "Kira", "Personel", "Vergi / Harç", "Bakım / Onarım", "Ofis Giderleri", "Kargo / Nakliye", "Pazarlama", "Diğer"]
 PAYMENT_METHODS = ["Nakit", "Kredi Kartı"]
-COLLECTION_PAYMENT_METHODS = ["Nakit", "Çek", "Banka"]
-ACCOUNT_PAYMENT_METHODS = COLLECTION_PAYMENT_METHODS + ["Kredi Kartı"]
+COLLECTION_PAYMENT_METHODS = ["Nakit", "Çek", "Banka", "Kredi Kartı"]
+ACCOUNT_PAYMENT_METHODS = COLLECTION_PAYMENT_METHODS
 CARD_OWNER_TYPES = ["Kendi Kartımız", "Müşteri Kartı"]
 CHECK_STATUSES = ["Bekliyor", "Tahsil Edildi", "Ödendi", "İade Edildi", "Karşılıksız"]
 
@@ -191,6 +191,7 @@ class AccountTransaction(db.Model):
     card_owner_type = db.Column(db.String(40))
     card_customer_id = db.Column(db.Integer)
     card_customer_name = db.Column(db.String(160))
+    linked_transaction_id = db.Column(db.Integer, nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     customer = db.relationship("Customer", back_populates="account_transactions")
 
@@ -306,9 +307,9 @@ def card_payment_details(payment_method, transaction_type):
     """Validate and normalize the optional credit-card payment fields."""
     if payment_method != "Kredi Kartı":
         return {}, None
-    if transaction_type != "Ödeme":
-        return {}, "Kredi kartı yalnızca tedarikçiye yapılan ödemelerde kullanılabilir."
-    owner_type = request.form.get("card_owner_type", "")
+    if transaction_type not in {"Tahsilat", "Ödeme"}:
+        return {}, "Kredi kartı yalnızca tahsilat ve ödeme hareketlerinde kullanılabilir."
+    owner_type = "Müşteri Kartı" if transaction_type == "Tahsilat" else request.form.get("card_owner_type", "")
     try:
         installments = int(request.form.get("card_installments", "0"))
     except (TypeError, ValueError):
@@ -324,13 +325,43 @@ def card_payment_details(payment_method, transaction_type):
         "card_customer_name": None,
     }
     if owner_type == "Müşteri Kartı":
-        card_customer_id = request.form.get("card_customer_id", type=int)
+        card_customer_id = request.form.get("customer_id", type=int) if transaction_type == "Tahsilat" else request.form.get("card_customer_id", type=int)
         card_customer = db.session.get(Customer, card_customer_id) if card_customer_id else None
         if not card_customer:
             return {}, "Kart sahibi müşteriyi seçin."
         details["card_customer_id"] = card_customer.id
         details["card_customer_name"] = card_customer.name
     return details, None
+
+
+def direct_supplier_for_card_collection():
+    """Return an optional supplier selected for a direct customer-card transfer."""
+    if request.form.get("direct_to_supplier") != "on":
+        return None, None
+    supplier_id = request.form.get("direct_supplier_id", type=int)
+    supplier = db.session.get(Customer, supplier_id) if supplier_id else None
+    if not supplier:
+        return None, "Kartın çekildiği tedarikçiyi seçin."
+    return supplier, None
+
+
+def add_direct_card_collection_pair(customer, supplier, amount, transaction_date, reference_no, description, card_details):
+    """Create linked collection/payment movements without affecting the cash account."""
+    collection = AccountTransaction(customer=customer, transaction_date=transaction_date,
+        transaction_type="Tahsilat", reference_no=reference_no,
+        description=description or f"Kredi kartı tahsilatı · {supplier.name} firmasına doğrudan aktarıldı",
+        debit=0, credit=amount, payment_method="Kredi Kartı", **card_details)
+    payment_details = dict(card_details)
+    payment_details.update(card_owner_type="Müşteri Kartı", card_customer_id=customer.id, card_customer_name=customer.name)
+    payment = AccountTransaction(customer=supplier, transaction_date=transaction_date,
+        transaction_type="Ödeme", reference_no=reference_no,
+        description=f"{customer.name} kartıyla doğrudan ödeme" + (f" · {description}" if description else ""),
+        debit=amount, credit=0, payment_method="Kredi Kartı", **payment_details)
+    db.session.add_all([collection, payment])
+    db.session.flush()
+    collection.linked_transaction_id = payment.id
+    payment.linked_transaction_id = collection.id
+    return collection, payment
 
 
 def import_personal_finance_data(app):
@@ -1130,33 +1161,43 @@ def create_app(test_config=None):
             amount = parse_money(request.form.get("amount"))
             payment_method = request.form.get("payment_method", "")
             check_due_date = parse_date(request.form.get("check_due_date"))
+            card_details, card_error = card_payment_details(payment_method, "Tahsilat")
+            direct_supplier, supplier_error = direct_supplier_for_card_collection() if payment_method == "Kredi Kartı" else (None, None)
             if not customer:
                 flash("Lütfen listeden geçerli bir cari seçin.", "error")
             elif amount <= 0:
                 flash("Tahsilat tutarı sıfırdan büyük olmalıdır.", "error")
             elif payment_method not in COLLECTION_PAYMENT_METHODS:
-                flash("Tahsilat şekli olarak Nakit, Çek veya Banka seçin.", "error")
+                flash("Tahsilat şekli olarak Nakit, Çek, Banka veya Kredi Kartı seçin.", "error")
             elif payment_method == "Çek" and (not request.form.get("check_no", "").strip() or not check_due_date):
                 flash("Çek numarası ve vade tarihi zorunludur.", "error")
+            elif card_error:
+                flash(card_error, "error")
+            elif supplier_error:
+                flash(supplier_error, "error")
+            elif direct_supplier and direct_supplier.id == customer.id:
+                flash("Müşteri ile doğrudan ödeme yapılan tedarikçi aynı cari olamaz.", "error")
             else:
                 create_database_backup(app, "before_quick_collection")
-                transaction = AccountTransaction(
-                    customer=customer,
-                    transaction_date=parse_date(request.form.get("transaction_date")) or date.today(),
-                    transaction_type="Tahsilat",
-                    reference_no=request.form.get("reference_no", "").strip(),
-                    description=request.form.get("description", "").strip() or "Tahsilat",
-                    debit=0,
-                    credit=amount,
-                    payment_method=payment_method,
-                    check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None,
-                    check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None,
-                    check_due_date=check_due_date if payment_method == "Çek" else None,
-                    check_status="Bekliyor" if payment_method == "Çek" else None,
-                )
-                db.session.add(transaction)
+                transaction_date = parse_date(request.form.get("transaction_date")) or date.today()
+                reference_no = request.form.get("reference_no", "").strip()
+                description = request.form.get("description", "").strip()
+                if direct_supplier:
+                    add_direct_card_collection_pair(customer, direct_supplier, amount, transaction_date, reference_no, description, card_details)
+                else:
+                    transaction = AccountTransaction(customer=customer, transaction_date=transaction_date,
+                        transaction_type="Tahsilat", reference_no=reference_no, description=description or "Tahsilat",
+                        debit=0, credit=amount, payment_method=payment_method,
+                        check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None,
+                        check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None,
+                        check_due_date=check_due_date if payment_method == "Çek" else None,
+                        check_status="Bekliyor" if payment_method == "Çek" else None, **card_details)
+                    db.session.add(transaction)
                 db.session.commit()
-                flash(f"{customer.name} için ₺{amount:,.2f} tahsilat kaydedildi.", "success")
+                if direct_supplier:
+                    flash(f"{customer.name} tahsilatı ve {direct_supplier.name} ödemesi birlikte kaydedildi.", "success")
+                else:
+                    flash(f"{customer.name} için ₺{amount:,.2f} tahsilat kaydedildi.", "success")
                 return redirect(url_for("dashboard"))
         return render_template("quick_collection.html", customers=customers, today=date.today().isoformat(), is_payment=False)
 
@@ -1353,24 +1394,35 @@ def create_app(test_config=None):
         payment_method = request.form.get("payment_method", "") if transaction_type in {"Tahsilat", "Ödeme"} else None
         check_due_date = parse_date(request.form.get("check_due_date"))
         card_details, card_error = card_payment_details(payment_method, transaction_type)
+        direct_supplier, supplier_error = direct_supplier_for_card_collection() if transaction_type == "Tahsilat" and payment_method == "Kredi Kartı" else (None, None)
         if transaction_type not in debit_types | credit_types:
             flash("Lütfen geçerli bir hareket türü seçin.", "error")
         elif amount <= 0:
             flash("Tutar sıfırdan büyük olmalıdır.", "error")
         elif transaction_type == "Tahsilat" and payment_method not in COLLECTION_PAYMENT_METHODS:
-            flash("Tahsilat için Nakit, Çek veya Banka seçin.", "error")
+            flash("Tahsilat için Nakit, Çek, Banka veya Kredi Kartı seçin.", "error")
         elif transaction_type == "Ödeme" and payment_method not in ACCOUNT_PAYMENT_METHODS:
             flash("Ödeme için Nakit, Çek, Banka veya Kredi Kartı seçin.", "error")
         elif payment_method == "Çek" and (not request.form.get("check_no", "").strip() or not check_due_date):
             flash("Çek numarası ve vade tarihi zorunludur.", "error")
         elif card_error:
             flash(card_error, "error")
+        elif supplier_error:
+            flash(supplier_error, "error")
+        elif direct_supplier and direct_supplier.id == customer.id:
+            flash("Müşteri ile doğrudan ödeme yapılan tedarikçi aynı cari olamaz.", "error")
         else:
             create_database_backup(app, "before_account_transaction")
-            transaction = AccountTransaction(customer=customer, transaction_date=parse_date(request.form.get("transaction_date")) or date.today(), transaction_type=transaction_type, reference_no=request.form.get("reference_no", "").strip(), description=request.form.get("description", "").strip() or transaction_type, debit=amount if transaction_type in debit_types else 0, credit=amount if transaction_type in credit_types else 0, payment_method=payment_method, check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None, check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None, check_due_date=check_due_date if payment_method == "Çek" else None, check_status="Bekliyor" if payment_method == "Çek" else None, **card_details)
-            db.session.add(transaction)
+            transaction_date = parse_date(request.form.get("transaction_date")) or date.today()
+            reference_no = request.form.get("reference_no", "").strip()
+            description = request.form.get("description", "").strip()
+            if direct_supplier:
+                add_direct_card_collection_pair(customer, direct_supplier, amount, transaction_date, reference_no, description, card_details)
+            else:
+                transaction = AccountTransaction(customer=customer, transaction_date=transaction_date, transaction_type=transaction_type, reference_no=reference_no, description=description or transaction_type, debit=amount if transaction_type in debit_types else 0, credit=amount if transaction_type in credit_types else 0, payment_method=payment_method, check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None, check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None, check_due_date=check_due_date if payment_method == "Çek" else None, check_status="Bekliyor" if payment_method == "Çek" else None, **card_details)
+                db.session.add(transaction)
             db.session.commit()
-            flash(f"{transaction_type} hareketi cari hesaba kaydedildi.", "success")
+            flash(f"{transaction_type} hareketi" + (f" ve {direct_supplier.name} ödemesi" if direct_supplier else "") + " cari hesaba kaydedildi.", "success")
         return redirect(url_for("customer_account", customer_id=customer.id))
 
     @app.route("/kasa-cek", methods=["GET"])
@@ -1477,6 +1529,9 @@ def create_app(test_config=None):
         if transaction.customer_id != customer_id:
             return ("Geçersiz cari hareketi", 400)
         create_database_backup(app, "before_account_transaction_delete")
+        linked = db.session.get(AccountTransaction, transaction.linked_transaction_id) if transaction.linked_transaction_id else None
+        if linked:
+            db.session.delete(linked)
         db.session.delete(transaction)
         db.session.commit()
         flash("Cari hesap hareketi silindi.", "success")
@@ -2421,6 +2476,9 @@ def create_app(test_config=None):
                 db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN card_customer_id INTEGER"))
             if "card_customer_name" not in account_columns:
                 db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN card_customer_name VARCHAR(160)"))
+            if "linked_transaction_id" not in account_columns:
+                db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN linked_transaction_id INTEGER"))
+            db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_account_transaction_linked_transaction_id ON account_transaction (linked_transaction_id)"))
             db.session.commit()
     return app
 

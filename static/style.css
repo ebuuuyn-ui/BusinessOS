@@ -1025,3 +1025,8 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 .compact-order-item .line-discount{color:#b46808}
 @media(max-width:900px){.compact-item-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.compact-item-grid .product-picker-field{grid-column:span 3}.compact-item-grid .price-field{grid-column:span 2}.compact-item-grid .discount-field,.compact-item-grid .vat-field{grid-column:span 1}.compact-item-grid .detail-field{grid-column:span 2}}
 @media(max-width:600px){.compact-item-grid{grid-template-columns:1fr 1fr}.compact-item-grid .product-picker-field,.compact-item-grid .price-field,.compact-item-grid .detail-field{grid-column:1/-1}.compact-item-grid .quantity-field,.compact-item-grid .unit-field,.compact-item-grid .discount-field,.compact-item-grid .vat-field{grid-column:span 1}.compact-order-item .line-totals{align-items:stretch}.compact-order-item .line-totals span{display:flex;justify-content:space-between}}
+
+/* Kredi kartı tahsilatının tedarikçiye doğrudan aktarımı */
+.direct-supplier-toggle,#direct-toggle-field{display:flex!important;align-items:center;gap:9px;align-self:end;min-height:42px;padding:9px 12px;border:1px solid #b9ccef;border-radius:10px;background:#fff;color:#3155a5;font-weight:750;cursor:pointer}
+.direct-supplier-toggle[hidden],#direct-toggle-field[hidden]{display:none!important}
+.direct-supplier-toggle input,#direct-toggle-field input{width:18px!important;height:18px!important;min-height:0;margin:0!important;accent-color:#0a84ff}
