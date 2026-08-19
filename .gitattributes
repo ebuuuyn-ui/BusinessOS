@@ -1,0 +1,23 @@
+* text=auto
+
+*.py text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.sh text eol=lf
+*.command text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# If a database is ever force-added, Git must not diff or auto-merge it.
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.xlsx binary

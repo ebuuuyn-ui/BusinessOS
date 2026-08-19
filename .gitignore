@@ -4,6 +4,20 @@ __pycache__/
 instance/
 .env
 
+# Local databases and their SQLite sidecar files must never enter Git.
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+
 # Runtime files
 .business_os.pid
 outputs/*.log
@@ -13,3 +27,5 @@ outputs/*.log
 tmp/
 work/export_qa/
 **/node_modules/
+**/node_modules
+work/node_modules 2

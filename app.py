@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import event, inspect, text
+from sqlalchemy import event, func, inspect, text
 from sqlalchemy.engine import Engine
 
 
@@ -98,6 +98,9 @@ class Order(db.Model):
     customer_id = db.Column(db.Integer, db.ForeignKey("customer.id"), nullable=False)
     order_date = db.Column(db.Date, default=date.today, nullable=False)
     delivery_date = db.Column(db.Date)
+    # Satın alma siparişinin ürünlerinin gönderileceği il.
+    # Satış siparişlerinde boş kalır.
+    delivery_city = db.Column(db.String(100))
     status = db.Column(db.String(40), default="Bekliyor", nullable=False, index=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -641,7 +644,11 @@ def ensure_scheduled_backups(app):
     hourly_prefix = f"business_os_hourly_{now.strftime('%Y-%m-%d_%H-')}"
     if not any(name.startswith(hourly_prefix) for name in os.listdir(backup_dir)):
         create_database_backup(app, "hourly", keep=250)
-    archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
+    archive_dir = os.path.abspath(
+        os.path.expanduser(
+            os.getenv("BUSINESSOS_BACKUP_DIR", "~/Documents/Business OS Yedekleri")
+        )
+    )
     daily_prefix = f"business_os_daily_{now.strftime('%Y-%m-%d_')}"
     try:
         os.makedirs(archive_dir, exist_ok=True)
@@ -1891,8 +1898,11 @@ def create_app(test_config=None):
         query = request.args.get("q", "").strip()
         status = request.args.get("status", "").strip()
         order_type = request.args.get("type", "").strip()
+        customer_id = request.args.get("customer_id", type=int)
+        customer_query = request.args.get("customer_q", "").strip()
         active_only = request.args.get("active") == "1"
         delivery_pending = request.args.get("delivery_pending") == "1"
+        selected_customer = db.session.get(Customer, customer_id) if customer_id else None
         status_summary = {
             kind: {order_status: {"count": 0, "total": Decimal("0")} for order_status in ORDER_STATUSES}
             for kind in ORDER_TYPES
@@ -1905,7 +1915,12 @@ def create_app(test_config=None):
             bucket["total"] += summary_order.total_amount
         records = Order.query.join(Customer)
         if query:
-            records = records.filter(db.or_(Order.order_no.ilike(f"%{query}%"), Customer.name.ilike(f"%{query}%")))
+            search_value = f"%{normalize_search_text(query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Order.order_no).like(search_value),
+                func.normalize_tr(Customer.name).like(search_value),
+                func.normalize_tr(Customer.code).like(search_value),
+            ))
         if status:
             records = records.filter(Order.status == status)
         if active_only:
@@ -1914,6 +1929,14 @@ def create_app(test_config=None):
             records = records.filter(Order.status != "İptal Edildi")
         if order_type in ORDER_TYPES:
             records = records.filter(Order.order_type == order_type)
+        if selected_customer:
+            records = records.filter(Order.customer_id == selected_customer.id)
+        if customer_query:
+            customer_search_value = f"%{normalize_search_text(customer_query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Customer.name).like(customer_search_value),
+                func.normalize_tr(Customer.code).like(customer_search_value),
+            ))
         if delivery_pending:
             all_cashflow_orders = Order.query.filter(Order.status != "İptal Edildi").all()
             pending_expected = calculate_pending_delivery_amounts(all_cashflow_orders)
@@ -1936,7 +1959,199 @@ def create_app(test_config=None):
         }
         pending_expected = pending_expected if delivery_pending else {}
         listed_total = sum((pending_expected.get(order.id, order.total_amount) for order in listed_orders), Decimal("0"))
-        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, selected_status=status, selected_type=order_type, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries)
+        export_args = {}
+        if query:
+            export_args["q"] = query
+        if status:
+            export_args["status"] = status
+        if order_type in ORDER_TYPES:
+            export_args["type"] = order_type
+        if selected_customer:
+            export_args["customer_id"] = str(selected_customer.id)
+        if customer_query:
+            export_args["customer_q"] = customer_query
+        if active_only:
+            export_args["active"] = "1"
+        if delivery_pending:
+            export_args["delivery_pending"] = "1"
+        customers_list = Customer.query.order_by(Customer.name).all()
+        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_status=status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, export_args=export_args)
+
+    @app.get("/siparisler/excel")
+    def export_orders_excel():
+        """Export the visible order list, including status, to a single Excel file."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+
+        query = request.args.get("q", "").strip()
+        status = request.args.get("status", "").strip()
+        order_type = request.args.get("type", "").strip()
+        customer_id = request.args.get("customer_id", type=int)
+        customer_query = request.args.get("customer_q", "").strip()
+        active_only = request.args.get("active") == "1"
+        delivery_pending = request.args.get("delivery_pending") == "1"
+        selected_customer = db.session.get(Customer, customer_id) if customer_id else None
+
+        records = Order.query.join(Customer)
+        if query:
+            search_value = f"%{normalize_search_text(query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Order.order_no).like(search_value),
+                func.normalize_tr(Customer.name).like(search_value),
+                func.normalize_tr(Customer.code).like(search_value),
+            ))
+        if status:
+            records = records.filter(Order.status == status)
+        if active_only:
+            records = records.filter(~Order.status.in_(["Teslim Edildi", "İptal Edildi"]))
+        if delivery_pending:
+            records = records.filter(Order.status != "İptal Edildi")
+        if order_type in ORDER_TYPES:
+            records = records.filter(Order.order_type == order_type)
+        if selected_customer:
+            records = records.filter(Order.customer_id == selected_customer.id)
+        if customer_query:
+            customer_search_value = f"%{normalize_search_text(customer_query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Customer.name).like(customer_search_value),
+                func.normalize_tr(Customer.code).like(customer_search_value),
+            ))
+
+        pending_expected = {}
+        if delivery_pending:
+            all_cashflow_orders = Order.query.filter(Order.status != "İptal Edildi").all()
+            pending_expected = calculate_pending_delivery_amounts(all_cashflow_orders)
+            open_ids = {order.id for order in all_cashflow_orders if pending_expected.get(order.id, 0) > 0}
+            records = records.filter(Order.id.in_(open_ids)) if open_ids else records.filter(db.false())
+
+        listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all() if delivery_pending else records.order_by(Order.order_date.desc(), Order.id.desc()).all()
+        sales_ids = [order.id for order in listed_orders if order.order_type == "Satış"]
+        linked_by_source = {order_id: [] for order_id in sales_ids}
+        if sales_ids:
+            for linked_order in Order.query.filter(Order.source_order_id.in_(sales_ids)).order_by(Order.id).all():
+                linked_by_source[linked_order.source_order_id].append(linked_order)
+        procurement_summaries = {
+            order.id: procurement_summary(order, linked_by_source.get(order.id, []))
+            for order in listed_orders if order.order_type == "Satış"
+        }
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Sipariş Listesi"
+        sheet.sheet_view.showGridLines = False
+        sheet.freeze_panes = "A5"
+        navy, blue, pale, line = "172033", "2563EB", "EEF4FF", "D8E0EC"
+        headers = [
+            "Tür", "Sipariş No", "Cari", "Sipariş Tarihi", "Teslim Tarihi", "Gönderim İli",
+            "Toplam Adet", "Ara Toplam", "KDV", "Genel Toplam", "Durum", "Tedarik Durumu",
+        ]
+        sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+        sheet["A1"] = "BUSINESS OS - SİPARİŞ LİSTESİ"
+        sheet["A1"].font = Font(name="Arial", size=18, bold=True, color="FFFFFF")
+        sheet["A1"].fill = PatternFill("solid", fgColor=navy)
+        sheet["A1"].alignment = Alignment(vertical="center")
+        sheet.row_dimensions[1].height = 32
+        selected_filters = []
+        if order_type in ORDER_TYPES:
+            selected_filters.append(order_type)
+        if status:
+            selected_filters.append(status)
+        if active_only:
+            selected_filters.append("Devam edenler")
+        if delivery_pending:
+            selected_filters.append("Açık tahsilat / ödeme")
+        if query:
+            selected_filters.append(f'Arama: {query}')
+        if selected_customer:
+            selected_filters.append(f"Cari: {selected_customer.name}")
+        elif customer_query:
+            selected_filters.append(f"Cari: {customer_query}")
+        sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+        sheet["A2"] = f"Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')} | " + (" · ".join(selected_filters) if selected_filters else "Tüm siparişler")
+        sheet["A2"].font = Font(name="Arial", size=9, color="64748B")
+
+        header_row = 4
+        thin = Side(style="thin", color=line)
+        for column, header in enumerate(headers, 1):
+            cell = sheet.cell(header_row, column, header)
+            cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=blue)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = Border(bottom=thin)
+        sheet.row_dimensions[header_row].height = 28
+
+        for row_no, order in enumerate(listed_orders, header_row + 1):
+            procurement = procurement_summaries.get(order.id)
+            procurement_label = procurement["label"] if procurement else "—"
+            values = [
+                order.order_type,
+                order.order_no,
+                order.customer.name,
+                order.order_date,
+                order.delivery_date,
+                order.delivery_city or "",
+                order.total_quantity,
+                float(order.net_amount),
+                float(order.vat_amount),
+                float(order.total_amount),
+                order.status,
+                procurement_label,
+            ]
+            for column, value in enumerate(values, 1):
+                cell = sheet.cell(row_no, column, value)
+                cell.font = Font(name="Arial", size=10)
+                cell.alignment = Alignment(vertical="center", wrap_text=column in (3, 6, 12))
+                cell.border = Border(bottom=thin)
+            for column in (4, 5):
+                sheet.cell(row_no, column).number_format = "dd.mm.yyyy"
+            for column in (8, 9, 10):
+                sheet.cell(row_no, column).number_format = '₺#,##0.00'
+            sheet.row_dimensions[row_no].height = 24
+
+        total_row = header_row + len(listed_orders) + 1
+        sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=7)
+        sheet.cell(total_row, 1, f"TOPLAM ({len(listed_orders)} sipariş)")
+        for column, label in ((8, "Ara Toplam"), (9, "KDV"), (10, "Genel Toplam")):
+            sheet.cell(total_row, column, label)
+            sheet.cell(total_row, column).font = Font(name="Arial", size=10, bold=True, color=navy)
+        first_data_row = header_row + 1
+        last_data_row = total_row - 1
+        if listed_orders:
+            for column in (8, 9, 10):
+                letter = get_column_letter(column)
+                sheet.cell(total_row + 1, column, f"=SUM({letter}{first_data_row}:{letter}{last_data_row})")
+                sheet.cell(total_row + 1, column).number_format = '₺#,##0.00'
+        else:
+            for column in (8, 9, 10):
+                sheet.cell(total_row + 1, column, 0)
+                sheet.cell(total_row + 1, column).number_format = '₺#,##0.00'
+        for column in range(1, len(headers) + 1):
+            sheet.cell(total_row, column).fill = PatternFill("solid", fgColor=pale)
+            sheet.cell(total_row + 1, column).fill = PatternFill("solid", fgColor=pale)
+            sheet.cell(total_row, column).border = Border(top=thin)
+            sheet.cell(total_row + 1, column).border = Border(bottom=thin)
+        sheet.cell(total_row + 1, 1, "TUTARLAR")
+        sheet.cell(total_row + 1, 1).font = Font(name="Arial", size=10, bold=True, color=navy)
+
+        widths = [14, 18, 38, 15, 15, 18, 13, 17, 15, 18, 19, 28]
+        for column, width in enumerate(widths, 1):
+            sheet.column_dimensions[get_column_letter(column)].width = width
+        sheet.auto_filter.ref = f"A{header_row}:L{max(header_row, total_row - 1)}"
+        sheet.print_title_rows = f"1:{header_row}"
+        sheet.page_setup.orientation = "landscape"
+        sheet.page_setup.fitToWidth = 1
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"Business-OS-Siparis-Listesi-{date.today().isoformat()}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
     @app.route("/siparisler/yeni", methods=["GET", "POST"])
     def new_order():
@@ -1954,7 +2169,7 @@ def create_app(test_config=None):
             elif not any(name.strip() for name in names):
                 flash("En az bir sipariş kalemi ekleyin.", "error")
             else:
-                order = Order(order_no=next_order_no(order_type), order_type=order_type, customer_id=customer_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), notes=request.form.get("notes"), status="Bekliyor")
+                order = Order(order_no=next_order_no(order_type), order_type=order_type, customer_id=customer_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), delivery_city=request.form.get("delivery_city", "").strip() if order_type == "Satın Alma" else None, notes=request.form.get("notes"), status="Bekliyor")
                 db.session.add(order)
                 product_ids = request.form.getlist("product_id[]")
                 variants = request.form.getlist("variant[]")
@@ -2009,6 +2224,8 @@ def create_app(test_config=None):
             ("Sipariş Tarihi", order.order_date, "Teslim Tarihi", order.delivery_date or "Belirtilmedi"),
             ("Durum", order.status, "Tür", order.order_type),
         ]
+        if order.order_type == "Satın Alma":
+            info.append(("Gönderim İli", order.delivery_city or "Belirtilmedi", "", ""))
         for row_no, values in enumerate(info, 3):
             sheet.cell(row_no, 1, values[0]); sheet.cell(row_no, 2, values[1])
             sheet.cell(row_no, 6, values[2]); sheet.cell(row_no, 7, values[3])
@@ -2110,6 +2327,8 @@ def create_app(test_config=None):
         right_style = ParagraphStyle("RightTR", parent=body_style, alignment=TA_RIGHT)
         story = [Paragraph(f"BUSINESS OS - {order.order_type.upper()} SİPARİŞİ", title_style), Spacer(1, 4*mm)]
         info_data = [[Paragraph("Sipariş No", body_bold), Paragraph(order.order_no, body_style), Paragraph("Cari", body_bold), Paragraph(order.customer.name, body_style)], [Paragraph("Sipariş Tarihi", body_bold), Paragraph(order.order_date.strftime("%d.%m.%Y"), body_style), Paragraph("Teslim Tarihi", body_bold), Paragraph(order.delivery_date.strftime("%d.%m.%Y") if order.delivery_date else "Belirtilmedi", body_style)], [Paragraph("Durum", body_bold), Paragraph(order.status, body_style), Paragraph("Tür", body_bold), Paragraph(order.order_type, body_style)]]
+        if order.order_type == "Satın Alma":
+            info_data.append([Paragraph("Gönderim İli", body_bold), Paragraph(order.delivery_city or "Belirtilmedi", body_style), Paragraph("", body_bold), Paragraph("", body_style)])
         info_table = Table(info_data, colWidths=[28*mm, 70*mm, 28*mm, 125*mm])
         info_table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#EEF4FF")),("BACKGROUND",(2,0),(2,-1),colors.HexColor("#EEF4FF")),("FONTNAME",(0,0),(-1,-1),font_name),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
         story.extend([info_table, Spacer(1, 5*mm)])
@@ -2151,6 +2370,7 @@ def create_app(test_config=None):
                 order.customer_id = customer_id
                 order.order_date = parse_date(request.form.get("order_date")) or order.order_date
                 order.delivery_date = parse_date(request.form.get("delivery_date"))
+                order.delivery_city = request.form.get("delivery_city", "").strip() if order.order_type == "Satın Alma" else None
                 order.notes = request.form.get("notes", "").strip()
                 previous_costs = {(item.product_id, item.product_name): item.cost_unit_price for item in order.items}
                 order.items.clear()
@@ -2203,7 +2423,7 @@ def create_app(test_config=None):
                 flash("Satın alma siparişine aktarılacak en az bir ürün seçin.", "error")
             else:
                 create_database_backup(app, "before_order_conversion")
-                purchase = Order(order_no=next_order_no("Satın Alma"), order_type="Satın Alma", source_order_id=source_order.id, customer_id=supplier_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), notes=request.form.get("notes", "").strip(), status="Bekliyor")
+                purchase = Order(order_no=next_order_no("Satın Alma"), order_type="Satın Alma", source_order_id=source_order.id, customer_id=supplier_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), delivery_city=request.form.get("delivery_city", "").strip(), notes=request.form.get("notes", "").strip(), status="Bekliyor")
                 for source_item in selected_items:
                     item_id = source_item.id
                     vat_rate = parse_money(request.form.get(f"vat_rate_{item_id}", "10"))
@@ -2411,6 +2631,8 @@ def create_app(test_config=None):
             if "order_type" not in order_columns:
                 db.session.execute(text("ALTER TABLE 'order' ADD COLUMN order_type VARCHAR(30) NOT NULL DEFAULT 'Satış'"))
                 db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_order_order_type ON 'order' (order_type)"))
+            if "delivery_city" not in order_columns:
+                db.session.execute(text("ALTER TABLE 'order' ADD COLUMN delivery_city VARCHAR(100)"))
             product_columns = {column["name"] for column in inspect(db.engine).get_columns("product")}
             if "special_code" not in product_columns:
                 db.session.execute(text("ALTER TABLE product ADD COLUMN special_code VARCHAR(160)"))

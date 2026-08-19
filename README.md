@@ -42,11 +42,34 @@ Windows'ta etkinleştirme komutu:
 .venv\Scripts\activate
 ```
 
+Windows'ta ilk kurulum için PowerShell'de:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\launchers\setup_windows.ps1
+```
+
+Daha sonraki açılışlarda `launchers\start_windows.bat` dosyasına çift
+tıklamak yeterlidir. Başlatıcı Git işlemi yapmaz; veritabanını pull/push
+etmeye çalışmaz.
+
 ## Veriler ve yedekleme
 
 Uygulama kapalıyken `instance/business_os.db` dosyasını başka bir diske kopyalamak tam yedek almak için yeterlidir. Bu dosya `.gitignore` içinde tutulur; yanlışlıkla kaynak kodla paylaşılmaz.
 
 Uygulama ayrıca her başlatıldığında ve müşteri aktarımı/silme gibi önemli işlemlerden önce `instance/backups/` klasörüne tarih-saatli otomatik SQLite yedeği oluşturur. Program kodu güncellenirken bu veritabanı ve yedek klasörü silinmez.
+
+Günlük dış yedek klasörü varsayılan olarak kullanıcının Belgeler klasöründeki
+`Business OS Yedekleri` dizinidir. Windows'ta farklı bir disk kullanmak için
+`BUSINESSOS_BACKUP_DIR` ortam değişkeni ayarlanabilir. Örneğin:
+
+```powershell
+$env:BUSINESSOS_BACKUP_DIR = "D:\Business OS Yedekleri"
+```
+
+`*.db`, `*.sqlite` ve `*.sqlite3` dosyaları Git dışında tutulur. Bu dosyalar
+Mac ile Windows arasında commit/push/pull yoluyla taşınmamalıdır. İlk Windows
+aktarımı, uygulama kapatıldıktan sonra doğrulanmış bir SQLite yedeğiyle ayrı ve
+tek yönlü yapılmalıdır.
 
 ## PostgreSQL'e geçiş
 
