@@ -3,6 +3,9 @@ import sqlite3
 import unicodedata
 import csv
 import calendar
+import json
+import urllib.error
+import urllib.request
 from io import BytesIO, StringIO
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -11,6 +14,14 @@ from flask import Flask, flash, make_response, redirect, render_template, reques
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event, func, inspect, text
 from sqlalchemy.engine import Engine
+
+try:
+    # macOS Anahtarlık'taki kurumsal/ağ sertifikalarını da kullanır.
+    # Sertifika doğrulamasını kapatmaz; sistemin güvenilir sertifika deposuna bağlar.
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
 
 
 db = SQLAlchemy()
@@ -101,6 +112,9 @@ class Order(db.Model):
     # Satın alma siparişinin ürünlerinin gönderileceği il.
     # Satış siparişlerinde boş kalır.
     delivery_city = db.Column(db.String(100))
+    # Satın alma siparişinin hangi müşteri/firma için açıldığını tutar.
+    # Bu yalnızca şirket içi takip bilgisidir; tedarikçiye giden formlara eklenmez.
+    customer_company = db.Column(db.String(180))
     status = db.Column(db.String(40), default="Bekliyor", nullable=False, index=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -286,6 +300,155 @@ class PersonalLedgerTransaction(db.Model):
     sort_order = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     person = db.relationship("PersonalPerson", back_populates="transactions")
+
+
+class OzonSale(db.Model):
+    """Ozon satış ve kesinti kayıtları; API geldiğinde aynı alanlar otomatik dolar."""
+    id = db.Column(db.Integer, primary_key=True)
+    store_key = db.Column(db.String(60), default="magaza-1", nullable=False, index=True)
+    external_operation_id = db.Column(db.String(80), index=True)
+    sale_date = db.Column(db.Date, default=date.today, nullable=False, index=True)
+    posting_number = db.Column(db.String(100), index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=True, index=True)
+    ozon_sku = db.Column(db.String(100), index=True)
+    product_name = db.Column(db.String(180), nullable=False)
+    quantity = db.Column(db.Integer, default=1, nullable=False)
+    sales_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    cost_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    commission_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    logistics_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    advertising_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    other_expense_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    product = db.relationship("Product")
+
+    @property
+    def platform_expenses(self):
+        return sum((self.commission_amount or 0, self.logistics_amount or 0, self.advertising_amount or 0, self.other_expense_amount or 0), Decimal("0"))
+
+    @property
+    def net_revenue(self):
+        return (self.sales_amount or Decimal("0")) - self.platform_expenses
+
+    @property
+    def profit(self):
+        return self.net_revenue - (self.cost_amount or Decimal("0"))
+
+
+class OzonProduct(db.Model):
+    """Her Ozon mağazasından yalnızca okunarak eşitlenen ürün kartı."""
+    id = db.Column(db.Integer, primary_key=True)
+    store_key = db.Column(db.String(60), nullable=False, index=True)
+    ozon_product_id = db.Column(db.String(80), nullable=False, index=True)
+    offer_id = db.Column(db.String(160), index=True)
+    sku = db.Column(db.String(100), index=True)
+    name = db.Column(db.String(240), nullable=False)
+    current_price = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    old_price = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    marketing_price = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    cost_unit_price = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    is_archived = db.Column(db.Boolean, default=False, nullable=False)
+    synced_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (db.UniqueConstraint("store_key", "ozon_product_id", name="uq_ozon_product_store_product"),)
+
+
+class OzonFinanceSnapshot(db.Model):
+    """Ozon Seller API'den alınan aylık resmî finans özeti."""
+    # Eski tek mağaza kayıtlarıyla uyumluluk için bu alan birincil anahtar kalır.
+    # Yeni kayıtlarda değer: "magaza-1:2026-08" biçimindedir.
+    report_month = db.Column(db.String(80), primary_key=True)
+    store_key = db.Column(db.String(60), default="magaza-1", nullable=False, index=True)
+    period_month = db.Column(db.String(7), index=True)
+    sales_accrual = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    sale_commission = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    processing_delivery = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    refunds_cancellations = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    services_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    other_amount = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    money_transfer = db.Column(db.Numeric(14, 2), default=0, nullable=False)
+    synced_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+def ozon_settings_path(app):
+    return os.path.join(app.instance_path, "ozon_api_settings.json")
+
+
+def load_ozon_settings(app):
+    try:
+        with open(ozon_settings_path(app), "r", encoding="utf-8") as settings_file:
+            values = json.load(settings_file)
+        raw_stores = values.get("stores")
+        if isinstance(raw_stores, list):
+            stores = []
+            for index, raw_store in enumerate(raw_stores, start=1):
+                if not isinstance(raw_store, dict):
+                    continue
+                client_id = str(raw_store.get("client_id", "")).strip()
+                api_key = str(raw_store.get("api_key", "")).strip()
+                if client_id or api_key:
+                    stores.append({
+                        "key": str(raw_store.get("key") or f"magaza-{index}").strip(),
+                        "name": str(raw_store.get("name") or f"Mağaza {index}").strip(),
+                        "client_id": client_id,
+                        "api_key": api_key,
+                    })
+            return {"stores": stores}
+        # İlk sürümde kaydedilmiş tek mağaza bilgisini kaybetmeden yeni yapıya taşır.
+        client_id = str(values.get("client_id", "")).strip()
+        api_key = str(values.get("api_key", "")).strip()
+        return {"stores": ([{"key": "magaza-1", "name": "Mağaza 1", "client_id": client_id, "api_key": api_key}] if client_id or api_key else [])}
+    except (OSError, ValueError, TypeError):
+        return {"stores": []}
+
+
+def save_ozon_settings(app, stores):
+    """Keep the API key only on this computer, outside SQLite and Git backups."""
+    settings_path = ozon_settings_path(app)
+    temporary_path = f"{settings_path}.tmp"
+    with open(temporary_path, "w", encoding="utf-8") as settings_file:
+        json.dump({"stores": stores}, settings_file)
+    try:
+        os.chmod(temporary_path, 0o600)
+    except OSError:
+        pass
+    os.replace(temporary_path, settings_path)
+
+
+def get_ozon_store(settings, store_key):
+    return next((store for store in settings["stores"] if store["key"] == store_key), None)
+
+
+def ozon_api_post(store, path, payload):
+    """Ozon Seller API isteği; yalnızca okuma amaçlı uç noktalar için kullanılır."""
+    api_request = urllib.request.Request(
+        f"https://api-seller.ozon.ru{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Client-Id": store["client_id"], "Api-Key": store["api_key"], "Content-Type": "application/json", "Accept": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(api_request, timeout=45) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def ozon_money_from_item(item, *keys):
+    for key in keys:
+        value = item.get(key)
+        if isinstance(value, dict):
+            value = value.get("price", value.get("value", "0"))
+        if value not in (None, ""):
+            return parse_money(value)
+    return Decimal("0")
+
+
+def parse_ozon_operation_date(value):
+    text_value = str(value or "").strip().replace("Z", "+00:00")
+    for parser in (lambda: datetime.fromisoformat(text_value).date(), lambda: datetime.strptime(text_value[:10], "%Y-%m-%d").date()):
+        try:
+            return parser()
+        except ValueError:
+            continue
+    return date.today()
 
 
 def parse_date(value):
@@ -854,7 +1017,11 @@ def effective_sales_item_cost(item, sale_date=None):
 
 
 def create_app(test_config=None):
-    app = Flask(__name__, instance_relative_config=True)
+    data_directory = os.getenv("BUSINESSOS_DATA_DIR", "").strip()
+    flask_options = {"instance_relative_config": True}
+    if data_directory:
+        flask_options["instance_path"] = os.path.abspath(os.path.expanduser(data_directory))
+    app = Flask(__name__, **flask_options)
     os.makedirs(app.instance_path, exist_ok=True)
     app.config.from_mapping(
         SECRET_KEY=os.getenv("SECRET_KEY", "development-key-change-in-production"),
@@ -1772,6 +1939,359 @@ def create_app(test_config=None):
                 flash(f"Ürün Excel dosyası aktarılamadı: {exc}", "error")
         return render_template("product_import.html")
 
+    @app.route("/ozon-satislari", methods=["GET", "POST"])
+    def ozon_sales():
+        today = date.today()
+        selected_month = request.values.get("month", today.strftime("%Y-%m"))
+        settings = load_ozon_settings(app)
+        stores = settings["stores"]
+        selected_store_key = request.values.get("store") or (stores[0]["key"] if stores else "all")
+        if selected_store_key != "all" and not get_ozon_store(settings, selected_store_key):
+            selected_store_key = "all"
+        try:
+            month_start = datetime.strptime(selected_month, "%Y-%m").date().replace(day=1)
+        except ValueError:
+            selected_month = today.strftime("%Y-%m")
+            month_start = today.replace(day=1)
+        month_end = date(month_start.year, month_start.month, calendar.monthrange(month_start.year, month_start.month)[1])
+
+        if request.method == "POST":
+            if selected_store_key == "all":
+                flash("Satış kaydı eklemek için önce bir mağaza seçin.", "error")
+                return redirect(url_for("ozon_sales", month=selected_month, store="all"))
+            product_id = request.form.get("product_id", type=int)
+            product = db.session.get(Product, product_id) if product_id else None
+            ozon_sku = request.form.get("ozon_sku", "").strip()
+            ozon_product = None
+            if ozon_sku:
+                ozon_product = OzonProduct.query.filter_by(store_key=selected_store_key, sku=ozon_sku).first()
+                if not ozon_product:
+                    ozon_product = OzonProduct.query.filter_by(store_key=selected_store_key, offer_id=ozon_sku).first()
+            product_name = request.form.get("product_name", "").strip() or (product.name if product else (ozon_product.name if ozon_product else ""))
+            quantity = request.form.get("quantity", type=int) or 1
+            sales_amount = parse_money(request.form.get("sales_amount"))
+            cost_amount = parse_money(request.form.get("cost_amount"))
+            if cost_amount <= 0 and ozon_product:
+                cost_amount = (ozon_product.cost_unit_price or Decimal("0")) * quantity
+            if not product_name:
+                flash("Ürün adı zorunludur.", "error")
+            elif quantity < 1:
+                flash("Adet en az 1 olmalıdır.", "error")
+            elif sales_amount < 0:
+                flash("Satış tutarı negatif olamaz.", "error")
+            else:
+                create_database_backup(app, "before_ozon_sale_add")
+                db.session.add(OzonSale(
+                    store_key=selected_store_key,
+                    sale_date=parse_date(request.form.get("sale_date")) or today,
+                    posting_number=request.form.get("posting_number", "").strip(),
+                    product_id=product.id if product else None,
+                    ozon_sku=ozon_sku,
+                    product_name=product_name,
+                    quantity=quantity,
+                    sales_amount=sales_amount,
+                    cost_amount=cost_amount,
+                    commission_amount=parse_money(request.form.get("commission_amount")),
+                    logistics_amount=parse_money(request.form.get("logistics_amount")),
+                    advertising_amount=parse_money(request.form.get("advertising_amount")),
+                    other_expense_amount=parse_money(request.form.get("other_expense_amount")),
+                ))
+                db.session.commit()
+                flash("Ozon satış kaydı eklendi.", "success")
+                return redirect(url_for("ozon_sales", month=selected_month, store=selected_store_key))
+
+        records = OzonSale.query.filter(OzonSale.sale_date.between(month_start, month_end)).order_by(OzonSale.sale_date.desc(), OzonSale.id.desc()).all()
+        if selected_store_key != "all":
+            records = [record for record in records if record.store_key == selected_store_key]
+        sales_total = sum((record.sales_amount or Decimal("0") for record in records), Decimal("0"))
+        cost_total = sum((record.cost_amount or Decimal("0") for record in records), Decimal("0"))
+        commission_total = sum((record.commission_amount or Decimal("0") for record in records), Decimal("0"))
+        logistics_total = sum((record.logistics_amount or Decimal("0") for record in records), Decimal("0"))
+        advertising_total = sum((record.advertising_amount or Decimal("0") for record in records), Decimal("0"))
+        other_expense_total = sum((record.other_expense_amount or Decimal("0") for record in records), Decimal("0"))
+        platform_expense_total = commission_total + logistics_total + advertising_total + other_expense_total
+        net_revenue_total = sales_total - platform_expense_total
+        profit_total = net_revenue_total - cost_total
+        markup = (profit_total / cost_total * Decimal("100")) if cost_total else None
+        products = Product.query.filter_by(active=True).order_by(Product.name).all()
+        product_page = max(request.args.get("product_page", 1, type=int) or 1, 1)
+        products_per_page = 20
+        ozon_products_query = OzonProduct.query.order_by(OzonProduct.name)
+        if selected_store_key != "all":
+            ozon_products_query = ozon_products_query.filter_by(store_key=selected_store_key)
+        ozon_product_count = ozon_products_query.count()
+        product_total_pages = max((ozon_product_count + products_per_page - 1) // products_per_page, 1)
+        product_page = min(product_page, product_total_pages)
+        ozon_products = ozon_products_query.offset((product_page - 1) * products_per_page).limit(products_per_page).all()
+        finance_snapshots = OzonFinanceSnapshot.query.filter_by(period_month=selected_month).order_by(OzonFinanceSnapshot.store_key).all()
+        if selected_store_key != "all":
+            finance_snapshots = [snapshot for snapshot in finance_snapshots if snapshot.store_key == selected_store_key]
+        return render_template("ozon_sales.html", records=records, products=products, today=today.isoformat(), selected_month=selected_month,
+            sales_total=sales_total, cost_total=cost_total, commission_total=commission_total, logistics_total=logistics_total,
+            advertising_total=advertising_total, other_expense_total=other_expense_total, platform_expense_total=platform_expense_total,
+            net_revenue_total=net_revenue_total, profit_total=profit_total, markup=markup,
+            finance_snapshots=finance_snapshots, ozon_products=ozon_products, ozon_product_count=ozon_product_count,
+            product_page=product_page, product_total_pages=product_total_pages, stores=stores, selected_store_key=selected_store_key,
+            selected_store=get_ozon_store(settings, selected_store_key), api_configured=bool(get_ozon_store(settings, selected_store_key) and get_ozon_store(settings, selected_store_key)["api_key"]))
+
+    @app.post("/ozon-satislari/urunleri-senkronize")
+    def sync_ozon_products():
+        selected_month = request.form.get("month", date.today().strftime("%Y-%m"))
+        store_key = request.form.get("store", "")
+        settings = load_ozon_settings(app)
+        store = get_ozon_store(settings, store_key)
+        if not store or not store["client_id"] or not store["api_key"]:
+            flash("Ürünleri çekmek için önce tek bir mağaza seçin ve API bilgilerini kaydedin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key or "all"))
+        try:
+            last_id, listed_items, page_count = "", [], 0
+            while True:
+                response = ozon_api_post(store, "/v3/product/list", {"filter": {"visibility": "ALL"}, "last_id": last_id, "limit": 1000})
+                result = response.get("result", {})
+                page_items = result.get("items", []) if isinstance(result, dict) else []
+                listed_items.extend(page_items)
+                page_count += 1
+                last_id = str(result.get("last_id") or "")
+                if not page_items or not last_id or page_count >= 100:
+                    break
+            product_ids = [item.get("product_id") or item.get("id") for item in listed_items]
+            product_ids = [item for item in product_ids if item is not None]
+            detailed_items = []
+            for index in range(0, len(product_ids), 1000):
+                details = ozon_api_post(store, "/v3/product/info/list", {"product_id": product_ids[index:index + 1000], "offer_id": [], "sku": []})
+                detailed_items.extend(details.get("items") or details.get("result", {}).get("items", []))
+        except urllib.error.HTTPError as error:
+            flash(f"Ozon ürünleri alınamadı (HTTP {error.code}). Bu API anahtarının ürünleri görüntüleme yetkisini kontrol edin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+        except (urllib.error.URLError, TimeoutError):
+            flash("Ozon ürünlerine bağlanılamadı. İnternet bağlantısını kontrol edip tekrar deneyin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+        except (ValueError, json.JSONDecodeError) as error:
+            flash(f"Ozon ürün verisi okunamadı: {error}", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+
+        source_by_id = {str(item.get("product_id") or item.get("id")): item for item in listed_items}
+        added = updated = 0
+        create_database_backup(app, "before_ozon_product_sync")
+        for item in detailed_items:
+            product_id = str(item.get("id") or item.get("product_id") or "")
+            if not product_id:
+                continue
+            source = source_by_id.get(product_id, {})
+            record = OzonProduct.query.filter_by(store_key=store_key, ozon_product_id=product_id).first()
+            values = {
+                "offer_id": str(item.get("offer_id") or source.get("offer_id") or ""),
+                "sku": str(item.get("sku") or source.get("sku") or ""),
+                "name": str(item.get("name") or source.get("name") or "Ürün adı alınamadı"),
+                "current_price": ozon_money_from_item(item, "price", "marketing_price"),
+                "old_price": ozon_money_from_item(item, "old_price"),
+                "marketing_price": ozon_money_from_item(item, "marketing_price"),
+                "is_archived": bool(item.get("is_archived") or source.get("is_archived")),
+                "synced_at": datetime.utcnow(),
+            }
+            if record:
+                for field, value in values.items():
+                    setattr(record, field, value)
+                updated += 1
+            else:
+                db.session.add(OzonProduct(store_key=store_key, ozon_product_id=product_id, cost_unit_price=0, **values))
+                added += 1
+        db.session.commit()
+        flash(f"{store['name']} ürünleri güncellendi: {added} yeni, {updated} mevcut ürün. Maliyet alanları korunmuştur.", "success")
+        return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+
+    @app.post("/ozon-satislari/urunler/<int:product_id>/maliyet")
+    def update_ozon_product_cost(product_id):
+        record = db.get_or_404(OzonProduct, product_id)
+        record.cost_unit_price = parse_money(request.form.get("cost_unit_price"))
+        create_database_backup(app, "before_ozon_product_cost_update")
+        db.session.commit()
+        flash(f"{record.name} için birim maliyet kaydedildi.", "success")
+        return redirect(url_for("ozon_sales", month=request.form.get("month", date.today().strftime("%Y-%m")), store=record.store_key))
+
+    @app.post("/ozon-satislari/satislari-senkronize")
+    def sync_ozon_sales():
+        selected_month = request.form.get("month", date.today().strftime("%Y-%m"))
+        store_key = request.form.get("store", "")
+        try:
+            month_start = datetime.strptime(selected_month, "%Y-%m").date().replace(day=1)
+        except ValueError:
+            flash("Geçerli bir ay seçin.", "error")
+            return redirect(url_for("ozon_sales"))
+        settings = load_ozon_settings(app)
+        store = get_ozon_store(settings, store_key)
+        if not store or not store["client_id"] or not store["api_key"]:
+            flash("Satışları almak için önce tek bir mağaza seçin ve API bilgilerini kaydedin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key or "all"))
+
+        month_end = date(month_start.year, month_start.month, calendar.monthrange(month_start.year, month_start.month)[1])
+        try:
+            operations, page = [], 1
+            while page <= 100:
+                response = ozon_api_post(store, "/v3/finance/transaction/list", {
+                    "filter": {"date": {"from": f"{month_start.isoformat()}T00:00:00.000Z", "to": f"{month_end.isoformat()}T23:59:59.999Z"}, "posting_number": "", "transaction_type": "all"},
+                    "page": page,
+                    "page_size": 1000,
+                })
+                result = response.get("result", {})
+                page_operations = result.get("operations", []) if isinstance(result, dict) else []
+                operations.extend(page_operations)
+                page_count = int(result.get("page_count") or 0) if isinstance(result, dict) else 0
+                if not page_operations or not page_count or page >= page_count:
+                    break
+                page += 1
+        except urllib.error.HTTPError as error:
+            flash(f"Ozon satışları alınamadı (HTTP {error.code}). API anahtarının finans hareketlerini görüntüleme yetkisini kontrol edin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+        except (urllib.error.URLError, TimeoutError):
+            flash("Ozon satışlarına bağlanılamadı. İnternet bağlantısını kontrol edip tekrar deneyin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+        except (ValueError, json.JSONDecodeError) as error:
+            flash(f"Ozon satış verisi okunamadı: {error}", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+
+        products_by_sku = {product.sku: product for product in OzonProduct.query.filter_by(store_key=store_key).all() if product.sku}
+        imported, updated, without_cost = 0, 0, 0
+        create_database_backup(app, "before_ozon_sales_sync")
+        for operation in operations:
+            # Gerçekleşen satış tahakkuklarını alır; iade ve hizmet kesintileri
+            # finans özetinde ayrıca korunur, satış kartlarına kopyalanmaz.
+            accrual = parse_money(operation.get("accruals_for_sale"))
+            if operation.get("type") != "orders" or accrual <= 0:
+                continue
+            operation_id = str(operation.get("operation_id") or "")
+            posting = operation.get("posting") or {}
+            posting_number = str(posting.get("posting_number") or "")
+            if not operation_id or not posting_number:
+                continue
+            items = operation.get("items") or []
+            item_names = [str(item.get("name") or "") for item in items if item.get("name")]
+            item_skus = [str(item.get("sku") or "") for item in items if item.get("sku") is not None]
+            quantity = max(len(items), 1)
+            cost_amount = sum(((products_by_sku.get(sku).cost_unit_price or Decimal("0")) for sku in item_skus if products_by_sku.get(sku)), Decimal("0"))
+            if not cost_amount:
+                without_cost += 1
+            services_amount = sum((abs(parse_money(service.get("price"))) for service in (operation.get("services") or [])), Decimal("0"))
+            existing = OzonSale.query.filter_by(store_key=store_key, external_operation_id=operation_id).first()
+            values = {
+                "sale_date": parse_ozon_operation_date(operation.get("operation_date")),
+                "posting_number": posting_number,
+                "ozon_sku": item_skus[0] if len(item_skus) == 1 else "",
+                "product_name": ", ".join(item_names) or f"Ozon siparişi {posting_number}",
+                "quantity": quantity,
+                "sales_amount": accrual,
+                "commission_amount": abs(parse_money(operation.get("sale_commission"))),
+                "logistics_amount": abs(parse_money(operation.get("delivery_charge"))) + abs(parse_money(operation.get("return_delivery_charge"))),
+                "other_expense_amount": services_amount,
+            }
+            if existing:
+                for field, value in values.items():
+                    setattr(existing, field, value)
+                if (existing.cost_amount or Decimal("0")) <= 0:
+                    existing.cost_amount = cost_amount
+                updated += 1
+            else:
+                db.session.add(OzonSale(store_key=store_key, external_operation_id=operation_id, cost_amount=cost_amount, **values))
+                imported += 1
+        db.session.commit()
+        flash(f"{store['name']} satışları güncellendi: {imported} yeni, {updated} güncellenen kayıt. {without_cost} kaydın ürün maliyeti henüz girilmemiş olabilir.", "success")
+        return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+
+    @app.post("/ozon-satislari/api-ayarlari")
+    def save_ozon_api_settings():
+        month = request.form.get("month", date.today().strftime("%Y-%m"))
+        settings = load_ozon_settings(app)
+        stores = settings["stores"]
+        requested_key = request.form.get("store_key", "new")
+        name = request.form.get("store_name", "").strip()
+        client_id = request.form.get("client_id", "").strip()
+        existing = get_ozon_store(settings, requested_key)
+        api_key = request.form.get("api_key", "").strip() or (existing["api_key"] if existing else "")
+        if requested_key == "new":
+            next_number = len(stores) + 1
+            requested_key = f"magaza-{next_number}"
+            while get_ozon_store(settings, requested_key):
+                next_number += 1
+                requested_key = f"magaza-{next_number}"
+        if not name or not client_id or not api_key:
+            flash("Mağaza adı, Ozon Client ID ve API Key zorunludur.", "error")
+        else:
+            updated = {"key": requested_key, "name": name, "client_id": client_id, "api_key": api_key}
+            stores = [updated if store["key"] == requested_key else store for store in stores]
+            if not existing:
+                stores.append(updated)
+            save_ozon_settings(app, stores)
+            flash(f"{name} için Ozon Seller API bağlantısı kaydedildi.", "success")
+        return redirect(url_for("ozon_sales", month=month, store=requested_key if name else "all"))
+
+    @app.post("/ozon-satislari/senkronize")
+    def sync_ozon_finance():
+        selected_month = request.form.get("month", date.today().strftime("%Y-%m"))
+        store_key = request.form.get("store", "")
+        try:
+            month_start = datetime.strptime(selected_month, "%Y-%m").date().replace(day=1)
+        except ValueError:
+            flash("Geçerli bir ay seçin.", "error")
+            return redirect(url_for("ozon_sales"))
+        settings = load_ozon_settings(app)
+        store = get_ozon_store(settings, store_key)
+        if not store or not store["client_id"] or not store["api_key"]:
+            flash("Önce bu mağaza için Ozon Seller Client ID ve API Key bilgilerini kaydedin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key or "all"))
+
+        month_end = date(month_start.year, month_start.month, calendar.monthrange(month_start.year, month_start.month)[1])
+        payload = {
+            "date": {"from": f"{month_start.isoformat()}T00:00:00.000Z", "to": f"{month_end.isoformat()}T23:59:59.999Z"},
+            "transaction_type": "all",
+        }
+        api_request = urllib.request.Request(
+            "https://api-seller.ozon.ru/v3/finance/transaction/totals",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Client-Id": store["client_id"], "Api-Key": store["api_key"], "Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(api_request, timeout=30) as response:
+                api_response = json.loads(response.read().decode("utf-8"))
+            result = api_response.get("result", {})
+            if not isinstance(result, dict):
+                raise ValueError("Ozon finans özeti beklenen biçimde gelmedi.")
+        except urllib.error.HTTPError as error:
+            flash(f"Ozon bağlantısı reddedildi (HTTP {error.code}). Client ID ve API Key bilgilerini kontrol edin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+        except (urllib.error.URLError, TimeoutError):
+            flash("Ozon'a bağlanılamadı. İnternet bağlantısını kontrol edip tekrar deneyin.", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+        except (ValueError, json.JSONDecodeError) as error:
+            flash(f"Ozon finans verisi okunamadı: {error}", "error")
+            return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+
+        create_database_backup(app, "before_ozon_finance_sync")
+        snapshot_key = f"{store_key}:{selected_month}"
+        snapshot = db.session.get(OzonFinanceSnapshot, snapshot_key) or OzonFinanceSnapshot(report_month=snapshot_key, store_key=store_key, period_month=selected_month)
+        snapshot.sales_accrual = parse_money(result.get("accruals_for_sale"))
+        snapshot.sale_commission = parse_money(result.get("sale_commission"))
+        snapshot.processing_delivery = parse_money(result.get("processing_and_delivery"))
+        snapshot.refunds_cancellations = parse_money(result.get("refunds_and_cancellations"))
+        snapshot.services_amount = parse_money(result.get("services_amount"))
+        snapshot.other_amount = parse_money(result.get("others_amount"))
+        snapshot.money_transfer = parse_money(result.get("money_transfer"))
+        snapshot.synced_at = datetime.utcnow()
+        db.session.add(snapshot)
+        db.session.commit()
+        flash("Ozon aylık finans özeti güncellendi.", "success")
+        return redirect(url_for("ozon_sales", month=selected_month, store=store_key))
+
+    @app.post("/ozon-satislari/<int:sale_id>/sil")
+    def delete_ozon_sale(sale_id):
+        record = db.get_or_404(OzonSale, sale_id)
+        month = record.sale_date.strftime("%Y-%m")
+        create_database_backup(app, "before_ozon_sale_delete")
+        db.session.delete(record)
+        db.session.commit()
+        flash("Ozon satış kaydı silindi.", "success")
+        return redirect(url_for("ozon_sales", month=month, store=record.store_key))
+
     @app.route("/masraflar", methods=["GET", "POST"])
     def expenses():
         if request.method == "POST":
@@ -2169,7 +2689,7 @@ def create_app(test_config=None):
             elif not any(name.strip() for name in names):
                 flash("En az bir sipariş kalemi ekleyin.", "error")
             else:
-                order = Order(order_no=next_order_no(order_type), order_type=order_type, customer_id=customer_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), delivery_city=request.form.get("delivery_city", "").strip() if order_type == "Satın Alma" else None, notes=request.form.get("notes"), status="Bekliyor")
+                order = Order(order_no=next_order_no(order_type), order_type=order_type, customer_id=customer_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), delivery_city=request.form.get("delivery_city", "").strip() if order_type == "Satın Alma" else None, customer_company=request.form.get("customer_company", "").strip() if order_type == "Satın Alma" else None, notes=request.form.get("notes"), status="Bekliyor")
                 db.session.add(order)
                 product_ids = request.form.getlist("product_id[]")
                 variants = request.form.getlist("variant[]")
@@ -2371,6 +2891,7 @@ def create_app(test_config=None):
                 order.order_date = parse_date(request.form.get("order_date")) or order.order_date
                 order.delivery_date = parse_date(request.form.get("delivery_date"))
                 order.delivery_city = request.form.get("delivery_city", "").strip() if order.order_type == "Satın Alma" else None
+                order.customer_company = request.form.get("customer_company", "").strip() if order.order_type == "Satın Alma" else None
                 order.notes = request.form.get("notes", "").strip()
                 previous_costs = {(item.product_id, item.product_name): item.cost_unit_price for item in order.items}
                 order.items.clear()
@@ -2423,7 +2944,7 @@ def create_app(test_config=None):
                 flash("Satın alma siparişine aktarılacak en az bir ürün seçin.", "error")
             else:
                 create_database_backup(app, "before_order_conversion")
-                purchase = Order(order_no=next_order_no("Satın Alma"), order_type="Satın Alma", source_order_id=source_order.id, customer_id=supplier_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), delivery_city=request.form.get("delivery_city", "").strip(), notes=request.form.get("notes", "").strip(), status="Bekliyor")
+                purchase = Order(order_no=next_order_no("Satın Alma"), order_type="Satın Alma", source_order_id=source_order.id, customer_id=supplier_id, order_date=parse_date(request.form.get("order_date")) or date.today(), delivery_date=parse_date(request.form.get("delivery_date")), delivery_city=request.form.get("delivery_city", "").strip(), customer_company=request.form.get("customer_company", "").strip() or source_order.customer.name, notes=request.form.get("notes", "").strip(), status="Bekliyor")
                 for source_item in selected_items:
                     item_id = source_item.id
                     vat_rate = parse_money(request.form.get(f"vat_rate_{item_id}", "10"))
@@ -2633,6 +3154,8 @@ def create_app(test_config=None):
                 db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_order_order_type ON 'order' (order_type)"))
             if "delivery_city" not in order_columns:
                 db.session.execute(text("ALTER TABLE 'order' ADD COLUMN delivery_city VARCHAR(100)"))
+            if "customer_company" not in order_columns:
+                db.session.execute(text("ALTER TABLE 'order' ADD COLUMN customer_company VARCHAR(180)"))
             product_columns = {column["name"] for column in inspect(db.engine).get_columns("product")}
             if "special_code" not in product_columns:
                 db.session.execute(text("ALTER TABLE product ADD COLUMN special_code VARCHAR(160)"))
@@ -2701,6 +3224,23 @@ def create_app(test_config=None):
             if "linked_transaction_id" not in account_columns:
                 db.session.execute(text("ALTER TABLE account_transaction ADD COLUMN linked_transaction_id INTEGER"))
             db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_account_transaction_linked_transaction_id ON account_transaction (linked_transaction_id)"))
+            ozon_sale_columns = {column["name"] for column in inspect(db.engine).get_columns("ozon_sale")}
+            if "store_key" not in ozon_sale_columns:
+                db.session.execute(text("ALTER TABLE ozon_sale ADD COLUMN store_key VARCHAR(60) NOT NULL DEFAULT 'magaza-1'"))
+                db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ozon_sale_store_key ON ozon_sale (store_key)"))
+            if "external_operation_id" not in ozon_sale_columns:
+                db.session.execute(text("ALTER TABLE ozon_sale ADD COLUMN external_operation_id VARCHAR(80)"))
+            db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_ozon_sale_store_operation ON ozon_sale (store_key, external_operation_id)"))
+            # Ozon ürün tablosu db.create_all ile yeni kurulumlarda oluşur.
+            # Eski kurulumlarda da bu bölüm çalıştığında tablo zaten oluşturulmuştur.
+            finance_columns = {column["name"] for column in inspect(db.engine).get_columns("ozon_finance_snapshot")}
+            if "store_key" not in finance_columns:
+                db.session.execute(text("ALTER TABLE ozon_finance_snapshot ADD COLUMN store_key VARCHAR(60) NOT NULL DEFAULT 'magaza-1'"))
+                db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ozon_finance_snapshot_store_key ON ozon_finance_snapshot (store_key)"))
+            if "period_month" not in finance_columns:
+                db.session.execute(text("ALTER TABLE ozon_finance_snapshot ADD COLUMN period_month VARCHAR(7)"))
+                db.session.execute(text("UPDATE ozon_finance_snapshot SET period_month = substr(report_month, -7) WHERE period_month IS NULL"))
+                db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ozon_finance_snapshot_period_month ON ozon_finance_snapshot (period_month)"))
             db.session.commit()
     return app
 

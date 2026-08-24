@@ -80,6 +80,20 @@
         event.target.select();
       }
     });
+    document.addEventListener('click',async event=>{
+      const link=event.target.closest('a[data-native-download]');
+      if(!link || !window.pywebview || !window.pywebview.api || !window.pywebview.api.save_export) return;
+      event.preventDefault();
+      if(link.dataset.exporting==='true') return;
+      const original=link.textContent;
+      link.dataset.exporting='true'; link.textContent='İndiriliyor…'; link.classList.add('is-exporting');
+      try{
+        const result=await window.pywebview.api.save_export(link.pathname+link.search,link.dataset.exportName||'Business-OS-dosya');
+        if(result && result.ok){ link.textContent='İndirildi ✓'; setTimeout(()=>{link.textContent=original;},2200); }
+        else throw new Error((result&&result.error)||'Dosya kaydedilemedi.');
+      }catch(error){ link.textContent='Tekrar Dene'; alert(error.message||'Dosya indirilemedi.'); }
+      finally{ link.dataset.exporting='false'; link.classList.remove('is-exporting'); }
+    });
   </script>
 </body>
 </html>

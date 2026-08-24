@@ -862,6 +862,7 @@ main{margin:0}
 
 .export-excel{background:#edf9f1;border-color:#abd9bc;color:#167242}
 .export-pdf{background:#fff1f0;border-color:#efbbb7;color:#b42318}
+.is-exporting{pointer-events:none;opacity:.72}
 
 
 /* Şahsi hesaplar */
