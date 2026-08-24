@@ -24,6 +24,18 @@ BACKUP_DIR_NAMES = {
 }
 
 
+def active_data_directory(app_dir: Path) -> Path:
+    """Use the native app's persistent data location on both platforms."""
+    configured = os.environ.get("BUSINESSOS_DATA_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Business OS"
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA", Path.home())) / "Business OS"
+    return app_dir / "instance"
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -160,6 +172,11 @@ def stop_businessos(app_dir: Path) -> None:
     if pids:
         raise RuntimeError("BusinessOS güvenli biçimde kapatılamadı. Önce uygulamayı kapatın.")
 
+    native = subprocess.run(["pgrep", "-x", "Business OS"], capture_output=True, text=True, check=False)
+    for value in native.stdout.split():
+        if value.isdigit():
+            os.kill(int(value), signal.SIGTERM)
+
 
 def sqlite_backup(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -169,7 +186,8 @@ def sqlite_backup(source: Path, destination: Path) -> None:
 
 
 def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
-    target = app_dir / "instance" / "business_os.db"
+    data_dir = active_data_directory(app_dir)
+    target = data_dir / "business_os.db"
     report = sqlite_report(backup)
     report_path = verification_report(backup, report)
     backup_hash = sha256(backup)
@@ -193,8 +211,7 @@ def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
     stop_businessos(app_dir)
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     safety_copy = (
-        app_dir
-        / "instance"
+        data_dir
         / "backups"
         / f"business_os_before_drive_restore_{timestamp}.db"
     )

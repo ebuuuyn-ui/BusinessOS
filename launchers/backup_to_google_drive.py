@@ -25,6 +25,18 @@ BACKUP_DIR_NAMES = {
 }
 
 
+def active_data_directory(app_dir: Path) -> Path:
+    """Use the native app's persistent data location on both platforms."""
+    configured = os.environ.get("BUSINESSOS_DATA_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Business OS"
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA", Path.home())) / "Business OS"
+    return app_dir / "instance"
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -105,7 +117,7 @@ def safe_device_name() -> str:
 
 
 def create_backup(app_dir: Path, check_only: bool) -> tuple[Path | None, dict]:
-    source = app_dir / "instance" / "business_os.db"
+    source = active_data_directory(app_dir) / "business_os.db"
     if not source.is_file():
         raise RuntimeError(f"BusinessOS veritabanı bulunamadı: {source}")
     source_report = database_report(source)
