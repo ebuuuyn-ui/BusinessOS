@@ -12,7 +12,7 @@ from werkzeug.serving import make_server
 import webview
 
 APP_NAME = "Business OS"
-EXPORT_PATH = re.compile(r"^/siparisler/(?:\d+/(?:pdf|excel)|excel)$")
+EXPORT_PATH = re.compile(r"^/siparisler/(?:\d+/(?:pdf|excel)|excel(?:/ayrintili)?)$")
 
 def resource_directory() -> Path:
     return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))

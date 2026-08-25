@@ -2673,6 +2673,175 @@ def create_app(test_config=None):
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
+    @app.get("/siparisler/excel/ayrintili")
+    def export_orders_detailed_excel():
+        """Export each filtered order line as a separate row in an Excel file."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+
+        query = request.args.get("q", "").strip()
+        status = request.args.get("status", "").strip()
+        order_type = request.args.get("type", "").strip()
+        customer_id = request.args.get("customer_id", type=int)
+        customer_query = request.args.get("customer_q", "").strip()
+        active_only = request.args.get("active") == "1"
+        delivery_pending = request.args.get("delivery_pending") == "1"
+        selected_customer = db.session.get(Customer, customer_id) if customer_id else None
+
+        records = Order.query.join(Customer)
+        if query:
+            search_value = f"%{normalize_search_text(query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Order.order_no).like(search_value),
+                func.normalize_tr(Customer.name).like(search_value),
+                func.normalize_tr(Customer.code).like(search_value),
+            ))
+        if status:
+            records = records.filter(Order.status == status)
+        if active_only:
+            records = records.filter(~Order.status.in_(["Teslim Edildi", "İptal Edildi"]))
+        if delivery_pending:
+            records = records.filter(Order.status != "İptal Edildi")
+        if order_type in ORDER_TYPES:
+            records = records.filter(Order.order_type == order_type)
+        if selected_customer:
+            records = records.filter(Order.customer_id == selected_customer.id)
+        if customer_query:
+            customer_search_value = f"%{normalize_search_text(customer_query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Customer.name).like(customer_search_value),
+                func.normalize_tr(Customer.code).like(customer_search_value),
+            ))
+        if delivery_pending:
+            all_cashflow_orders = Order.query.filter(Order.status != "İptal Edildi").all()
+            pending_expected = calculate_pending_delivery_amounts(all_cashflow_orders)
+            open_ids = {order.id for order in all_cashflow_orders if pending_expected.get(order.id, 0) > 0}
+            records = records.filter(Order.id.in_(open_ids)) if open_ids else records.filter(db.false())
+
+        listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all() if delivery_pending else records.order_by(Order.order_date.desc(), Order.id.desc()).all()
+        sales_ids = [order.id for order in listed_orders if order.order_type == "Satış"]
+        linked_by_source = {order_id: [] for order_id in sales_ids}
+        if sales_ids:
+            for linked_order in Order.query.filter(Order.source_order_id.in_(sales_ids)).order_by(Order.id).all():
+                linked_by_source[linked_order.source_order_id].append(linked_order)
+        procurement_summaries = {
+            order.id: procurement_summary(order, linked_by_source.get(order.id, []))
+            for order in listed_orders if order.order_type == "Satış"
+        }
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Sipariş Ayrıntıları"
+        sheet.sheet_view.showGridLines = False
+        navy, blue, pale, line = "172033", "2563EB", "EEF4FF", "D8E0EC"
+        headers = [
+            "Tür", "Sipariş No", "Cari", "Sipariş Tarihi", "Teslim Tarihi", "Gönderim İli", "Durum", "Tedarik Durumu",
+            "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim", "Birim Fiyat", "İskonto %", "İskonto Tutarı",
+            "Ara Toplam", "KDV %", "KDV Tutarı", "KDV Dahil Satır Toplamı", "Kalem Notu", "Sipariş Notu",
+        ]
+        last_column = len(headers)
+        sheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_column)
+        sheet["A1"] = "BUSINESS OS - AYRINTILI SİPARİŞ RAPORU"
+        sheet["A1"].font = Font(name="Arial", size=18, bold=True, color="FFFFFF")
+        sheet["A1"].fill = PatternFill("solid", fgColor=navy)
+        sheet["A1"].alignment = Alignment(vertical="center")
+        sheet.row_dimensions[1].height = 32
+        selected_filters = []
+        if order_type in ORDER_TYPES:
+            selected_filters.append(order_type)
+        if status:
+            selected_filters.append(status)
+        if active_only:
+            selected_filters.append("Devam edenler")
+        if delivery_pending:
+            selected_filters.append("Açık tahsilat / ödeme")
+        if query:
+            selected_filters.append(f"Arama: {query}")
+        if selected_customer:
+            selected_filters.append(f"Cari: {selected_customer.name}")
+        elif customer_query:
+            selected_filters.append(f"Cari: {customer_query}")
+        sheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=last_column)
+        sheet["A2"] = f"Oluşturulma: {datetime.now().strftime('%d.%m.%Y %H:%M')} | " + (" · ".join(selected_filters) if selected_filters else "Tüm siparişler")
+        sheet["A2"].font = Font(name="Arial", size=9, color="64748B")
+        header_row = 4
+        thin = Side(style="thin", color=line)
+        for column, header in enumerate(headers, 1):
+            cell = sheet.cell(header_row, column, header)
+            cell.font = Font(name="Arial", size=10, bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=blue)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = Border(bottom=thin)
+        sheet.row_dimensions[header_row].height = 34
+
+        row_no = header_row + 1
+        for order in listed_orders:
+            procurement = procurement_summaries.get(order.id)
+            procurement_label = procurement["label"] if procurement else "—"
+            for item in order.items:
+                gross_amount = (item.unit_price or Decimal("0")) * item.quantity
+                discount_amount = gross_amount - item.net_amount
+                values = [
+                    order.order_type, order.order_no, order.customer.name, order.order_date, order.delivery_date, order.delivery_city or "", order.status, procurement_label,
+                    item.product_name, item.variant or "", item.detail_2 or "", item.detail_3 or "", item.quantity, item.unit, float(item.unit_price or 0),
+                    float(item.discount_rate or 0) / 100, float(discount_amount), float(item.net_amount), float(item.vat_rate or 0) / 100,
+                    float(item.vat_amount), float(item.total_amount), item.note or "", order.notes or "",
+                ]
+                for column, value in enumerate(values, 1):
+                    cell = sheet.cell(row_no, column, value)
+                    cell.font = Font(name="Arial", size=10)
+                    cell.alignment = Alignment(vertical="top", wrap_text=column in (3, 8, 9, 10, 11, 12, 22, 23))
+                    cell.border = Border(bottom=thin)
+                for column in (4, 5):
+                    sheet.cell(row_no, column).number_format = "dd.mm.yyyy"
+                for column in (15, 17, 18, 20, 21):
+                    sheet.cell(row_no, column).number_format = '₺#,##0.00'
+                for column in (16, 19):
+                    sheet.cell(row_no, column).number_format = "0.00%"
+                sheet.row_dimensions[row_no].height = 26
+                row_no += 1
+
+        total_row = row_no + 1
+        data_start, data_end = header_row + 1, row_no - 1
+        sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=17)
+        sheet.cell(total_row, 1, f"TOPLAM ({len(listed_orders)} sipariş / {max(0, data_end - data_start + 1)} kalem)")
+        for column, label in ((18, "Ara Toplam"), (20, "Toplam KDV"), (21, "Genel Toplam")):
+            sheet.cell(total_row, column, label)
+        formula_row = total_row + 1
+        for column in (18, 20, 21):
+            letter = get_column_letter(column)
+            sheet.cell(formula_row, column, f"=SUM({letter}{data_start}:{letter}{data_end})" if data_end >= data_start else 0)
+            sheet.cell(formula_row, column).number_format = '₺#,##0.00'
+        sheet.cell(formula_row, 1, "TUTARLAR")
+        for current_row in (total_row, formula_row):
+            for column in range(1, last_column + 1):
+                sheet.cell(current_row, column).fill = PatternFill("solid", fgColor=pale)
+                sheet.cell(current_row, column).border = Border(top=thin if current_row == total_row else None, bottom=thin if current_row == formula_row else None)
+            sheet.cell(current_row, 1).font = Font(name="Arial", size=10, bold=True, color=navy)
+        for column in (18, 20, 21):
+            sheet.cell(total_row, column).font = Font(name="Arial", size=10, bold=True, color=navy)
+            sheet.cell(formula_row, column).font = Font(name="Arial", size=10, bold=True, color=blue)
+
+        widths = [14, 18, 34, 15, 15, 17, 18, 27, 32, 19, 19, 19, 10, 10, 15, 13, 17, 17, 11, 15, 22, 28, 32]
+        for column, width in enumerate(widths, 1):
+            sheet.column_dimensions[get_column_letter(column)].width = width
+        sheet.freeze_panes = "A5"
+        sheet.auto_filter.ref = f"A{header_row}:{get_column_letter(last_column)}{max(header_row, data_end)}"
+        sheet.print_title_rows = f"1:{header_row}"
+        sheet.page_setup.orientation = "landscape"
+        sheet.page_setup.fitToWidth = 1
+        sheet.sheet_properties.pageSetUpPr.fitToPage = True
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=f"Business-OS-Ayrintili-Siparis-Raporu-{date.today().isoformat()}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
     @app.route("/siparisler/yeni", methods=["GET", "POST"])
     def new_order():
         customers_list = Customer.query.order_by(Customer.name).all()
