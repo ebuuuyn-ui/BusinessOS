@@ -35,7 +35,7 @@ def migrate_legacy_data(destination: Path) -> None:
 class DesktopApi:
     def __init__(self, base_url: str): self.base_url = base_url
     def save_export(self, path: str, fallback_name: str) -> dict:
-        if not EXPORT_PATH.fullmatch(path): return {"ok": False, "error": "Bu dosya dışa aktarma yolu geçerli değil."}
+        if not EXPORT_PATH.fullmatch(path.partition("?")[0]): return {"ok": False, "error": "Bu dosya dışa aktarma yolu geçerli değil."}
         try:
             with urllib.request.urlopen(self.base_url + path, timeout=60) as response:
                 content = response.read(); disposition = response.headers.get("Content-Disposition", "")
