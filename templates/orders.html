@@ -1,25 +1,125 @@
-{% extends 'base.html' %}{% block title %}Siparişler · Business OS{% endblock %}{% block heading %}Siparişler{% endblock %}{% block subheading %}Satış ve satın alma siparişlerini takip edin{% endblock %}{% block header_action %}<a class="button primary" href="{{ url_for('new_order') }}">+ Yeni Sipariş</a>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Siparişler · Business OS{% endblock %}
+{% block heading %}Siparişler{% endblock %}
+{% block subheading %}Satış ve satın alma siparişlerini takip edin{% endblock %}
+{% block header_action %}<a class="button primary" href="{{ url_for('new_order') }}">+ Yeni Sipariş</a>{% endblock %}
 {% block content %}
 <div class="order-tabs">
   <a class="{{ 'active' if not selected_type }}" href="{{ url_for('orders', delivery_pending=1) if delivery_pending else url_for('orders', active=1) if active_only else url_for('orders') }}">{{ 'Açık Tahsilat / Ödemeler' if delivery_pending else 'Devam Edenler' if active_only else 'Tüm Siparişler' }} <b>{{ type_counts.values()|sum }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satış' }}" href="{{ url_for('orders', type='Satış', delivery_pending=1) if delivery_pending else url_for('orders', type='Satış', active=1) if active_only else url_for('orders', type='Satış') }}">Satış Siparişleri <b>{{ type_counts['Satış'] }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satın Alma' }}" href="{{ url_for('orders', type='Satın Alma', delivery_pending=1) if delivery_pending else url_for('orders', type='Satın Alma', active=1) if active_only else url_for('orders', type='Satın Alma') }}">Satın Alma Siparişleri <b>{{ type_counts['Satın Alma'] }}</b></a>
 </div>
+
 <div class="order-status-summary">
   {% for order_type in ['Satış', 'Satın Alma'] %}
   <section class="order-status-summary-group {{ 'purchase' if order_type == 'Satın Alma' }}">
     <div class="order-status-summary-head"><div><h2>{{ order_type }} Siparişleri</h2><p>Duruma göre KDV dâhil sipariş toplamları</p></div><strong>₺{{ status_summary[order_type].values()|sum(attribute='total')|money }}</strong></div>
     <div class="order-status-cards">
       {% for status in statuses %}{% set summary = status_summary[order_type][status] %}
-      <a class="order-status-card {{ 'selected' if selected_type == order_type and selected_status == status }} {{ 'empty-status' if not summary.count }}" href="{{ url_for('orders', type=order_type, status=status) }}">
-        <span>{{ status }}</span><b>₺{{ summary.total|money }}</b><small>{{ summary.count }} sipariş</small>
-      </a>
+      <a class="order-status-card {{ 'selected' if selected_type == order_type and selected_status == status }} {{ 'empty-status' if not summary.count }}" href="{{ url_for('orders', type=order_type, status=status) }}"><span>{{ status }}</span><b>₺{{ summary.total|money }}</b><small>{{ summary.count }} sipariş</small></a>
       {% endfor %}
     </div>
   </section>
   {% endfor %}
 </div>
+
 {% if delivery_pending %}<div class="pending-delivery-banner"><div><b>{{ 'Beklenen Tahsilat' if selected_type == 'Satış' else 'Beklenen Ödeme' if selected_type == 'Satın Alma' else 'Açık Tahsilat ve Ödemeler' }}</b><span>Gelecek siparişler ile sevk/teslim edilmiş açık cari bakiyeler · {{ orders|length }} sipariş</span></div><strong>₺{{ listed_total|money }}</strong></div>{% endif %}
-<div class="panel"><form class="filters">{% if active_only %}<input type="hidden" name="active" value="1">{% endif %}{% if delivery_pending %}<input type="hidden" name="delivery_pending" value="1">{% endif %}<select name="type"><option value="">Tüm sipariş türleri</option>{% for type_name in ['Satış', 'Satın Alma'] %}<option value="{{ type_name }}" {{ 'selected' if selected_type == type_name }}>{{ type_name }} siparişleri</option>{% endfor %}</select><input name="customer_q" list="order-customer-options" value="{{ customer_query }}" placeholder="Cari adı veya kodu ara"><datalist id="order-customer-options">{% for customer in customers %}<option value="{{ customer.name }}">{{ customer.code or '' }}</option>{% endfor %}</datalist><input name="q" value="{{ query }}" placeholder="Sipariş no veya cari ara"><select name="status" {{ 'disabled' if active_only or delivery_pending }}><option value="">{{ 'Teslim bekleyen durumlar' if delivery_pending else 'Devam eden durumlar' if active_only else 'Tüm durumlar' }}</option>{% if not active_only and not delivery_pending %}{% for status in statuses %}<option {{ 'selected' if status == selected_status }}>{{ status }}</option>{% endfor %}{% endif %}</select><button class="button">Filtrele</button>{% if active_only or delivery_pending %}<a class="button" href="{{ url_for('orders') }}">Tümünü Göster</a>{% endif %}<a class="button" href="{{ url_for('export_orders_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">⇩ Excel'e Aktar</a><a class="button" href="{{ url_for('export_orders_detailed_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">⇩ Ayrıntılı Excel</a></form>
-{% if orders %}<div class="table-wrap"><table class="compact-table order-list-table"><thead><tr><th>Tür</th><th>Sipariş No</th><th class="procurement-heading" title="Satış siparişinin satın alma durumu">Tedarik</th><th>Müşteri / Tedarikçi</th><th>Sipariş Tarihi</th><th>Teslim Tarihi</th><th>Toplam Adet</th><th>{{ 'Kalan Tutar' if delivery_pending else 'Tutar' }}</th><th>Durum</th></tr></thead><tbody>{% for order in orders %}{% set procurement = procurement_summaries.get(order.id) %}<tr onclick="location.href='{{ url_for('order_detail', order_id=order.id) }}'"><td><span class="type-badge {{ 'purchase' if order.order_type == 'Satın Alma' }}">{{ order.order_type }}</span></td><td><b>{{ order.order_no }}</b></td><td class="procurement-cell">{% if procurement %}<span class="procurement-indicator {{ procurement.code }}" tabindex="0" title="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet · {{ procurement.active_orders|length }} satın alma siparişi" data-tooltip="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet">{% if procurement.code == 'complete' %}✓{% elif procurement.code == 'partial' %}◐{% else %}!{% endif %}</span>{% else %}<span class="procurement-na">—</span>{% endif %}</td><td>{{ order.customer.name }}</td><td>{{ order.order_date.strftime('%d.%m.%Y') }}</td><td>{{ order.delivery_date.strftime('%d.%m.%Y') if order.delivery_date else '—' }}</td><td>{{ order.total_quantity }}</td><td>{% if delivery_pending %}<b>₺{{ pending_expected.get(order.id, order.total_amount)|money }}</b>{% if pending_expected.get(order.id, order.total_amount) != order.total_amount %}<small class="gross-order-amount">Sipariş: ₺{{ order.total_amount|money }}</small>{% endif %}{% else %}₺{{ order.total_amount|money }}{% endif %}</td><td><span class="badge">{{ order.status }}</span></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty"><h3>Sipariş bulunamadı</h3><p>Bu bölümde henüz kayıt yok veya filtreyle eşleşen sipariş bulunamadı.</p></div>{% endif %}</div>
+
+<div class="panel">
+  <form class="filters">
+    {% if active_only %}<input type="hidden" name="active" value="1">{% endif %}{% if delivery_pending %}<input type="hidden" name="delivery_pending" value="1">{% endif %}
+    <select name="type"><option value="">Tüm sipariş türleri</option>{% for type_name in ['Satış', 'Satın Alma'] %}<option value="{{ type_name }}" {{ 'selected' if selected_type == type_name }}>{{ type_name }} siparişleri</option>{% endfor %}</select>
+    <input name="customer_q" list="order-customer-options" value="{{ customer_query }}" placeholder="Cari adı veya kodu ara">
+    <datalist id="order-customer-options">{% for customer in customers %}<option value="{{ customer.name }}">{{ customer.code or '' }}</option>{% endfor %}</datalist>
+    <input name="q" value="{{ query }}" placeholder="Sipariş no veya cari ara">
+    <select name="status" {{ 'disabled' if active_only or delivery_pending }}><option value="">{{ 'Teslim bekleyen durumlar' if delivery_pending else 'Devam eden durumlar' if active_only else 'Tüm durumlar' }}</option>{% if not active_only and not delivery_pending %}{% for status in statuses %}<option {{ 'selected' if status == selected_status }}>{{ status }}</option>{% endfor %}{% endif %}</select>
+    <button class="button">Filtrele</button>
+    {% if active_only or delivery_pending %}<a class="button" href="{{ url_for('orders') }}">Tümünü Göster</a>{% endif %}
+    <a class="button" href="{{ url_for('export_orders_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">⇩ Excel'e Aktar</a>
+    <a class="button" href="{{ url_for('export_orders_detailed_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">⇩ Ayrıntılı Excel</a>
+  </form>
+
+  {% if orders %}
+  <div class="table-wrap">
+    <table class="compact-table order-list-table">
+      <thead><tr><th>Ayrıntı</th><th>Tür</th><th>Sipariş No</th><th class="procurement-heading" title="Satış siparişinin satın alma durumu">Tedarik</th><th>Müşteri / Tedarikçi</th><th>Sipariş Tarihi</th><th>Teslim Tarihi</th><th>Toplam Adet</th><th>{{ 'Kalan Tutar' if delivery_pending else 'Tutar' }}</th><th>Durum</th></tr></thead>
+      <tbody>
+      {% for order in orders %}{% set procurement = procurement_summaries.get(order.id) %}
+        <tr class="order-summary-row" data-order-row="{{ order.id }}" data-order-detail-target="order-detail-{{ order.id }}" tabindex="0" role="button" aria-expanded="false" aria-controls="order-detail-{{ order.id }}">
+          <td class="order-expand-cell"><button type="button" class="order-expand-button" data-order-detail-toggle aria-label="{{ order.order_no }} ayrıntılarını göster" aria-expanded="false" aria-controls="order-detail-{{ order.id }}"><span aria-hidden="true">⌄</span></button></td>
+          <td><span class="type-badge {{ 'purchase' if order.order_type == 'Satın Alma' }}">{{ order.order_type }}</span></td>
+          <td><b>{{ order.order_no }}</b></td>
+          <td class="procurement-cell">{% if procurement %}<span class="procurement-indicator {{ procurement.code }}" tabindex="0" title="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet · {{ procurement.active_orders|length }} satın alma siparişi" data-tooltip="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet">{% if procurement.code == 'complete' %}✓{% elif procurement.code == 'partial' %}◐{% else %}!{% endif %}</span>{% else %}<span class="procurement-na">—</span>{% endif %}</td>
+          <td>{{ order.customer.name }}</td>
+          <td>{{ order.order_date.strftime('%d.%m.%Y') }}</td>
+          <td>{{ order.delivery_date.strftime('%d.%m.%Y') if order.delivery_date else '—' }}</td>
+          <td>{{ order.total_quantity }}</td>
+          <td>{% if delivery_pending %}<b>₺{{ pending_expected.get(order.id, order.total_amount)|money }}</b>{% if pending_expected.get(order.id, order.total_amount) != order.total_amount %}<small class="gross-order-amount">Sipariş: ₺{{ order.total_amount|money }}</small>{% endif %}{% else %}₺{{ order.total_amount|money }}{% endif %}</td>
+          <td><span class="badge">{{ order.status }}</span></td>
+        </tr>
+        <tr id="order-detail-{{ order.id }}" class="order-inline-detail" hidden>
+          <td colspan="10">
+            <section class="order-inline-detail-card" aria-label="{{ order.order_no }} sipariş ayrıntıları">
+              <div class="order-inline-detail-head">
+                <div><span>Sipariş ayrıntıları</span><strong>{{ order.order_no }} · {{ order.customer.name }}</strong></div>
+                <a href="{{ url_for('order_detail', order_id=order.id) }}" class="order-full-detail-link">Tam siparişi aç <span aria-hidden="true">↗</span></a>
+              </div>
+              <div class="order-inline-items" role="list">
+                {% for item in order.items %}
+                <article class="order-inline-item" role="listitem">
+                  <div class="order-inline-item-title"><b>{{ item.product_name }}</b><span>{{ item.quantity }} {{ item.unit }}</span></div>
+                  <dl class="order-inline-item-meta">
+                    {% if item.variant %}<div><dt>Ayrıntı 1</dt><dd>{{ item.variant }}</dd></div>{% endif %}
+                    {% if item.detail_2 %}<div><dt>Ayrıntı 2</dt><dd>{{ item.detail_2 }}</dd></div>{% endif %}
+                    {% if item.detail_3 %}<div><dt>Ayrıntı 3</dt><dd>{{ item.detail_3 }}</dd></div>{% endif %}
+                    <div><dt>Birim fiyat</dt><dd>₺{{ item.unit_price|money }}</dd></div>
+                    {% if item.discount_rate %}<div><dt>İskonto</dt><dd>%{{ item.discount_rate|money }}</dd></div>{% endif %}
+                    <div><dt>KDV</dt><dd>%{{ item.vat_rate|money }}</dd></div>
+                    <div class="order-inline-item-total"><dt>KDV dâhil</dt><dd>₺{{ item.total_amount|money }}</dd></div>
+                  </dl>
+                </article>
+                {% endfor %}
+              </div>
+              <footer class="order-inline-detail-footer">
+                {% if order.notes %}<p><b>Sipariş notu:</b> {{ order.notes }}</p>{% endif %}
+                <div><span>Ara toplam <b>₺{{ order.net_amount|money }}</b></span><span>KDV <b>₺{{ order.vat_amount|money }}</b></span><strong>Genel toplam ₺{{ order.total_amount|money }}</strong></div>
+              </footer>
+            </section>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}<div class="empty"><h3>Sipariş bulunamadı</h3><p>Bu bölümde henüz kayıt yok veya filtreyle eşleşen sipariş bulunamadı.</p></div>{% endif %}
+</div>
+
+<script>
+  (() => {
+    const rows = document.querySelectorAll('[data-order-row]');
+    const toggle = (row) => {
+      const detail = document.getElementById(row.dataset.orderDetailTarget);
+      const button = row.querySelector('[data-order-detail-toggle]');
+      const opening = row.getAttribute('aria-expanded') !== 'true';
+      row.setAttribute('aria-expanded', String(opening));
+      button.setAttribute('aria-expanded', String(opening));
+      button.setAttribute('aria-label', `${row.cells[2].textContent.trim()} ayrıntılarını ${opening ? 'gizle' : 'göster'}`);
+      detail.hidden = !opening;
+      requestAnimationFrame(() => detail.classList.toggle('is-open', opening));
+    };
+    rows.forEach((row) => {
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('a, button, .procurement-indicator')) return;
+        toggle(row);
+      });
+      row.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault(); toggle(row);
+      });
+      row.querySelector('[data-order-detail-toggle]').addEventListener('click', (event) => {
+        event.stopPropagation(); toggle(row);
+      });
+    });
+  })();
+</script>
 {% endblock %}
