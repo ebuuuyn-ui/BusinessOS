@@ -2902,7 +2902,7 @@ def create_app(test_config=None):
         sheet.sheet_view.showGridLines = False
         sheet.freeze_panes = "A9"
         blue, navy, pale, line = "2563EB", "172033", "EEF4FF", "D8E0EC"
-        sheet.merge_cells("A1:K1")
+        sheet.merge_cells("A1:M1")
         sheet["A1"] = f"BUSINESS OS - {order.order_type.upper()} SİPARİŞİ"
         sheet["A1"].font = Font(name="Arial", size=18, bold=True, color="FFFFFF")
         sheet["A1"].fill = PatternFill("solid", fgColor=navy)
@@ -2919,7 +2919,7 @@ def create_app(test_config=None):
             sheet.cell(row_no, 1, values[0]); sheet.cell(row_no, 2, values[1])
             sheet.cell(row_no, 6, values[2]); sheet.cell(row_no, 7, values[3])
             sheet.merge_cells(start_row=row_no, start_column=2, end_row=row_no, end_column=5)
-            sheet.merge_cells(start_row=row_no, start_column=7, end_row=row_no, end_column=11)
+            sheet.merge_cells(start_row=row_no, start_column=7, end_row=row_no, end_column=13)
             for col in (1, 6):
                 sheet.cell(row_no, col).font = Font(name="Arial", bold=True, color="64748B")
             for col in (2, 7):
@@ -2927,7 +2927,10 @@ def create_app(test_config=None):
         for cell_ref in ("B4", "G4"):
             if hasattr(sheet[cell_ref].value, "year"):
                 sheet[cell_ref].number_format = "dd.mm.yyyy"
-        headers = ["Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim", "Birim Fiyat", "KDV %", "KDV Tutarı", "KDV Dahil Toplam"]
+        headers = [
+            "Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim",
+            "Liste Birim Fiyat", "İskonto %", "İskonto Sonrası Tutar", "KDV %", "KDV Tutarı", "KDV Dahil Toplam",
+        ]
         header_row = 8
         for column, heading in enumerate(headers, 1):
             cell = sheet.cell(header_row, column, heading)
@@ -2939,44 +2942,53 @@ def create_app(test_config=None):
         first_data_row = header_row + 1
         for index, item in enumerate(order.items, 1):
             row_no = header_row + index
-            values = [index, item.product_name, item.variant or "", item.detail_2 or "", item.detail_3 or "", item.quantity, item.unit, float(item.unit_price or 0), float(item.vat_rate or 0) / 100]
+            values = [
+                index, item.product_name, item.variant or "", item.detail_2 or "", item.detail_3 or "", item.quantity,
+                item.unit, float(item.unit_price or 0), float(item.discount_rate or 0) / 100, None, float(item.vat_rate or 0) / 100,
+            ]
             for column, value in enumerate(values, 1):
                 cell = sheet.cell(row_no, column, value)
                 cell.font = Font(name="Arial", size=10)
                 cell.alignment = Alignment(vertical="top", wrap_text=column in (2, 3, 4, 5))
                 cell.border = Border(bottom=thin)
-            sheet.cell(row_no, 10, f"=F{row_no}*H{row_no}*I{row_no}")
-            sheet.cell(row_no, 11, f"=F{row_no}*H{row_no}+J{row_no}")
-            for column in (8, 10, 11):
+            sheet.cell(row_no, 10, f"=F{row_no}*H{row_no}*(1-I{row_no})")
+            sheet.cell(row_no, 12, f"=J{row_no}*K{row_no}")
+            sheet.cell(row_no, 13, f"=J{row_no}+L{row_no}")
+            for column in (8, 10, 12, 13):
                 sheet.cell(row_no, column).number_format = '₺#,##0.00'
-            sheet.cell(row_no, 9).number_format = "0.00%"
+            for column in (9, 11):
+                sheet.cell(row_no, column).number_format = "0.00%"
             sheet.row_dimensions[row_no].height = 30
         last_data_row = header_row + len(order.items)
         total_row = last_data_row + 2
         sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=7)
-        sheet.cell(total_row, 8, "Ara Toplam")
-        sheet.cell(total_row, 11, f"=SUMPRODUCT(F{first_data_row}:F{last_data_row},H{first_data_row}:H{last_data_row})")
-        sheet.cell(total_row + 1, 8, "Toplam KDV")
-        sheet.cell(total_row + 1, 11, f"=SUM(J{first_data_row}:J{last_data_row})")
-        sheet.cell(total_row + 2, 8, "Genel Toplam")
-        sheet.cell(total_row + 2, 11, f"=SUM(K{first_data_row}:K{last_data_row})")
-        for row_no in range(total_row, total_row + 3):
-            sheet.merge_cells(start_row=row_no, start_column=8, end_row=row_no, end_column=10)
+        total_lines = [
+            ("Liste Fiyatı Toplamı", f"=SUMPRODUCT(F{first_data_row}:F{last_data_row},H{first_data_row}:H{last_data_row})"),
+            ("Toplam İskonto", f"=SUMPRODUCT(F{first_data_row}:F{last_data_row},H{first_data_row}:H{last_data_row},I{first_data_row}:I{last_data_row})"),
+            ("İskonto Sonrası Ara Toplam", f"=SUM(J{first_data_row}:J{last_data_row})"),
+            ("Toplam KDV", f"=SUM(L{first_data_row}:L{last_data_row})"),
+            ("KDV Dahil Genel Toplam", f"=SUM(M{first_data_row}:M{last_data_row})"),
+        ]
+        for offset, (label, formula) in enumerate(total_lines):
+            row_no = total_row + offset
+            sheet.merge_cells(start_row=row_no, start_column=8, end_row=row_no, end_column=12)
+            sheet.cell(row_no, 8, label)
+            sheet.cell(row_no, 13, formula)
             sheet.cell(row_no, 8).font = Font(name="Arial", bold=True, color=navy)
-            sheet.cell(row_no, 11).font = Font(name="Arial", bold=True, color=blue, size=12 if row_no == total_row + 2 else 10)
-            sheet.cell(row_no, 11).number_format = '₺#,##0.00'
-            sheet.cell(row_no, 8).fill = sheet.cell(row_no, 11).fill = PatternFill("solid", fgColor=pale)
+            sheet.cell(row_no, 13).font = Font(name="Arial", bold=True, color=blue, size=12 if offset == len(total_lines) - 1 else 10)
+            sheet.cell(row_no, 13).number_format = '₺#,##0.00'
+            sheet.cell(row_no, 8).fill = sheet.cell(row_no, 13).fill = PatternFill("solid", fgColor=pale)
         if order.notes:
-            note_row = total_row + 4
-            sheet.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=11)
+            note_row = total_row + len(total_lines) + 1
+            sheet.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=13)
             sheet.cell(note_row, 1, f"Sipariş Notu: {order.notes}")
             sheet.cell(note_row, 1).alignment = Alignment(wrap_text=True, vertical="top")
             sheet.cell(note_row, 1).fill = PatternFill("solid", fgColor="FFF8E8")
             sheet.row_dimensions[note_row].height = 36
-        widths = [7, 30, 18, 18, 18, 10, 10, 15, 10, 15, 18]
+        widths = [7, 30, 18, 18, 18, 10, 10, 16, 11, 19, 10, 15, 18]
         for column, width in enumerate(widths, 1):
             sheet.column_dimensions[chr(64 + column)].width = width
-        sheet.auto_filter.ref = f"A8:K{last_data_row}"
+        sheet.auto_filter.ref = f"A8:M{last_data_row}"
         sheet.print_title_rows = "1:8"
         sheet.page_setup.orientation = "landscape"
         sheet.page_setup.fitToWidth = 1
@@ -3021,15 +3033,33 @@ def create_app(test_config=None):
         info_table = Table(info_data, colWidths=[28*mm, 70*mm, 28*mm, 125*mm])
         info_table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#EEF4FF")),("BACKGROUND",(2,0),(2,-1),colors.HexColor("#EEF4FF")),("FONTNAME",(0,0),(-1,-1),font_name),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
         story.extend([info_table, Spacer(1, 5*mm)])
-        headers = ["Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim", "Birim Fiyat", "KDV %", "KDV", "Toplam"]
+        headers = [
+            "Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim",
+            "Liste Fiyat", "İskonto %", "İskonto Sonrası", "KDV %", "KDV", "Toplam",
+        ]
         data = [[Paragraph(value, header_style) for value in headers]]
         money_text = lambda value: f"TL {Decimal(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        percentage_text = lambda value: f"%{Decimal(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         for index, item in enumerate(order.items, 1):
-            data.append([Paragraph(str(index), body_style), Paragraph(item.product_name, body_style), Paragraph(item.variant or "-", body_style), Paragraph(item.detail_2 or "-", body_style), Paragraph(item.detail_3 or "-", body_style), Paragraph(str(item.quantity), right_style), Paragraph(item.unit, body_style), Paragraph(money_text(item.unit_price or 0), right_style), Paragraph(f"%{item.vat_rate}", right_style), Paragraph(money_text(item.vat_amount), right_style), Paragraph(money_text(item.total_amount), right_style)])
-        item_table = Table(data, repeatRows=1, colWidths=[10*mm, 44*mm, 29*mm, 29*mm, 29*mm, 13*mm, 15*mm, 24*mm, 15*mm, 23*mm, 25*mm])
+            data.append([
+                Paragraph(str(index), body_style), Paragraph(item.product_name, body_style), Paragraph(item.variant or "-", body_style),
+                Paragraph(item.detail_2 or "-", body_style), Paragraph(item.detail_3 or "-", body_style), Paragraph(str(item.quantity), right_style),
+                Paragraph(item.unit, body_style), Paragraph(money_text(item.unit_price or 0), right_style),
+                Paragraph(percentage_text(item.discount_rate), right_style), Paragraph(money_text(item.net_amount), right_style),
+                Paragraph(percentage_text(item.vat_rate), right_style), Paragraph(money_text(item.vat_amount), right_style), Paragraph(money_text(item.total_amount), right_style),
+            ])
+        item_table = Table(data, repeatRows=1, colWidths=[9*mm, 33*mm, 19*mm, 19*mm, 20*mm, 10*mm, 13*mm, 20*mm, 14*mm, 22*mm, 13*mm, 19*mm, 22*mm])
         item_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#2563EB")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONTNAME",(0,0),(-1,-1),font_name),("VALIGN",(0,0),(-1,-1),"TOP"),("LINEBELOW",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8FAFC")]),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
         story.extend([item_table, Spacer(1, 4*mm)])
-        totals = [[Paragraph("Ara Toplam", body_bold), Paragraph(money_text(order.net_amount), right_style)], [Paragraph("Toplam KDV", body_bold), Paragraph(money_text(order.vat_amount), right_style)], [Paragraph("KDV Dahil Genel Toplam", body_bold), Paragraph(money_text(order.total_amount), right_style)]]
+        list_total = sum(((item.unit_price or Decimal("0")) * item.quantity for item in order.items), Decimal("0"))
+        discount_total = list_total - order.net_amount
+        totals = [
+            [Paragraph("Liste Fiyatı Toplamı", body_bold), Paragraph(money_text(list_total), right_style)],
+            [Paragraph("Toplam İskonto", body_bold), Paragraph(money_text(discount_total), right_style)],
+            [Paragraph("İskonto Sonrası Ara Toplam", body_bold), Paragraph(money_text(order.net_amount), right_style)],
+            [Paragraph("Toplam KDV", body_bold), Paragraph(money_text(order.vat_amount), right_style)],
+            [Paragraph("KDV Dahil Genel Toplam", body_bold), Paragraph(money_text(order.total_amount), right_style)],
+        ]
         totals_table = Table(totals, colWidths=[55*mm, 38*mm], hAlign="RIGHT")
         totals_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),colors.HexColor("#EEF4FF")),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("FONTNAME",(0,0),(-1,-1),font_name),("LEFTPADDING",(0,0),(-1,-1),6),("RIGHTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
         story.append(totals_table)
