@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Telegram Belgeleri · Business OS{% endblock %}
+{% block heading %}Telegram Belgeleri{% endblock %}
+{% block subheading %}Bot üzerinden gelen fatura ve görselleri siparişe bağlayın{% endblock %}
+{% block header_action %}<form method="post" action="{{ url_for('refresh_telegram_documents') }}"><button class="button primary">↻ Telegram’ı Kontrol Et</button></form>{% endblock %}
+{% block content %}
+<section class="panel telegram-status-card">
+  <div>
+    <h2>@BOS_FaturaBot</h2>
+    {% if configured and paired %}
+      <p><b class="status-good">Bağlandı</b> · Bot bu Telegram hesabından PDF ve görsel kabul etmeye hazır.</p>
+    {% elif configured %}
+      <p>Bot anahtarı bu Mac’te saklanıyor. Eşleştirmek için bota aşağıdaki kodu bir kez gönderin.</p>
+    {% else %}
+      <p>Bot anahtarı henüz bu Mac’te bulunamadı.</p>
+    {% endif %}
+  </div>
+  {% if configured and not paired %}
+    <div class="telegram-pairing"><small>Eşleştirme kodu</small><strong>{{ pairing_code }}</strong><span>Telegram’da bota yalnızca bu kodu gönderin.</span></div>
+  {% endif %}
+</section>
+
+<section class="panel telegram-inbox">
+  <div class="panel-head"><div><h2>Gelen Belgeler</h2><p>{{ documents|length }} belge sipariş eşleştirmesi bekliyor</p></div></div>
+  {% if documents %}
+    <div class="telegram-document-list">
+      {% for item in documents %}
+        <article class="telegram-document-row">
+          <div class="telegram-file-mark">{{ 'PDF' if item.original_name.lower().endswith('.pdf') else 'Görsel' }}</div>
+          <div class="telegram-document-meta">
+            <b>{{ item.original_name }}</b>
+            <small>{{ item.received_at.strftime('%d.%m.%Y %H:%M') }} · {{ '%.1f'|format(item.size_bytes / 1024 / 1024) }} MB{% if item.caption %} · {{ item.caption }}{% endif %}</small>
+          </div>
+          <div class="telegram-document-actions">
+            <a class="button small" href="{{ url_for('view_telegram_document', incoming_id=item.id) }}" target="_blank" rel="noopener">Aç</a>
+            <a class="button small" href="{{ url_for('download_telegram_document', incoming_id=item.id) }}" data-native-download data-export-name="{{ item.original_name }}">İndir</a>
+            <form method="post" action="{{ url_for('delete_telegram_document', incoming_id=item.id) }}" onsubmit="return confirm('Bu bekleyen belge silinsin mi?')"><button class="button small danger" type="submit">Sil</button></form>
+          </div>
+          <form method="post" action="{{ url_for('link_telegram_document', incoming_id=item.id) }}" class="telegram-link-form">
+            <input name="order_no" list="telegram-order-list" value="{{ item.suggested_order.order_no if item.suggested_order else '' }}" placeholder="SS-2026-00001" required>
+            <select name="document_type">{% for document_type in order_document_types %}<option value="{{ document_type }}">{{ document_type }}</option>{% endfor %}</select>
+            <button class="button primary small" type="submit">Siparişe Bağla</button>
+          </form>
+        </article>
+      {% endfor %}
+    </div>
+    <datalist id="telegram-order-list">{% for order in orders %}<option value="{{ order.order_no }}">{{ order.customer.name }}</option>{% endfor %}</datalist>
+  {% else %}
+    <div class="empty-state compact-empty"><b>Henüz bekleyen belge yok.</b><span>Telegram’da dosyayı @BOS_FaturaBot’a gönderin, sonra “Telegram’ı Kontrol Et”e basın.</span></div>
+  {% endif %}
+</section>
+{% endblock %}

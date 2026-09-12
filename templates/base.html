@@ -4,20 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Business OS{% endblock %}</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='ios-20260813-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='ios-20260831-5') }}">
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>
       <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}"><i class="nav-icon">⌂</i><span>Ana Sayfa</span></a>
-      <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}"><i class="nav-icon">▤</i><span>Siparişler</span></a>
-      <a class="{{ 'active' if request.endpoint in ['customers','customer_detail','customer_account','quick_collection','quick_payment'] }}" href="{{ url_for('customers') }}"><i class="nav-icon">♙</i><span>Cariler</span></a>
-      <a class="{{ 'active' if request.endpoint == 'products' }}" href="{{ url_for('products') }}"><i class="nav-icon">□</i><span>Ürünler</span></a>
-      <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}"><i class="nav-icon">₺</i><span>Masraflar</span></a>
-      <a class="{{ 'active' if request.endpoint == 'profitability' }}" href="{{ url_for('profitability') }}"><i class="nav-icon">↗</i><span>Kâr / Zarar</span></a>
-      <a class="{{ 'active' if request.endpoint == 'financial_statements' }}" href="{{ url_for('financial_statements') }}"><i class="nav-icon">▥</i><span>Mali Tablolar</span></a>
-      <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}"><i class="nav-icon">▣</i><span>Kasa & Çekler</span></a>
+      <details class="nav-group {{ 'has-active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase','invoices','invoice_detail','delete_invoice','telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document','earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}" {{ 'open' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase','invoices','invoice_detail','delete_invoice','telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document','earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}>
+        <summary><i class="nav-icon">▤</i><span>Siparişler</span><b class="nav-chevron">⌄</b></summary>
+        <div class="nav-sub">
+          <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}">Tüm Siparişler</a>
+          <a class="{{ 'active' if request.endpoint in ['invoices','invoice_detail','delete_invoice'] }}" href="{{ url_for('invoices') }}">Faturalar</a>
+          <a class="{{ 'active' if request.endpoint in ['telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document'] }}" href="{{ url_for('telegram_documents') }}">Telegram Belgeleri</a>
+          <a class="{{ 'active' if request.endpoint in ['earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}" href="{{ url_for('earchive_documents') }}">E-Arşiv Faturaları</a>
+        </div>
+      </details>
+      <details class="nav-group {{ 'has-active' if request.endpoint in ['customers','customer_detail','customer_account','quick_collection','quick_payment','collection_tracking','customer_total_movements'] }}" {{ 'open' if request.endpoint in ['customers','customer_detail','customer_account','quick_collection','quick_payment','collection_tracking','customer_total_movements'] }}>
+        <summary><i class="nav-icon">♙</i><span>Cariler</span><b class="nav-chevron">⌄</b></summary>
+        <div class="nav-sub">
+          <a class="{{ 'active' if request.endpoint in ['customers','customer_detail','customer_account','quick_collection','quick_payment'] }}" href="{{ url_for('customers') }}">Tüm Cariler</a>
+          <a class="{{ 'active' if request.endpoint == 'collection_tracking' }}" href="{{ url_for('collection_tracking') }}">Tahsilat Takibi</a>
+          <a class="{{ 'active' if request.endpoint == 'customer_total_movements' }}" href="{{ url_for('customer_total_movements') }}">Cari Toplam Hareket Bakiyeleri</a>
+        </div>
+      </details>
+      <a class="{{ 'active' if request.endpoint in ['products','edit_product','toggle_product_selection','import_products','product_catalog','product_price_list'] }}" href="{{ url_for('products') }}"><i class="nav-icon">□</i><span>Stoklar</span></a>
+      <details class="nav-group {{ 'has-active' if request.endpoint in ['expenses','edit_expense','profitability','financial_statements','treasury'] }}" {{ 'open' if request.endpoint in ['expenses','edit_expense','profitability','financial_statements','treasury'] }}>
+        <summary><i class="nav-icon">₺</i><span>Finans</span><b class="nav-chevron">⌄</b></summary>
+        <div class="nav-sub">
+          <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}">Masraflar</a>
+          <a class="{{ 'active' if request.endpoint == 'profitability' }}" href="{{ url_for('profitability') }}">Kâr / Zarar</a>
+          <a class="{{ 'active' if request.endpoint == 'financial_statements' }}" href="{{ url_for('financial_statements') }}">Mali Tablolar</a>
+          <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}">Kasa & Çekler</a>
+        </div>
+      </details>
       <a class="{{ 'active' if request.endpoint == 'personal_finance' }}" href="{{ url_for('personal_finance') }}"><i class="nav-icon">◆</i><span>Şahsi Hesaplar</span></a>
       <a class="{{ 'active' if request.endpoint in ['backups','download_current_backup','download_backup'] }}" href="{{ url_for('backups') }}"><i class="nav-icon">↻</i><span>Yedekler</span></a>
     </nav>
@@ -25,12 +45,185 @@
   </aside>
   <main>
     <header class="topbar"><button class="menu" onclick="document.body.classList.toggle('nav-open')">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div>{% block header_action %}{% endblock %}</header>
-    <section class="content">
-      {% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}{% endwith %}
+    <div class="workspace-tabs" id="workspace-tabs" aria-label="Açık çalışma sekmeleri" hidden></div>
+    <div class="workspace-stage" id="workspace-stage" hidden></div>
+    <section class="content" id="workspace-source">
+      {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="toast-stack" aria-live="polite">{% for category, message in messages %}<div class="flash toast {{ category }}" role="status">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}
       {% block content %}{% endblock %}
     </section>
   </main>
   <script>
+    (function setupWorkspaceTabs(){
+      const inWorkspaceFrame=window.top!==window;
+      const workspaceParam='_workspace_tab';
+      const isInternalPageLink=link=>{
+        if(!link || link.target || link.hasAttribute('download') || link.dataset.nativeDownload!==undefined || link.dataset.nativeShare!==undefined || link.dataset.nativeWhatsapp!==undefined) return false;
+        const href=link.getAttribute('href');
+        if(!href || href.startsWith('#') || href.startsWith('javascript:')) return false;
+        const url=new URL(link.href,window.location.href);
+        return url.origin===window.location.origin;
+      };
+      const cleanUrl=raw=>{
+        const url=new URL(raw,window.location.href);
+        url.searchParams.delete(workspaceParam);
+        return url.pathname+url.search+url.hash;
+      };
+      if(inWorkspaceFrame){
+        document.body.classList.add('workspace-embedded');
+        const pendingNativeActions=new Map();
+        window.addEventListener('message',event=>{
+          if(event.origin!==window.location.origin || event.data?.type!=='businessos-workspace-native-result') return;
+          const pending=pendingNativeActions.get(event.data.requestId); if(!pending) return;
+          pendingNativeActions.delete(event.data.requestId);
+          if(event.data.result?.ok){
+            pending.link.textContent=event.data.kind==='whatsapp'?'WhatsApp Açıldı ✓':event.data.kind==='share'?'Paylaşım Açıldı ✓':'İndirildi ✓';
+            setTimeout(()=>{pending.link.textContent=pending.original;},2200);
+          }else{pending.link.textContent='Tekrar Dene'; alert(event.data.result?.error||'İşlem tamamlanamadı.');}
+        });
+        document.addEventListener('click',event=>{
+          const link=event.target.closest('a[data-native-whatsapp],a[data-native-share],a[data-native-download]');
+          if(!link) return;
+          const kind=link.dataset.nativeWhatsapp!==undefined?'whatsapp':link.dataset.nativeShare!==undefined?'share':'download';
+          const requestId=`native-${Date.now()}-${Math.random()}`;
+          event.preventDefault(); event.stopImmediatePropagation();
+          pendingNativeActions.set(requestId,{link,original:link.textContent}); link.textContent='Hazırlanıyor…';
+          window.parent.postMessage({type:'businessos-workspace-native',kind,requestId,path:link.pathname+link.search,name:link.dataset.exportName||'Business-OS-dosya'},window.location.origin);
+        },true);
+        document.addEventListener('click',event=>{
+          const reloadButton=event.target.closest('[data-workspace-reload]');
+          if(reloadButton){
+            event.preventDefault(); event.stopImmediatePropagation();
+            window.parent.postMessage({type:'businessos-workspace-reload'},window.location.origin);
+            return;
+          }
+          const closeButton=event.target.closest('[data-workspace-close]');
+          if(closeButton){
+            event.preventDefault(); event.stopImmediatePropagation();
+            window.parent.postMessage({type:'businessos-workspace-close'},window.location.origin);
+            return;
+          }
+          const balance=event.target.closest('.customer-balance');
+          const customerCard=balance?.closest('a.record-card[href*="/musteriler/"]');
+          const customerMatch=customerCard?.pathname.match(/^\/musteriler\/(\d+)$/);
+          if(customerMatch){
+            event.preventDefault();
+            window.parent.postMessage({type:'businessos-workspace-navigate',url:`/musteriler/${customerMatch[1]}/cari-hesap`,title:'Cari Hesap Hareketleri'},window.location.origin);
+            return;
+          }
+          const link=event.target.closest('a');
+          if(!isInternalPageLink(link)) return;
+          event.preventDefault();
+          const isOrdersReturn=link.textContent.includes('Siparişlere Dön')&&link.pathname==='/siparisler';
+          window.parent.postMessage({type:link.dataset.workspaceNewTab!==undefined?'businessos-workspace-open':'businessos-workspace-navigate',url:isOrdersReturn?'/siparisler':cleanUrl(link.href),title:link.textContent.trim()},window.location.origin);
+        },true);
+        return;
+      }
+      const source=document.querySelector('#workspace-source');
+      const tabs=document.querySelector('#workspace-tabs');
+      const stage=document.querySelector('#workspace-stage');
+      if(!source || !tabs || !stage) return;
+      const pages=new Map(); let activeId=''; let nextId=0;
+      const pageTitle=()=>document.querySelector('.topbar b')?.textContent.trim()||'Business OS';
+      const frameUrl=url=>{
+        const target=new URL(url,window.location.href); target.searchParams.set(workspaceParam,'1');
+        return target.pathname+target.search+target.hash;
+      };
+      const activate=id=>{
+        const page=pages.get(id); if(!page) return;
+        activeId=id;
+        pages.forEach(item=>{item.frame.hidden=item.id!==id; item.tab.classList.toggle('active',item.id===id);});
+      };
+      const close=id=>{
+        if(pages.size===1) return;
+        const page=pages.get(id); if(!page) return;
+        const wasActive=id===activeId;
+        const fallback=[...pages.keys()].find(key=>key!==id);
+        page.tab.remove(); page.frame.remove(); pages.delete(id);
+        if(wasActive) activate(fallback);
+      };
+      const open=(rawUrl,title)=>{
+        const url=cleanUrl(rawUrl);
+        const existing=[...pages.values()].find(page=>page.url===url);
+        if(existing){activate(existing.id); return;}
+        const id=`workspace-${++nextId}`;
+        const tab=document.createElement('button'); tab.type='button'; tab.className='workspace-tab';
+        const label=document.createElement('span'); label.textContent=title||'Yeni sekme';
+        const closeButton=document.createElement('span'); closeButton.className='workspace-tab-close'; closeButton.textContent='×'; closeButton.title='Sekmeyi kapat'; closeButton.setAttribute('aria-label','Sekmeyi kapat');
+        tab.append(label,closeButton); tabs.append(tab);
+        const frame=document.createElement('iframe'); frame.className='workspace-frame'; frame.title=title||'Business OS'; frame.src=frameUrl(url); frame.hidden=true; stage.append(frame);
+        const page={id,url,tab,frame,label}; pages.set(id,page);
+        tab.addEventListener('click',event=>{if(event.target===closeButton) close(id); else activate(id);});
+        frame.addEventListener('load',()=>{try{const heading=frame.contentDocument.querySelector('.topbar b')?.textContent.trim(); if(heading){label.textContent=heading; frame.title=heading;}}catch(_error){}});
+        activate(id);
+      };
+      window.BusinessOSWorkspace={open};
+      window.addEventListener('message',event=>{
+        if(event.origin!==window.location.origin) return;
+        if(event.data?.type==='businessos-workspace-open'){
+          open(event.data.url,event.data.title); return;
+        }
+        if(event.data?.type==='businessos-workspace-navigate'){
+          const page=[...pages.values()].find(item=>item.frame.contentWindow===event.source);
+          if(!page) return;
+          page.url=cleanUrl(event.data.url);
+          page.frame.src=frameUrl(page.url);
+          activate(page.id);
+          return;
+        }
+        if(event.data?.type==='businessos-workspace-reload'){
+          const page=[...pages.values()].find(item=>item.frame.contentWindow===event.source);
+          if(page){page.frame.src=frameUrl(page.url);activate(page.id)}
+          return;
+        }
+        if(event.data?.type==='businessos-workspace-invoice-saved'){
+          const source=[...pages.values()].find(item=>item.frame.contentWindow===event.source);
+          const listing=[...pages.values()].find(item=>item!==source&&new URL(item.url,window.location.href).pathname==='/faturalar'&&new URL(item.url,window.location.href).searchParams.get('entry')!=='1');
+          if(listing){listing.frame.src=frameUrl(listing.url);activate(listing.id);if(source)close(source.id)}
+          else if(source){source.url='/faturalar';source.frame.src=frameUrl(source.url);activate(source.id)}
+          return;
+        }
+        if(event.data?.type==='businessos-workspace-close'){
+          const page=[...pages.values()].find(item=>item.frame.contentWindow===event.source);
+          if(page) close(page.id);
+          return;
+        }
+        if(event.data?.type==='businessos-workspace-native'){
+          const api=window.pywebview?.api;
+          const method={download:'save_export',share:'share_export',whatsapp:'whatsapp_export'}[event.data.kind];
+          Promise.resolve(api&&method&&api[method] ? api[method](event.data.path,event.data.name) : {ok:false,error:'Bu işlem uygulama içinde kullanılamıyor.'})
+            .then(result=>event.source.postMessage({type:'businessos-workspace-native-result',requestId:event.data.requestId,kind:event.data.kind,result},event.origin))
+            .catch(error=>event.source.postMessage({type:'businessos-workspace-native-result',requestId:event.data.requestId,kind:event.data.kind,result:{ok:false,error:error.message||'İşlem tamamlanamadı.'}},event.origin));
+        }
+      });
+      document.addEventListener('click',event=>{
+        const reloadButton=event.target.closest('[data-workspace-reload]');
+        if(reloadButton){event.preventDefault();window.location.reload();return;}
+        const closeButton=event.target.closest('[data-workspace-close]');
+        if(closeButton){
+          event.preventDefault();
+          if(window.history.length>1) window.history.back();
+          return;
+        }
+        const link=event.target.closest('a');
+        if(!isInternalPageLink(link)) return;
+        event.preventDefault(); open(link.textContent.includes('Siparişlere Dön')&&link.pathname==='/siparisler'?'/siparisler':link.href,link.textContent.trim());
+      },true);
+      tabs.hidden=false; stage.hidden=false; source.hidden=true;
+      open(window.location.href,pageTitle());
+    })();
+
+    (function addCustomerAccountAction(){
+      const heading=[...document.querySelectorAll('.info-list h2')].find(item=>item.textContent.trim()==='Müşteri Bilgileri');
+      if(!heading || document.querySelector('.customer-account-inline-action, .customer-card-actions')) return;
+      const match=location.pathname.match(/^\/musteriler\/(\d+)$/);
+      if(!match) return;
+      const action=document.createElement('a');
+      action.className='button customer-account-inline-action';
+      action.href=`/musteriler/${match[1]}/cari-hesap`;
+      action.textContent='Tüm Hesap Hareketleri';
+      heading.insertAdjacentElement('afterend',action);
+    })();
+
     function prepareNumericInput(input){
       if(!input || !input.matches('input[type="number"]')) return;
       input.dataset.numericInput='true';
@@ -61,6 +254,8 @@
       if(input && input.matches('input[data-numeric-input="true"]')) requestAnimationFrame(()=>input.select());
     }
     document.querySelectorAll('input[type="number"]').forEach(prepareNumericInput);
+    // Existing database values remain "Banka" while users see the clearer label.
+    document.querySelectorAll('select[name="payment_method"] option[value="Banka"]').forEach(option=>{ option.textContent='Banka Havalesi'; });
     new MutationObserver(mutations=>mutations.forEach(mutation=>mutation.addedNodes.forEach(node=>{
       if(node.nodeType!==1) return;
       if(node.matches && node.matches('input[type="number"]')) prepareNumericInput(node);
@@ -81,6 +276,36 @@
       }
     });
     document.addEventListener('click',async event=>{
+      const whatsappLink=event.target.closest('a[data-native-whatsapp]');
+      if(whatsappLink && window.pywebview && window.pywebview.api && window.pywebview.api.whatsapp_export){
+        event.preventDefault();
+        if(whatsappLink.dataset.sharing==='true') return;
+        const original=whatsappLink.textContent;
+        whatsappLink.dataset.sharing='true'; whatsappLink.textContent='WhatsApp Açılıyor…'; whatsappLink.classList.add('is-exporting');
+        try{
+          const result=await window.pywebview.api.whatsapp_export(whatsappLink.pathname+whatsappLink.search,whatsappLink.dataset.exportName||'Business-OS-Siparis.pdf');
+          if(!result || !result.ok) throw new Error((result&&result.error)||'WhatsApp açılamadı.');
+          whatsappLink.textContent='WhatsApp Açıldı ✓';
+          setTimeout(()=>{whatsappLink.textContent=original;},2600);
+        }catch(error){whatsappLink.textContent='Tekrar Dene'; alert(error.message||'WhatsApp açılamadı.');}
+        finally{whatsappLink.dataset.sharing='false'; whatsappLink.classList.remove('is-exporting');}
+        return;
+      }
+      const shareLink=event.target.closest('a[data-native-share]');
+      if(shareLink && window.pywebview && window.pywebview.api && window.pywebview.api.share_export){
+        event.preventDefault();
+        if(shareLink.dataset.sharing==='true') return;
+        const original=shareLink.textContent;
+        shareLink.dataset.sharing='true'; shareLink.textContent='Hazırlanıyor…'; shareLink.classList.add('is-exporting');
+        try{
+          const result=await window.pywebview.api.share_export(shareLink.pathname+shareLink.search,shareLink.dataset.exportName||'Business-OS-Siparis.pdf');
+          if(!result || !result.ok) throw new Error((result&&result.error)||'PDF hazırlanamadı.');
+          shareLink.textContent=result.shared ? 'Paylaşım Açıldı ✓' : 'PDF Hazır ✓';
+          setTimeout(()=>{shareLink.textContent=original;},2200);
+        }catch(error){shareLink.textContent='Tekrar Dene'; alert(error.message||'PDF hazırlanamadı.');}
+        finally{shareLink.dataset.sharing='false'; shareLink.classList.remove('is-exporting');}
+        return;
+      }
       const link=event.target.closest('a[data-native-download]');
       if(!link || !window.pywebview || !window.pywebview.api || !window.pywebview.api.save_export) return;
       event.preventDefault();
@@ -94,6 +319,15 @@
       }catch(error){ link.textContent='Tekrar Dene'; alert(error.message||'Dosya indirilemedi.'); }
       finally{ link.dataset.exporting='false'; link.classList.remove('is-exporting'); }
     });
+    document.querySelectorAll('.toast').forEach(toast=>{
+      const delay=toast.classList.contains('error')?5500:3200;
+      window.setTimeout(()=>{
+        toast.classList.add('is-hiding');
+        window.setTimeout(()=>toast.remove(),260);
+      },delay);
+    });
   </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='supplier-search.css') }}">
+  <script src="{{ url_for('static', filename='supplier-search.js') }}"></script>
 </body>
 </html>

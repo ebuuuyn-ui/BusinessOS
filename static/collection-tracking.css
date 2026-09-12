@@ -1,0 +1,17 @@
+.collection-export-bar{display:flex;gap:20px;flex-wrap:wrap;padding:12px 16px}
+.collection-export-bar>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.collection-export-bar small{font-weight:700;margin-right:4px}
+.collection-list-note{padding:0 16px 12px;color:var(--muted);font-size:12px}
+.collection-customer-table{width:100%;min-width:0!important;table-layout:fixed}
+.collection-customer-table>thead>tr>th,.collection-customer-table>tbody>tr>td{padding:10px 8px!important;white-space:normal;overflow-wrap:anywhere;vertical-align:top;font-size:13px}
+.collection-customer-table>thead>tr>th{font-size:11px;letter-spacing:.02em}
+.collection-customer-table .number-cell{font-variant-numeric:tabular-nums}
+.collection-customer-table .collection-state{white-space:normal}
+.collection-detail-toggle{display:block;background:none;border:0;color:#285bb4;font-size:12px;font-weight:600;font-family:inherit;padding:6px 0;margin-top:3px;cursor:pointer;height:auto;min-height:0}
+.collection-payment-link{display:block;font-size:12px;margin-top:7px}
+.collection-detail-row[hidden]{display:none!important}
+.collection-order-detail{background:#f5f8fd;border:1px solid #dce4ee;border-radius:8px;padding:12px;min-width:0}
+.collection-order-detail p{font-size:12px;margin:0 0 10px}
+.collection-order-detail table{width:100%;table-layout:fixed;min-width:0!important}
+.collection-order-detail td,.collection-order-detail th{white-space:normal!important;overflow-wrap:anywhere;font-size:12px;padding:8px 6px!important}
+@media(max-width:700px){.collection-customer-table>thead>tr>th,.collection-customer-table>tbody>tr>td{font-size:11px;padding:8px 4px!important}.collection-export-bar{gap:8px}}

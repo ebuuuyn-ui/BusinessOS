@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}E-Arşiv Faturaları · Business OS{% endblock %}
+{% block heading %}E-Arşiv Faturaları{% endblock %}
+{% block subheading %}İndirilenler klasöründen gelen faturaları satış siparişine bağlayın{% endblock %}
+{% block header_action %}<form method="post" action="{{ url_for('refresh_earchive_documents') }}"><button class="button primary">↻ İndirilenleri Tara</button></form>{% endblock %}
+{% block content %}
+<section class="panel telegram-status-card">
+  <div><h2>E-Arşiv Portal</h2><p>Portalden indirdiğiniz <b>GIB, E-Arşiv veya Fatura</b> ile başlayan PDF'ler buraya güvenli şekilde alınır.</p></div>
+  <a class="button small" href="https://earsivportal.efatura.gov.tr/intragiris.html" target="_blank" rel="noopener">Portalı Aç ↗</a>
+</section>
+
+<section class="panel telegram-inbox">
+  <div class="panel-head"><div><h2>İndirilen Faturalar</h2><p>{{ documents|length }} belge sipariş eşleştirmesi bekliyor</p></div></div>
+  {% if documents %}
+    <div class="telegram-document-list">
+      {% for item in documents %}
+        <article class="telegram-document-row">
+          <div class="telegram-file-mark">PDF</div>
+          <div class="telegram-document-meta"><b>{{ item.original_name }}</b><small>{{ item.received_at.strftime('%d.%m.%Y %H:%M') }} · {{ '%.1f'|format(item.size_bytes / 1024 / 1024) }} MB</small></div>
+          <div class="telegram-document-actions"><a class="button small" href="{{ url_for('view_earchive_document', incoming_id=item.id) }}" target="_blank" rel="noopener">Aç</a><a class="button small" href="{{ url_for('download_earchive_document', incoming_id=item.id) }}" data-native-download data-export-name="{{ item.original_name }}">İndir</a><form method="post" action="{{ url_for('delete_earchive_document', incoming_id=item.id) }}" onsubmit="return confirm('Bu bekleyen belge silinsin mi?')"><button class="button small danger" type="submit">Sil</button></form></div>
+          <form method="post" action="{{ url_for('link_earchive_document', incoming_id=item.id) }}" class="telegram-link-form"><input name="order_no" list="earchive-order-list" value="{{ item.suggested_order.order_no if item.suggested_order else '' }}" placeholder="SS-2026-00001" required><select name="document_type">{% for document_type in order_document_types %}<option value="{{ document_type }}" {{ 'selected' if document_type == 'Giden Fatura' }}>{{ document_type }}</option>{% endfor %}</select><button class="button primary small" type="submit">Siparişe Bağla</button></form>
+        </article>
+      {% endfor %}
+    </div>
+    <datalist id="earchive-order-list">{% for order in orders %}<option value="{{ order.order_no }}">{{ order.customer.name }}</option>{% endfor %}</datalist>
+  {% else %}
+    <div class="empty-state compact-empty"><b>Henüz E-Arşiv faturası bulunamadı.</b><span>Faturayı portalden indirin; ardından sağ üstteki “İndirilenleri Tara” düğmesine basın.</span></div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -6,9 +6,18 @@
 {% block content %}
 <form method="post" class="panel form-panel edit-form">
   <h2>Müşteri Bilgileri</h2>
-  <div class="form-grid"><label>Müşteri / Firma Adı *<input name="name" value="{{ customer.name }}" required></label><label>Cari Kodu<input name="code" value="{{ customer.code or '' }}"></label></div>
+  <div class="form-grid"><label>Müşteri / Firma Adı *<input name="name" value="{{ customer.name or tax_suggestion.get('name', '') }}" required></label><label>Cari Kodu<input name="code" value="{{ customer.code or '' }}"></label></div>
   <div class="form-grid"><label>Yetkili<input name="contact_name" value="{{ customer.contact_name or '' }}"></label><label>Telefon<input name="phone" value="{{ customer.phone or '' }}"></label><label>Cep Telefonu<input name="mobile" value="{{ customer.mobile or '' }}"></label><label>E-posta<input name="email" type="email" value="{{ customer.email or '' }}"></label><label>Şehir<input name="city" value="{{ customer.city or '' }}"></label></div>
-  <label>Adres<textarea name="address" rows="3">{{ customer.address or '' }}</textarea></label><label>Not<textarea name="notes" rows="3">{{ customer.notes or '' }}</textarea></label>
+  <label>Adres<textarea name="address" rows="3">{{ customer.address or tax_suggestion.get('address', '') }}</textarea></label><label>Not<textarea name="notes" rows="3">{{ customer.notes or '' }}</textarea></label>
+  <h2 class="form-section-title">Vergi Bilgileri</h2>
+  {% if customer.tax_document_stored_name %}<p class="attached-document">Ekli vergi levhası: <a href="{{ url_for('view_customer_tax_document', customer_id=customer.id) }}" target="_blank" rel="noopener">{{ customer.tax_document_name }}</a></p>{% endif %}
+  {% if tax_suggestion %}<div class="import-suggestion"><b>Vergi levhasından bulunan bilgiler</b><span>Alanlara yerleştirildi. Kaydetmeden önce kontrol edebilirsiniz.</span></div>{% endif %}
+  <div class="form-grid"><label>Vergi Dairesi<input name="tax_office" value="{{ customer.tax_office or tax_suggestion.get('tax_office', '') }}"></label><label>Vergi Kimlik No<input name="tax_number" inputmode="numeric" value="{{ customer.tax_number or tax_suggestion.get('tax_number', '') }}"></label></div>
+  <h2 class="form-section-title">Sevkiyat Bilgileri</h2>
+  <p class="form-help">Satın alma siparişi oluştururken seçili carinin bu bilgilerini tek tıkla siparişe kopyalayabilirsiniz.</p>
+  <div class="form-grid"><label>Sevkiyat Yetkilisi<input name="shipment_contact" value="{{ customer.shipment_contact or '' }}"></label><label>Sevkiyat Telefonu<input name="shipment_phone" value="{{ customer.shipment_phone or '' }}"></label><label>Sevkiyat Şehri<input name="shipment_city" value="{{ customer.shipment_city or '' }}"></label></div>
+  <label>Sevkiyat Adresi<textarea name="shipment_address" rows="3">{{ customer.shipment_address or '' }}</textarea></label><label>Sevkiyat Notu<textarea name="shipment_note" rows="2">{{ customer.shipment_note or '' }}</textarea></label>
   <div class="actions"><a class="button" href="{{ url_for('customer_detail', customer_id=customer.id) }}">Vazgeç</a><button class="button primary">Değişiklikleri Kaydet</button></div>
 </form>
+<form method="post" enctype="multipart/form-data" action="{{ url_for('upload_customer_tax_document', customer_id=customer.id) }}" class="panel form-panel tax-document-upload-panel"><h2>Vergi Levhasından Bilgi Al</h2><p>PDF veya görseli ekleyin. Bulunan alanlar kaydedilmeden önce bu formda kontrolünüze sunulur.</p><div class="actions"><input type="file" name="tax_document" required><button class="button" type="submit">Vergi Levhasını Oku</button></div></form>
 {% endblock %}

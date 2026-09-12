@@ -54,7 +54,9 @@ etmeye çalışmaz.
 
 ## Veriler ve yedekleme
 
-Uygulama kapalıyken `instance/business_os.db` dosyasını başka bir diske kopyalamak tam yedek almak için yeterlidir. Bu dosya `.gitignore` içinde tutulur; yanlışlıkla kaynak kodla paylaşılmaz.
+Kaynak koddan varsayılan başlatmada veritabanı `instance/business_os.db` dosyasıdır. macOS masaüstü uygulaması ise `~/Library/Application Support/Business OS/business_os.db` dosyasını kullanır. Bu iki veritabanı aynı olmayabilir. `BUSINESSOS_DATA_DIR` veri klasörünü, `DATABASE_URL` bağlantıyı değiştirebilir.
+
+Veri aktarımından önce aktif veritabanı doğrulanmalı ve tutarlı SQLite yedeği alınmalıdır. Belge ekleri ve yerel ayarlar da ilgili veri klasöründe ayrıca korunmalıdır. Veritabanları ve yerel ayarlar GitHub üzerinden taşınmaz.
 
 Uygulama ayrıca her başlatıldığında ve müşteri aktarımı/silme gibi önemli işlemlerden önce `instance/backups/` klasörüne tarih-saatli otomatik SQLite yedeği oluşturur. Program kodu güncellenirken bu veritabanı ve yedek klasörü silinmez.
 
@@ -81,3 +83,15 @@ python app.py
 ```
 
 Üretim ortamında güçlü bir `SECRET_KEY` tanımlanmalı, hata ayıklama modu kapatılmalı ve Waitress/Gunicorn gibi bir uygulama sunucusu kullanılmalıdır.
+
+## Eylül 2026 masaüstü sürümü
+
+- Faturalar, cari hesap etkileri ve faturaya bağlı stok hareketleri.
+- Stoklarda Kod/Ürün filtreleri, Türkçe ve doğal sayısal sıralama.
+- Müşteri bazlı tahsilat takibi, cari raporları ve PDF/Excel çıktıları.
+- Satın alma sevkiyat bilgileri, belge ekleri, Telegram ve e-arşiv belge ekranları.
+- Kart tahsilatında aranabilir tedarikçi seçimi ve dar forma uyumlu yerleşim.
+
+macOS paketi için `requirements-build.txt` bağımlılıklarıyla `python -m PyInstaller "Business OS.spec"` çalıştırılır. Çıktı `dist/Business OS.app` altındadır; GitHub yalnız kaynakları içerir, kurulu uygulamayı otomatik güncellemez.
+
+Bilinen eksik: `/ozon-satislari` rotasının beklediği `templates/ozon_sales.html` güncel kaynak klasöründe bulunmuyor. Ozon ekranı doğrulanmış bir özellik olarak kabul edilmemelidir.

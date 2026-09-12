@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Cari Toplam Hareket Bakiyeleri · Business OS{% endblock %}
+{% block heading %}Cari Toplam Hareket Bakiyeleri{% endblock %}
+{% block content %}
+<div class="panel movement-report">
+  <div class="panel-head"><div><h2>Cari Toplam Hareket Bakiyeleri</h2><p>{{ rows|length }} hareket gören cari · Tüm kayıt tarihleri</p></div><a class="button" data-native-download data-export-name="Cari-Toplam-Hareket-Bakiyeleri.xlsx" href="{{ url_for('export_customer_total_movements', q=query) }}">Excel'e Aktar</a></div>
+  <p class="movement-report-note">{{ report_note }} İptal edilen siparişler hariçtir. Tahsilat/ödemeler cari toplamında mahsup edilir, tek tek siparişlere dağıtılmaz.</p>
+  <form class="filters movement-report-filters"><input name="q" value="{{ query }}" placeholder="Cari adı veya kodu ara" aria-label="Cari adı veya kodu"><button class="button">Ara</button><a class="button" href="{{ url_for('customer_total_movements') }}">Temizle</a><a class="button" href="{{ url_for('customer_total_movements', q=query) }}">↻ Yenile</a><a class="button" href="{{ url_for('customers') }}">← Cariler</a></form>
+  <div class="table-wrap"><table class="compact-table movement-summary-table"><thead><tr><th>Cari / Ayrıntılar</th><th>Teslim Satış</th><th>Teslim Alış</th><th>Ödeme / Diğer Borç (+)</th><th>Tahsilat / Diğer Alacak (−)</th><th>Kalan Bakiye</th><th>Bekleyen Satış</th><th>Bekleyen Alış</th><th>Toplam Beklenen Bakiye</th></tr></thead><tbody>
+  {% for r in rows %}
+    <tr><td><a href="#cari-{{ r.customer.id }}"><b>{{ r.customer.name }}</b></a><small class="block">{{ r.customer.code or '—' }} · {{ r.delivered|length }} teslim · {{ r.pending|length }} bekleyen</small></td>{% for key in ['delivered_sale','delivered_purchase','debit','credit','remaining','pending_sale','pending_purchase','projected'] %}<td class="money {{ 'credit-text' if r[key] < 0 else '' }}">{% if key in ['remaining','projected'] %}<b>{{ r[key]|money }}</b>{% else %}{{ r[key]|money }}{% endif %}</td>{% endfor %}</tr>
+  {% else %}<tr><td colspan="9">Bu aramada sipariş veya cari hareketi bulunan kayıt yok.</td></tr>{% endfor %}
+  </tbody><tfoot><tr><th>TOPLAM (₺)</th>{% for key in ['delivered_sale','delivered_purchase','debit','credit','remaining','pending_sale','pending_purchase','projected'] %}<th class="money">{{ totals[key]|money }}</th>{% endfor %}</tr></tfoot></table></div>
+</div>
+{% for r in rows %}
+<section class="panel movement-report movement-customer" id="cari-{{ r.customer.id }}">
+  <div class="panel-head"><div><h2>{{ r.customer.name }}</h2><p>{{ r.customer.code or '—' }} · Kalan: ₺{{ r.remaining|money }} · Beklenen toplam: ₺{{ r.projected|money }}</p></div><a class="button small" data-workspace-new-tab href="{{ url_for('customer_account', customer_id=r.customer.id) }}">Cari Hesap Ekstresi</a></div>
+  {% for group, label in [('delivered','Teslim Edilmiş Siparişler'),('pending','Teslim Bekleyen Siparişler')] %}
+  <details class="movement-group" open><summary>{{ label }} <span>({{ r[group]|length }} sipariş)</span></summary>
+    {% for o in r[group] %}
+    <details class="movement-order" open><summary><a data-workspace-new-tab href="{{ url_for('order_detail', order_id=o.id) }}">{{ o.order_no }} ↗</a><span>{{ o.order_type }} · {{ o.status }} · {{ o.order_date.strftime('%d.%m.%Y') }}{% if o.delivery_date %} · Teslim: {{ o.delivery_date.strftime('%d.%m.%Y') }}{% endif %}</span><b>₺{{ o.total_amount|money }}</b></summary>
+      <div class="table-wrap"><table class="compact-table"><thead><tr><th>Ürün / Hizmet</th><th>Ayrıntı 1</th><th>Ayrıntı 2</th><th>Ayrıntı 3</th><th>Adet</th><th>Birim Fiyat</th><th>İskonto</th><th>KDV</th><th>KDV Dahil</th></tr></thead><tbody>
+      {% for item in o.items %}<tr><td><b>{{ item.product_name }}</b>{% if item.note %}<small class="block">{{ item.note }}</small>{% endif %}</td><td>{{ item.variant or '—' }}</td><td>{{ item.detail_2 or '—' }}</td><td>{{ item.detail_3 or '—' }}</td><td>{{ item.quantity }} {{ item.unit }}</td><td class="money">{{ item.unit_price|money }}<small class="block">KDV {{ 'dahil' if item.vat_included else 'hariç' }}</small></td><td>%{{ item.discount_rate|money }}</td><td>%{{ item.vat_rate|money }}</td><td class="money"><b>{{ item.total_amount|money }}</b></td></tr>{% endfor %}
+      </tbody></table></div>{% if o.notes %}<p class="movement-report-note">Sipariş notu: {{ o.notes }}</p>{% endif %}
+    </details>
+    {% else %}<p class="movement-report-note">Bu grupta sipariş yok.</p>{% endfor %}
+  </details>{% endfor %}
+  <details class="movement-group"><summary>Tahsilat, Ödeme ve Diğer Cari Hareketler ({{ r.movements|length }})</summary><div class="table-wrap"><table class="compact-table"><thead><tr><th>Tarih</th><th>Tür</th><th>Referans / Açıklama</th><th>Ödeme Şekli</th><th>Borç (+)</th><th>Alacak (−)</th></tr></thead><tbody>{% for m in r.movements %}<tr><td>{{ m.transaction_date.strftime('%d.%m.%Y') }}</td><td>{{ m.transaction_type }}</td><td>{{ m.reference_no or '—' }}<small class="block">{{ m.description or '' }}</small></td><td>{{ m.payment_method or '—' }}</td><td class="money">{{ (m.debit or 0)|money }}</td><td class="money">{{ (m.credit or 0)|money }}</td></tr>{% else %}<tr><td colspan="6">Cari hareket yok.</td></tr>{% endfor %}</tbody></table></div></details>
+</section>
+{% endfor %}
+{% endblock %}

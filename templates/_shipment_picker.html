@@ -1,0 +1,16 @@
+<div class="shipment-picker" style="grid-column:1/-1">
+  <label>Sevkiyat bilgisi alınacak cari
+    <div class="customer-combobox">
+      <input type="search" class="shipment-source-search" autocomplete="off" placeholder="Teslimat yapılacak cariyi arayın" value="{{ source_order.customer.name if source_order else '' }}" aria-label="Sevkiyat carisini ara">
+      <div class="customer-results shipment-source-results">
+        {% for cari in shipment_customers %}
+        <button type="button" data-id="{{ cari.id }}" data-search="{{ cari.name }} {{ cari.code or '' }}" data-contact="{{ cari.shipment_contact or '' }}" data-phone="{{ cari.shipment_phone or '' }}" data-city="{{ cari.shipment_city or '' }}" data-address="{{ cari.shipment_address or '' }}" data-note="{{ cari.shipment_note or '' }}"><b>{{ cari.name }}</b><small>{{ cari.code or '' }} · {{ cari.shipment_city or 'Sevkiyat şehri belirtilmemiş' }}</small></button>
+        {% endfor %}
+        <div class="no-customer">Eşleşen cari bulunamadı</div>
+      </div>
+    </div>
+  </label>
+  <button type="button" class="button shipment-copy-button" style="margin-top:8px" data-source-id="{{ source_order.customer_id if source_order else '' }}">Sevkiyat Bilgilerini Ekle</button>
+  <small class="shipment-copy-status" role="status">İsteğe bağlıdır. Tedarikçi değişmez; kopyalanan bilgileri siparişte düzenleyebilirsiniz.</small>
+</div>
+<script src="{{ url_for('static', filename='shipment-picker.js') }}"></script>

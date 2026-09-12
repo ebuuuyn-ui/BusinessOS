@@ -14,6 +14,8 @@ import sqlite3
 import subprocess
 import sys
 import time
+import tempfile
+import zipfile
 
 
 EXPECTED_TABLES = {"customer", "order", "order_item", "product"}
@@ -129,6 +131,58 @@ def verification_report(backup: Path, actual: dict) -> Path | None:
     return report_path
 
 
+def document_archive_for(backup: Path) -> Path:
+    return backup.with_name(f"{backup.stem}.documents.zip")
+
+
+def verification_manifest(report_path: Path | None) -> dict:
+    if not report_path:
+        return {}
+    return json.loads(report_path.read_text(encoding="utf-8-sig"))
+
+
+def validate_document_archive(archive_path: Path, expected: dict) -> dict:
+    if not archive_path.is_file():
+        raise RuntimeError("Belge arşivi bulunamadı; geri yükleme güvenlik nedeniyle durduruldu.")
+    if expected.get("sha256") and sha256(archive_path) != expected["sha256"]:
+        raise RuntimeError("Belge arşivinin SHA-256 doğrulaması başarısız oldu.")
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            members = [member for member in archive.infolist() if not member.is_dir()]
+            for member in members:
+                relative = Path(member.filename)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise RuntimeError("Belge arşivinde güvenli olmayan dosya yolu var.")
+    except zipfile.BadZipFile as exc:
+        raise RuntimeError("Belge arşivi okunamadı.") from exc
+    if expected.get("file_count") is not None and len(members) != int(expected["file_count"]):
+        raise RuntimeError("Belge arşivindeki dosya sayısı doğrulama raporuyla eşleşmiyor.")
+    return {"file_count": len(members), "sha256": sha256(archive_path)}
+
+
+def extract_document_archive(archive_path: Path, destination: Path) -> None:
+    with zipfile.ZipFile(archive_path) as archive:
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+            relative = Path(member.filename)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise RuntimeError("Belge arşivinde güvenli olmayan dosya yolu var.")
+            output = destination / relative
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, output.open("wb") as target:
+                shutil.copyfileobj(source, target)
+
+
+def archive_existing_documents(source: Path, destination: Path) -> None:
+    if not source.is_dir():
+        return
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(source.rglob("*")):
+            if path.is_file():
+                archive.write(path, path.relative_to(source).as_posix())
+
+
 def businessos_pids(app_dir: Path) -> list[int]:
     result = subprocess.run(
         ["lsof", "-tiTCP:5000", "-sTCP:LISTEN"],
@@ -190,6 +244,13 @@ def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
     target = data_dir / "business_os.db"
     report = sqlite_report(backup)
     report_path = verification_report(backup, report)
+    manifest = verification_manifest(report_path)
+    documents_archive = document_archive_for(backup)
+    documents_expected = manifest.get("documents", {})
+    has_documents_archive = documents_archive.is_file()
+    document_report = None
+    if has_documents_archive:
+        document_report = validate_document_archive(documents_archive, documents_expected)
     backup_hash = sha256(backup)
 
     print(f"En yeni Google Drive yedeği: {backup.name}")
@@ -197,6 +258,10 @@ def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
     print(f"SHA-256: {backup_hash}")
     print("SQLite bütünlük kontrolü: OK")
     print("Doğrulama raporu: " + (report_path.name if report_path else "yok (SQLite doğrulandı)"))
+    if has_documents_archive:
+        print(f"Belge arşivi doğrulandı: {document_report['file_count']} dosya")
+    else:
+        print("Belge arşivi: bu eski yedekte yok; Mac'teki mevcut belgeler korunacak.")
     counts = report["row_counts"]
     print(
         "Kayıtlar: "
@@ -205,8 +270,18 @@ def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
         f"{counts.get('product', 0)} ürün"
     )
     if check_only:
-        print("Kontrol tamamlandı; veritabanı değiştirilmedi.")
+        print("Kontrol tamamlandı; veritabanı ve belgeler değiştirilmedi.")
         return
+
+    extracted_documents = None
+    if has_documents_archive:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        extracted_documents = Path(tempfile.mkdtemp(prefix="order-documents-incoming-", dir=data_dir))
+        try:
+            extract_document_archive(documents_archive, extracted_documents)
+        except Exception:
+            shutil.rmtree(extracted_documents, ignore_errors=True)
+            raise
 
     stop_businessos(app_dir)
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -219,6 +294,15 @@ def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
         sqlite_backup(target, safety_copy)
         print(f"Mevcut Mac veritabanı korundu: {safety_copy.name}")
 
+    documents_target = data_dir / "order_documents"
+    if has_documents_archive and documents_target.is_dir():
+        documents_safety_copy = (
+            data_dir / "backups" / f"order_documents_before_drive_restore_{timestamp}.zip"
+        )
+        documents_safety_copy.parent.mkdir(parents=True, exist_ok=True)
+        archive_existing_documents(documents_target, documents_safety_copy)
+        print(f"Mevcut Mac belgeleri korundu: {documents_safety_copy.name}")
+
     incoming = target.with_suffix(".db.incoming")
     shutil.copy2(backup, incoming)
     incoming_report = sqlite_report(incoming)
@@ -229,6 +313,12 @@ def restore(app_dir: Path, backup: Path, check_only: bool) -> None:
     final_report = sqlite_report(target)
     if sha256(target) != backup_hash or final_report != report:
         raise RuntimeError("Geri yüklenen veritabanı son kontrolden geçemedi.")
+    if has_documents_archive and extracted_documents:
+        previous_documents = data_dir / f"order_documents_before_restore_{timestamp}"
+        if documents_target.exists():
+            os.replace(documents_target, previous_documents)
+        os.replace(extracted_documents, documents_target)
+        print(f"Belge arşivi geri yüklendi: {document_report['file_count']} dosya")
     print("Yedek başarıyla geri yüklendi.")
 
 

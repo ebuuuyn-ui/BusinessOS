@@ -15,6 +15,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import zipfile
 
 
 EXPECTED_TABLES = {"customer", "order", "order_item", "product"}
@@ -116,8 +117,37 @@ def safe_device_name() -> str:
     return value.upper() or "MAC"
 
 
+def documents_report(directory: Path) -> dict:
+    """Return a stable, non-sensitive summary of the local order-document archive."""
+    if not directory.is_dir():
+        return {"exists": False, "file_count": 0, "total_size": 0}
+    files = sorted(path for path in directory.rglob("*") if path.is_file())
+    return {
+        "exists": True,
+        "file_count": len(files),
+        "total_size": sum(path.stat().st_size for path in files),
+    }
+
+
+def create_documents_archive(source_directory: Path, destination: Path) -> dict:
+    """Create a portable attachment archive without following external paths."""
+    source_report = documents_report(source_directory)
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        if source_directory.is_dir():
+            for path in sorted(source_directory.rglob("*")):
+                if path.is_file():
+                    archive.write(path, path.relative_to(source_directory).as_posix())
+    return {
+        **source_report,
+        "file": destination.name,
+        "size": destination.stat().st_size,
+        "sha256": sha256(destination),
+    }
+
+
 def create_backup(app_dir: Path, check_only: bool) -> tuple[Path | None, dict]:
     source = active_data_directory(app_dir) / "business_os.db"
+    documents_directory = active_data_directory(app_dir) / "order_documents"
     if not source.is_file():
         raise RuntimeError(f"BusinessOS veritabanı bulunamadı: {source}")
     source_report = database_report(source)
@@ -133,6 +163,8 @@ def create_backup(app_dir: Path, check_only: bool) -> tuple[Path | None, dict]:
         f"{counts.get('order', 0)} sipariş, "
         f"{counts.get('product', 0)} ürün"
     )
+    document_summary = documents_report(documents_directory)
+    print(f"Belgeler: {document_summary['file_count']} dosya")
     if check_only:
         print("Kontrol tamamlandı; Google Drive'a dosya yazılmadı.")
         return None, source_report
@@ -140,20 +172,25 @@ def create_backup(app_dir: Path, check_only: bool) -> tuple[Path | None, dict]:
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     name = f"business_os_{safe_device_name()}_{stamp}.db"
     target = destination / name
+    documents_name = f"{target.stem}.documents.zip"
+    documents_target = destination / documents_name
 
     with tempfile.TemporaryDirectory(prefix="businessos-backup-") as temp_dir:
         temp_db = Path(temp_dir) / name
+        temp_documents = Path(temp_dir) / documents_name
         sqlite_backup(source, temp_db)
         backup_report = database_report(temp_db)
         if source_report["row_counts"] != backup_report["row_counts"]:
             raise RuntimeError("Yedek kayıt sayıları kaynak veritabanıyla eşleşmiyor.")
 
+        documents_manifest = create_documents_archive(documents_directory, temp_documents)
         manifest = {
             "operation": "backup",
             "created_at": datetime.now().astimezone().isoformat(),
             "verified": True,
             "source": source_report,
             "backup": backup_report,
+            "documents": documents_manifest,
         }
         temp_json = temp_db.with_suffix(".verification.json")
         temp_json.write_text(
@@ -162,25 +199,34 @@ def create_backup(app_dir: Path, check_only: bool) -> tuple[Path | None, dict]:
         )
 
         incoming_db = destination / f".{name}.incoming"
+        incoming_documents = destination / f".{documents_name}.incoming"
         incoming_json = destination / f".{target.stem}.verification.json.incoming"
         try:
             shutil.copy2(temp_db, incoming_db)
+            shutil.copy2(temp_documents, incoming_documents)
             shutil.copy2(temp_json, incoming_json)
             installed_report = database_report(incoming_db)
             if installed_report["sha256"] != backup_report["sha256"]:
                 raise RuntimeError("Google Drive'a kopyalama sırasında dosya özeti değişti.")
+            if sha256(incoming_documents) != documents_manifest["sha256"]:
+                raise RuntimeError("Belge arşivi Google Drive'a kopyalanırken değişti.")
             os.replace(incoming_db, target)
+            os.replace(incoming_documents, documents_target)
             os.replace(incoming_json, target.with_suffix(".verification.json"))
         except Exception:
             incoming_db.unlink(missing_ok=True)
+            incoming_documents.unlink(missing_ok=True)
             incoming_json.unlink(missing_ok=True)
             raise
 
     final_report = database_report(target)
     if final_report["sha256"] != backup_report["sha256"]:
         raise RuntimeError("Google Drive yedeği son doğrulamadan geçemedi.")
+    if sha256(documents_target) != documents_manifest["sha256"]:
+        raise RuntimeError("Google Drive belge arşivi son doğrulamadan geçemedi.")
     print(f"YEDEK_HAZIR={target}")
     print(f"SHA-256: {final_report['sha256']}")
+    print(f"Belge arşivi: {documents_target.name} ({documents_manifest['file_count']} dosya)")
     print("Google Drive eşitlemesi için yedek güvenle hazırlandı.")
     return target, final_report
 

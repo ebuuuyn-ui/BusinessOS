@@ -1,0 +1,77 @@
+<section class="panel order-documents" id="siparis-belgeleri">
+  <div class="document-toolbar">
+    <div class="document-title"><h2>Belgeler</h2><span>{{ order.documents|length }} belge</span></div>
+    <div class="document-actions order-form-downloads"><a class="button small" href="{{ url_for('export_order_excel', order_id=order.id) }}" data-native-download data-export-name="{{ order.order_no }}-{{ order.order_date.isoformat() }}.xlsx">Excel İndir</a><a class="button small" href="{{ url_for('export_order_pdf', order_id=order.id) }}" data-native-download data-export-name="{{ order.order_no }}-{{ order.order_date.isoformat() }}.pdf">PDF İndir</a></div>
+
+    <form method="post" action="{{ url_for('upload_order_documents', order_id=order.id) }}" enctype="multipart/form-data" class="document-upload-form" id="document-upload-form">
+    <label>
+      <select name="document_type">
+        {% for document_type in order_document_types %}
+          <option value="{{ document_type }}" {{ 'selected' if document_type == default_document_type }}>{{ document_type }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="document-drop-zone" id="document-drop-zone">
+      <input type="file" name="files" id="order-document-files" multiple>
+      <strong>＋ Dosya ekle</strong>
+      <em id="document-file-status">PDF veya görsel</em>
+    </label>
+    <input type="hidden" name="source" id="document-source" value="manual">
+    <button class="button primary" type="submit">Kaydet</button>
+    </form>
+    <p class="document-paste-hint">Bu çubuğa tıklayıp görseli <b>⌘V</b> ile yapıştırabilir veya dosyayı bırakabilirsin.</p>
+  </div>
+
+  {% if order.documents %}
+    <div class="document-list">
+      {% for document in order.documents %}
+        <article class="document-row">
+          <div class="document-kind">{{ 'PDF' if document.original_name.lower().endswith('.pdf') else 'Görsel' }}</div>
+          <div class="document-name">
+            <b>{{ document.original_name }}</b>
+            <small>{{ document.document_type }} · {{ '%.1f'|format(document.size_bytes / 1024 / 1024) }} MB · {{ document.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+          </div>
+          <div class="document-actions">
+            <a class="button small" href="{{ url_for('view_order_document', document_id=document.id) }}" target="_blank" rel="noopener">Aç</a>
+            <a class="button small" href="{{ url_for('download_order_document', document_id=document.id) }}" data-native-download data-export-name="{{ document.original_name }}">İndir</a>
+            <form method="post" action="{{ url_for('delete_order_document', document_id=document.id) }}" onsubmit="return confirm('Bu belge siparişten kaldırılsın mı?')">
+              <button class="button small danger-text" type="submit">Sil</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+<script>
+(() => {
+  const form = document.getElementById('document-upload-form');
+  if (!form) return;
+  const input = document.getElementById('order-document-files');
+  const zone = document.getElementById('document-drop-zone');
+  const status = document.getElementById('document-file-status');
+  const source = document.getElementById('document-source');
+  const describe = files => {
+    const items = [...files];
+    status.textContent = items.length ? `${items.length} dosya hazır: ${items.map(file => file.name).join(', ')}` : 'Henüz dosya seçilmedi';
+  };
+  input.addEventListener('change', () => { source.value = 'manual'; describe(input.files); });
+  ['dragenter', 'dragover'].forEach(name => zone.addEventListener(name, event => { event.preventDefault(); zone.classList.add('dragging'); }));
+  ['dragleave', 'drop'].forEach(name => zone.addEventListener(name, event => { event.preventDefault(); zone.classList.remove('dragging'); }));
+  zone.addEventListener('drop', event => { input.files = event.dataTransfer.files; source.value = 'manual'; describe(input.files); });
+  zone.tabIndex = 0;
+  zone.addEventListener('paste', event => {
+    const image = [...event.clipboardData.items].find(item => item.type.startsWith('image/'));
+    if (!image) return;
+    event.preventDefault();
+    const file = image.getAsFile();
+    const named = new File([file], `yapistirilan-fatura-${new Date().toISOString().slice(0, 10)}.png`, { type: file.type || 'image/png' });
+    const data = new DataTransfer();
+    data.items.add(named);
+    input.files = data.files;
+    source.value = 'paste';
+    describe(input.files);
+  });
+})();
+</script>

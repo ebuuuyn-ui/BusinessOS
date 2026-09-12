@@ -1,0 +1,17 @@
+.supplier-search{position:relative;min-width:0}
+.supplier-search>input[type=search]{width:100%;min-width:0;padding-right:68px!important}
+.supplier-search .supplier-list-toggle{position:absolute;right:5px;top:10px;width:32px!important;height:32px!important;min-height:0!important;margin:0!important;padding:0!important;border:0;border-radius:7px;background:#edf3fb;color:#285ba4;box-shadow:none;font-size:20px;cursor:pointer}
+.supplier-search-results{position:absolute;z-index:110;top:calc(100% + 5px);left:0;right:0;max-height:260px;overflow:auto;padding:5px;background:white;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 14px 35px rgba(15,23,42,.16)}
+.supplier-search-results[hidden],.supplier-search-results>button[hidden],.supplier-search-empty[hidden],select[name=direct_supplier_id][hidden]{display:none!important}
+.supplier-search-results>button{display:block;width:100%;height:auto!important;min-height:0!important;margin:0!important;padding:9px 10px!important;border:0;background:white;box-shadow:none;border-radius:7px;text-align:left;white-space:normal;overflow-wrap:normal;word-break:normal;font:600 13px/1.4 system-ui;cursor:pointer}
+.supplier-search-results>button:hover,.supplier-search-results>button.active{background:#eaf1ff;color:#174ea6;transform:none}
+.supplier-search-empty{padding:10px;font-size:12px;color:#667085}
+.quick-collection:has(.supplier-search),.account-entry:has(.supplier-search){overflow:visible}
+
+/* Keep card collection controls readable in the narrow account sidebar too. */
+.account-entry #card-fields>label:first-child,.collection-card-fields>label:first-child{grid-column:1/-1;width:100%;max-width:160px}
+.account-entry #direct-toggle-field,.collection-card-fields .direct-supplier-toggle{grid-column:1/-1;justify-self:stretch;height:auto;min-height:44px;margin-top:0;line-height:1.4;white-space:normal}
+.account-entry #direct-toggle-field input,.collection-card-fields .direct-supplier-toggle input{flex:0 0 18px}
+.account-entry #direct-supplier-field,.collection-card-fields #direct-supplier-field{grid-column:1/-1;width:100%;min-width:0}
+.supplier-option-name{display:block;color:#25324a;font-weight:600;line-height:1.45}
+.supplier-option-code{display:block;margin-top:3px;color:#667085;font-size:11px;font-weight:400;line-height:1.4;white-space:nowrap}

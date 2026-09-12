@@ -29,3 +29,10 @@ work/export_qa/
 **/node_modules/
 **/node_modules
 work/node_modules 2
+
+# Desktop build output and local backups
+build/
+dist/
+.codex-backups/
+*.app/
+.env.*
