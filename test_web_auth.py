@@ -1,7 +1,6 @@
 """Authentication checks without a database or production credentials."""
 import os
 from pathlib import Path
-import re
 import unittest
 from unittest.mock import patch
 from flask import Flask
@@ -28,9 +27,8 @@ def make_app(overrides=None, desktop=False):
 
 
 def login(client, password=ENV['BUSINESSOS_WEB_PASSWORD']):
-    response = client.get('/giris', base_url=BASE)
-    token = re.search(r'name="csrf_token" value="([^"]+)"', response.text)[1]
-    return client.post('/giris', base_url=BASE, data={'csrf_token': token, 'username': ENV['BUSINESSOS_WEB_USERNAME'], 'password': password})
+    return client.post('/giris', base_url=BASE, headers={'Origin': BASE},
+                       data={'username': ENV['BUSINESSOS_WEB_USERNAME'], 'password': password})
 
 
 class WebAuthTests(unittest.TestCase):
@@ -69,10 +67,9 @@ class WebAuthTests(unittest.TestCase):
         for path in ('/', '/export', '/unknown', '/static/style.css'):
             self.assertEqual(client.get(path, base_url=BASE).location, '/giris')
         self.assertEqual(client.post('/write', base_url=BASE).status_code, 401)
-        stale = client.post('/giris', base_url=BASE)
-        self.assertEqual(stale.status_code, 400)
-        self.assertIn('Giriş sayfası yenilendi', stale.text)
-        self.assertRegex(stale.text, r'name="csrf_token" value="[^"]+"')
+        self.assertEqual(client.post('/giris', base_url=BASE).status_code, 401)
+        self.assertEqual(client.post('/giris', base_url=BASE,
+            headers={'Origin': 'https://attacker.test'}).status_code, 403)
         self.assertEqual(login(client, 'wrong').status_code, 401)
         self.assertEqual(client.get('/', base_url=BASE).status_code, 302)
 

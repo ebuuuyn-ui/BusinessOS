@@ -2,7 +2,6 @@
 import hashlib
 import hmac
 import os
-import secrets
 from datetime import timedelta
 from urllib.parse import urlsplit
 
@@ -74,18 +73,11 @@ def install_web_auth(app):
     def web_login():
         error = None
         if request.method == 'POST':
-            token = str(session.get('login_csrf', ''))
-            if not token or not hmac.compare_digest(token, request.form.get('csrf_token', '')):
-                # A deployment or SECRET_KEY rotation invalidates login pages
-                # already open in a browser. Recover with a fresh form instead
-                # of leaving the owner on Flask's generic 403 page.
-                session.clear()
-                session['login_csrf'] = secrets.token_urlsafe(32)
-                return render_template(
-                    'web_login.html',
-                    error='Giriş sayfası yenilendi. Bilgilerinizi tekrar girin.',
-                    csrf_token=session['login_csrf'],
-                ), 400
+            # Reject explicit cross-site form submissions. Login does not rely
+            # on a pre-login session cookie, which some privacy modes discard.
+            source = urlsplit(request.headers.get('Origin') or request.headers.get('Referer') or '')
+            if source.netloc and (source.scheme != 'https' or source.netloc != request.host):
+                abort(403)
             supplied_user = request.form.get('username', '').encode()
             supplied_password = request.form.get('password', '').encode()
             user_ok = hmac.compare_digest(hashlib.sha256(supplied_user).digest(), hashlib.sha256(username.encode()).digest())
@@ -96,8 +88,7 @@ def install_web_auth(app):
                 session['web_auth'] = fingerprint
                 return redirect(url_for('dashboard'))
             error = 'Kullanıcı adı veya şifre hatalı.'
-        session['login_csrf'] = secrets.token_urlsafe(32)
-        return render_template('web_login.html', error=error, csrf_token=session['login_csrf']), 401 if error else 200
+        return render_template('web_login.html', error=error), 401 if error else 200
 
     @app.post('/cikis')
     def web_logout():
