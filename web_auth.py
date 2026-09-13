@@ -19,8 +19,18 @@ def install_web_auth(app):
     username = os.getenv('BUSINESSOS_WEB_USERNAME', '').strip()
     password = os.getenv('BUSINESSOS_WEB_PASSWORD', '')
     secret = app.config.get('SECRET_KEY') or ''
-    configured = bool(username and len(password) >= 16 and len(secret) >= 32
-                      and secret != 'development-key-change-in-production')
+    configuration_errors = []
+    if not username:
+        configuration_errors.append('BUSINESSOS_WEB_USERNAME: missing or blank')
+    if not password:
+        configuration_errors.append('BUSINESSOS_WEB_PASSWORD: missing or blank')
+    elif len(password) < 16:
+        configuration_errors.append('BUSINESSOS_WEB_PASSWORD: must contain at least 16 characters')
+    if not secret or secret == 'development-key-change-in-production':
+        configuration_errors.append('SECRET_KEY: missing or development default')
+    elif len(secret) < 32:
+        configuration_errors.append('SECRET_KEY: must contain at least 32 characters')
+    configured = not configuration_errors
     fingerprint = hmac.new(str(secret).encode(), (username + '\0' + password).encode(), hashlib.sha256).hexdigest()
     app.config.update(SESSION_COOKIE_NAME='__Host-businessos', SESSION_COOKIE_SECURE=True,
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Strict',
@@ -31,6 +41,8 @@ def install_web_auth(app):
     def require_web_login():
         # Fail closed, including when a deployment is missing its credentials.
         if not configured:
+            # Never log credential values, their hashes, or request data.
+            app.logger.error('BUSINESSOS_AUTH_CONFIG: %s', '; '.join(configuration_errors))
             return render_template('web_login.html', unavailable=True), 503
         if request.endpoint == 'web_login':
             return None

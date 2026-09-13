@@ -45,6 +45,25 @@ class WebAuthTests(unittest.TestCase):
             for path in ('/', '/export', '/giris'):
                 self.assertEqual(client.get(path, base_url=BASE).status_code, 503)
 
+    def test_configuration_logs_identify_problem_without_values(self):
+        cases = [({'BUSINESSOS_WEB_USERNAME': ''}, 'BUSINESSOS_WEB_USERNAME: missing'),
+                 ({'BUSINESSOS_WEB_PASSWORD': ''}, 'BUSINESSOS_WEB_PASSWORD: missing'),
+                 ({'BUSINESSOS_WEB_PASSWORD': 'short-test'}, 'BUSINESSOS_WEB_PASSWORD: must contain at least 16'),
+                 ({'SECRET_KEY': 'short-secret'}, 'SECRET_KEY: must contain at least 32'),
+                 ({'SECRET_KEY': 'development-key-change-in-production'}, 'SECRET_KEY: missing or development default')]
+        for overrides, expected in cases:
+            app = make_app(overrides)
+            with self.assertLogs(app.logger, level='ERROR') as logs:
+                response = app.test_client().get('/', base_url=BASE)
+            output = '\n'.join(logs.output)
+            self.assertIn('BUSINESSOS_AUTH_CONFIG', output)
+            self.assertIn(expected, output)
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn(expected, response.text)
+            for value in dict(ENV, **overrides).values():
+                if len(value) > 2:
+                    self.assertNotIn(value, output)
+
     def test_all_routes_guarded_and_csrf(self):
         client = make_app().test_client()
         for path in ('/', '/export', '/unknown', '/static/style.css'):
