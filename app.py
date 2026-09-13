@@ -1831,7 +1831,7 @@ def create_app(test_config=None):
             purchase_amount = sum((order.total_amount for order in day_orders if order.order_type == "Satın Alma"), Decimal("0"))
             week_activity.append({"date": activity_date, "label": activity_date.strftime("%d.%m"), "sales": sales_count, "purchases": purchase_count, "total": len(day_orders), "sales_amount": sales_amount, "purchase_amount": purchase_amount})
         week_max = max((max(item["sales_amount"], item["purchase_amount"]) for item in week_activity), default=Decimal("1")) or Decimal("1")
-        delivered_today = db.session.query(OrderHistory.order_id).filter(OrderHistory.status == "Teslim Edildi", db.func.date(OrderHistory.created_at) == today.isoformat()).distinct().count()
+        delivered_today = db.session.query(OrderHistory.order_id).filter(OrderHistory.status == "Teslim Edildi", db.func.date(OrderHistory.created_at) == today).distinct().count()
         overdue_count = Order.query.filter(Order.delivery_date < today, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
         due_today_count = Order.query.filter(Order.delivery_date == today, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
         customer_balances = calculate_customer_balances()
