@@ -43,7 +43,11 @@ def install_web_auth(app):
         if not configured:
             # Never log credential values, their hashes, or request data.
             app.logger.error('BUSINESSOS_AUTH_CONFIG: %s', '; '.join(configuration_errors))
-            return render_template('web_login.html', unavailable=True), 503
+            return render_template(
+                'web_login.html',
+                unavailable=True,
+                setup_errors=configuration_errors,
+            ), 503
         if request.endpoint == 'web_login':
             return None
         if not hmac.compare_digest(str(session.get('web_auth', '')), fingerprint):

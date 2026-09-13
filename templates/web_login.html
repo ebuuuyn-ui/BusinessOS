@@ -4,11 +4,12 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Business OS · Giriş</title>
 <style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f6fb;color:#1e293b;font:16px system-ui,sans-serif;padding:24px}.card{width:100%;max-width:400px;background:white;border:1px solid #e2e8f0;border-radius:24px;padding:32px;box-shadow:0 16px 48px #1e293b0d}.logo{display:grid;place-items:center;width:52px;height:52px;background:#1684f6;color:white;font-size:30px;font-weight:700;border-radius:16px}h1{font-size:26px;margin:22px 0 8px}p{color:#64748b;line-height:1.6}label{display:block;font-weight:600;margin:20px 0 8px}input,button{width:100%;min-height:48px;border-radius:10px;font:inherit}input{padding:12px;border:1px solid #cbd5e1}input:focus{outline:3px solid #bfdbfe;border-color:#1684f6}button{margin-top:24px;background:#1684f6;border:0;color:white;font-weight:600;cursor:pointer}.error{color:#b91c1c;background:#fef2f2;padding:12px;border-radius:10px}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f6fb;color:#1e293b;font:16px system-ui,sans-serif;padding:24px}.card{width:100%;max-width:520px;background:white;border:1px solid #e2e8f0;border-radius:24px;padding:32px;box-shadow:0 16px 48px #1e293b0d}.logo{display:grid;place-items:center;width:52px;height:52px;background:#1684f6;color:white;font-size:30px;font-weight:700;border-radius:16px}h1{font-size:26px;margin:22px 0 8px}p{color:#64748b;line-height:1.6}label{display:block;font-weight:600;margin:20px 0 8px}input,button{width:100%;min-height:48px;border-radius:10px;font:inherit}input{padding:12px;border:1px solid #cbd5e1}input:focus{outline:3px solid #bfdbfe;border-color:#1684f6}button{margin-top:24px;background:#1684f6;border:0;color:white;font-weight:600;cursor:pointer}.error{color:#b91c1c;background:#fef2f2;padding:12px;border-radius:10px}.setup-errors{margin:18px 0 0;padding:14px 14px 14px 34px;border-radius:10px;background:#fff7ed;color:#9a3412;line-height:1.6}.setup-errors code{font:600 13px ui-monospace,monospace;overflow-wrap:anywhere}
 </style>
 </head>
 <body><main class="card"><div class="logo">B</div><h1>Business OS</h1>
-{% if unavailable %}<p>Web erişimi henüz hazır değil. Kurulum tamamlandığında giriş yapabilirsiniz.</p>
+{% if unavailable %}<p>Web erişimi henüz hazır değil. Vercel ayarlarında aşağıdaki sorunları düzeltin:</p>
+<ul class="setup-errors">{% for item in setup_errors %}<li><code>{{ item }}</code></li>{% endfor %}</ul>
 {% else %}<p>Devam etmek için giriş yapın.</p>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="{{ url_for('web_login') }}" target="_top">

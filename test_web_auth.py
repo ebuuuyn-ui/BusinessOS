@@ -59,7 +59,7 @@ class WebAuthTests(unittest.TestCase):
             self.assertIn('BUSINESSOS_AUTH_CONFIG', output)
             self.assertIn(expected, output)
             self.assertEqual(response.status_code, 503)
-            self.assertNotIn(expected, response.text)
+            self.assertIn(expected, response.text)
             for value in dict(ENV, **overrides).values():
                 if len(value) > 2:
                     self.assertNotIn(value, output)
