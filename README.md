@@ -95,3 +95,31 @@ python app.py
 macOS paketi için `requirements-build.txt` bağımlılıklarıyla `python -m PyInstaller "Business OS.spec"` çalıştırılır. Çıktı `dist/Business OS.app` altındadır; GitHub yalnız kaynakları içerir, kurulu uygulamayı otomatik güncellemez.
 
 Bilinen eksik: `/ozon-satislari` rotasının beklediği `templates/ozon_sales.html` güncel kaynak klasöründe bulunmuyor. Ozon ekranı doğrulanmış bir özellik olarak kabul edilmemelidir.
+
+## Web giriş koruması (Vercel / PostgreSQL)
+
+Vercel ortamında veya PostgreSQL bağlantısıyla giriş zorunludur. Yerel SQLite
+başlatmasında giriş ekranı eklenmez. Aşağıdaki değişkenler Vercel proje ayarlarında
+Production ve kullanılan Preview ortamları için tanımlanmalıdır:
+
+- `BUSINESSOS_WEB_USERNAME`: sahibin seçtiği kullanıcı adı.
+- `BUSINESSOS_WEB_PASSWORD`: parola yöneticisiyle üretilmiş, en az 16 karakterli benzersiz şifre.
+- `SECRET_KEY`: parola yöneticisiyle üretilmiş, şifreden farklı, en az 32 karakterli rastgele değer.
+
+Değerleri kaynak koda, GitHub'a veya sohbet mesajına yazmayın. Vercel'de hassas
+ortam değişkeni olarak saklayın. Değişkenleri kaydettikten sonra yeniden deploy edin.
+Ayarlar eksik veya çok kısaysa tüm web istekleri 503 kurulum ekranıyla engellenir.
+`/giris` sayfasıyla giriş yapılır; sekiz saat sonra oturum sona erer. Şifre veya
+SECRET_KEY değişikliği ve yeniden deploy mevcut oturumları geçersiz kılar.
+Kenar menüsündeki Çıkış yap düğmesi oturumu kapatır.
+
+HTTPS zorunludur. Oturum çerezi Secure, HttpOnly, SameSite=Strict kullanır.
+Değişiklik yapan web istekleri aynı HTTPS origin bilgisini göndermelidir;
+origin bilgisi olmayan veya başka siteden gelen POST/PUT/PATCH/DELETE istekleri
+reddedilir. Giriş formu ayrıca CSRF belirteci kullanır. Yanıtlar önbelleğe alınmaz.
+Bu tek sahipli giriş çözümü kullanıcı yönetimi, MFA veya dağıtık giriş denemesi
+sınırlaması sağlamaz. Eski, korumasız Vercel yayınlarının adreslerini ayrıca
+kapatın veya Vercel erişim korumasına alın; yeni kod eski yayınları değiştirmez.
+Gerçek veri aktarımından önce üretim, preview ve eski yayın erişimlerini doğrulayın.
+
+Doğrulama: `python -m unittest test_web_auth -v` canlı veritabanı kullanmaz.

@@ -25,6 +25,7 @@ from sqlalchemy.engine import Engine
 from werkzeug.utils import secure_filename
 from customer_movement_report import register_report
 from stock_sorting import stock_text_sort_key
+from web_auth import install_web_auth
 from account_exports import statement_period, export_xlsx as account_export_xlsx, export_pdf as account_export_pdf
 
 try:
@@ -1790,6 +1791,7 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     db.init_app(app)
+    install_web_auth(app)
 
     @app.before_request
     def scheduled_database_backup():
