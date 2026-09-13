@@ -1778,9 +1778,12 @@ def create_app(test_config=None):
         flask_options["instance_path"] = os.path.abspath(os.path.expanduser(data_directory))
     app = Flask(__name__, **flask_options)
     os.makedirs(app.instance_path, exist_ok=True)
+    database_url = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(app.instance_path, 'business_os.db')}")
+    if database_url.startswith(("postgresql://", "postgres://")):
+        database_url = "postgresql+psycopg://" + database_url.split("://", 1)[1]
     app.config.from_mapping(
         SECRET_KEY=os.getenv("SECRET_KEY", "development-key-change-in-production"),
-        SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(app.instance_path, 'business_os.db')}"),
+        SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         MAX_CONTENT_LENGTH=ORDER_DOCUMENT_MAX_BYTES,
     )
