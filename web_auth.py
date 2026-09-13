@@ -76,7 +76,16 @@ def install_web_auth(app):
         if request.method == 'POST':
             token = str(session.get('login_csrf', ''))
             if not token or not hmac.compare_digest(token, request.form.get('csrf_token', '')):
-                abort(403)
+                # A deployment or SECRET_KEY rotation invalidates login pages
+                # already open in a browser. Recover with a fresh form instead
+                # of leaving the owner on Flask's generic 403 page.
+                session.clear()
+                session['login_csrf'] = secrets.token_urlsafe(32)
+                return render_template(
+                    'web_login.html',
+                    error='Giriş sayfası yenilendi. Bilgilerinizi tekrar girin.',
+                    csrf_token=session['login_csrf'],
+                ), 400
             supplied_user = request.form.get('username', '').encode()
             supplied_password = request.form.get('password', '').encode()
             user_ok = hmac.compare_digest(hashlib.sha256(supplied_user).digest(), hashlib.sha256(username.encode()).digest())

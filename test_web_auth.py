@@ -69,7 +69,10 @@ class WebAuthTests(unittest.TestCase):
         for path in ('/', '/export', '/unknown', '/static/style.css'):
             self.assertEqual(client.get(path, base_url=BASE).location, '/giris')
         self.assertEqual(client.post('/write', base_url=BASE).status_code, 401)
-        self.assertEqual(client.post('/giris', base_url=BASE).status_code, 403)
+        stale = client.post('/giris', base_url=BASE)
+        self.assertEqual(stale.status_code, 400)
+        self.assertIn('Giriş sayfası yenilendi', stale.text)
+        self.assertRegex(stale.text, r'name="csrf_token" value="[^"]+"')
         self.assertEqual(login(client, 'wrong').status_code, 401)
         self.assertEqual(client.get('/', base_url=BASE).status_code, 302)
 
