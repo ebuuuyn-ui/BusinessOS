@@ -10,6 +10,8 @@ import secrets
 import re
 import shutil
 import subprocess
+import tempfile
+import zipfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -26,6 +28,7 @@ from werkzeug.utils import secure_filename
 from customer_movement_report import register_report
 from stock_sorting import stock_text_sort_key
 from web_auth import install_web_auth
+from database_migration import MigrationError, migrate_sqlite_database
 from account_exports import statement_period, export_xlsx as account_export_xlsx, export_pdf as account_export_pdf
 
 try:
@@ -401,6 +404,26 @@ class EArchiveIncomingDocument(db.Model):
     suggested_order_id = db.Column(db.Integer, db.ForeignKey("order.id"), nullable=True, index=True)
     received_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     suggested_order = db.relationship("Order", foreign_keys=[suggested_order_id])
+
+
+class StoredFile(db.Model):
+    """Vercel'de kalıcı olması gereken belge içeriği."""
+    id = db.Column(db.Integer, primary_key=True)
+    storage_key = db.Column(db.String(500), unique=True, nullable=False, index=True)
+    content = db.Column(db.LargeBinary, nullable=False)
+    mime_type = db.Column(db.String(120))
+    size_bytes = db.Column(db.Integer, nullable=False)
+    sha256 = db.Column(db.String(64), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class MigrationLegacyArchive(db.Model):
+    """Güncel modellerde bulunmayan eski SQLite verilerini kayıpsız saklar."""
+    id = db.Column(db.Integer, primary_key=True)
+    source_table = db.Column(db.String(160), nullable=False, index=True)
+    source_key = db.Column(db.String(240))
+    payload = db.Column(db.JSON, nullable=False)
+    imported_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class AccountTransaction(db.Model):
@@ -1297,6 +1320,53 @@ def customer_tax_document_path(app, customer):
     return path
 
 
+def persistent_storage_key(app, path):
+    root = os.path.realpath(app.instance_path)
+    resolved = os.path.realpath(path)
+    if not resolved.startswith(root + os.sep):
+        raise ValueError("Geçersiz kalıcı dosya yolu")
+    return os.path.relpath(resolved, root).replace(os.sep, "/")
+
+
+def persist_local_file(app, path, mime_type=None):
+    """PostgreSQL web kurulumunda dosyanın kalıcı kopyasını veritabanına yazar."""
+    if db.engine.dialect.name != "postgresql":
+        return
+    with open(path, "rb") as handle:
+        content = handle.read()
+    key = persistent_storage_key(app, path)
+    stored = StoredFile.query.filter_by(storage_key=key).first()
+    if stored is None:
+        stored = StoredFile(storage_key=key)
+        db.session.add(stored)
+    stored.content = content
+    stored.mime_type = mime_type or mimetypes.guess_type(path)[0] or "application/octet-stream"
+    stored.size_bytes = len(content)
+    stored.sha256 = hashlib.sha256(content).hexdigest()
+
+
+def stored_file_response(app, path, download_name, mime_type, as_attachment):
+    if db.engine.dialect.name == "postgresql":
+        stored = StoredFile.query.filter_by(storage_key=persistent_storage_key(app, path)).first()
+        if stored is not None:
+            return send_file(
+                BytesIO(stored.content), as_attachment=as_attachment,
+                download_name=download_name, mimetype=mime_type or stored.mime_type,
+            )
+    if not os.path.isfile(path):
+        abort(404)
+    return send_file(path, as_attachment=as_attachment, download_name=download_name, mimetype=mime_type)
+
+
+def delete_persistent_file(app, path):
+    if db.engine.dialect.name == "postgresql":
+        stored = StoredFile.query.filter_by(storage_key=persistent_storage_key(app, path)).first()
+        if stored is not None:
+            db.session.delete(stored)
+    if os.path.isfile(path):
+        os.remove(path)
+
+
 def recognized_tax_document_text(path, extension):
     """Vergi levhasındaki dört sabit alanı macOS Vision ile yerel olarak okur."""
     source_path = path
@@ -1379,6 +1449,7 @@ def store_order_document(app, order, upload, document_type=None, source="Manuel"
     stored_name = f"{secrets.token_urlsafe(18)}.{extension}"
     destination = os.path.join(order_documents_directory(app, order.id), stored_name)
     upload.save(destination)
+    persist_local_file(app, destination, upload.mimetype or mimetypes.guess_type(original_name)[0])
     document = OrderDocument(
         order_id=order.id,
         document_type=document_type if document_type in ORDER_DOCUMENT_TYPES else order_document_type_for(order),
@@ -1800,6 +1871,53 @@ def create_app(test_config=None):
     @app.template_filter("money")
     def money(value):
         return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    @app.route("/yonetim/neon-aktarimi", methods=["GET", "POST"])
+    def neon_database_migration():
+        if not app.config.get("WEB_AUTH_ENABLED") or db.engine.dialect.name != "postgresql":
+            abort(404)
+        error = None
+        result = None
+        if request.method == "POST":
+            upload = request.files.get("database")
+            if request.form.get("confirmation", "").strip() != "AKTAR":
+                error = "Devam etmek için onay alanına AKTAR yazın."
+            elif not upload or not upload.filename:
+                error = "Aktarılacak SQLite yedeğini seçin."
+            else:
+                temporary_path = None
+                try:
+                    temporary_directory = tempfile.mkdtemp(prefix="businessos-neon-")
+                    temporary_path = os.path.join(temporary_directory, "business_os.db")
+                    if upload.filename.lower().endswith(".zip"):
+                        archive_path = os.path.join(temporary_directory, "migration.zip")
+                        upload.save(archive_path)
+                        with zipfile.ZipFile(archive_path) as archive:
+                            allowed_roots = {"order_documents", "customer_tax_documents", "telegram_inbox", "earchive_inbox"}
+                            for member in archive.infolist():
+                                parts = member.filename.replace("\\", "/").strip("/").split("/")
+                                if member.is_dir():
+                                    continue
+                                if parts == ["business_os.db"]:
+                                    destination = temporary_path
+                                elif parts and parts[0] in allowed_roots and all(part not in {"", ".", ".."} for part in parts):
+                                    destination = os.path.join(temporary_directory, *parts)
+                                else:
+                                    continue
+                                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                                with archive.open(member) as source, open(destination, "wb") as target:
+                                    shutil.copyfileobj(source, target)
+                    else:
+                        upload.save(temporary_path)
+                    if not os.path.isfile(temporary_path):
+                        raise MigrationError("Aktarım paketinde business_os.db bulunamadı.")
+                    result = migrate_sqlite_database(temporary_path, db.engine, db.metadata, file_root=temporary_directory)
+                except (MigrationError, sqlite3.Error, ValueError, zipfile.BadZipFile) as exc:
+                    error = str(exc)
+                finally:
+                    if temporary_path:
+                        shutil.rmtree(os.path.dirname(temporary_path), ignore_errors=True)
+        return render_template("database_migration.html", error=error, result=result), 400 if error else 200
 
     @app.get("/")
     def dashboard():
@@ -2819,9 +2937,7 @@ def create_app(test_config=None):
             path = customer_tax_document_path(app, customer)
         except ValueError:
             abort(404)
-        if not os.path.isfile(path):
-            abort(404)
-        return send_file(path, as_attachment=False, download_name=customer.tax_document_name or "vergi-levhasi", mimetype=customer.tax_document_mime_type or mimetypes.guess_type(path)[0])
+        return stored_file_response(app, path, customer.tax_document_name or "vergi-levhasi", customer.tax_document_mime_type or mimetypes.guess_type(path)[0], False)
 
     @app.post("/musteriler/<int:customer_id>/vergi-levhasi")
     def upload_customer_tax_document(customer_id):
@@ -2846,6 +2962,7 @@ def create_app(test_config=None):
         destination = os.path.join(customer_tax_document_directory(app, customer.id), stored_name)
         try:
             upload.save(destination)
+            persist_local_file(app, destination, upload.mimetype or mimetypes.guess_type(original_name)[0])
             customer.tax_document_name = original_name
             customer.tax_document_stored_name = stored_name
             customer.tax_document_mime_type = upload.mimetype or mimetypes.guess_type(original_name)[0] or "application/octet-stream"
@@ -4380,9 +4497,7 @@ def create_app(test_config=None):
             path = order_document_path(app, document)
         except ValueError:
             abort(404)
-        if not os.path.isfile(path):
-            return "Belge dosyası bulunamadı.", 404
-        return send_file(path, as_attachment=True, download_name=document.original_name, mimetype=document.mime_type)
+        return stored_file_response(app, path, document.original_name, document.mime_type, True)
 
     @app.get("/siparis-belgeleri/<int:document_id>/ac")
     def view_order_document(document_id):
@@ -4391,9 +4506,7 @@ def create_app(test_config=None):
             path = order_document_path(app, document)
         except ValueError:
             abort(404)
-        if not os.path.isfile(path):
-            return "Belge dosyası bulunamadı.", 404
-        return send_file(path, as_attachment=False, download_name=document.original_name, mimetype=document.mime_type)
+        return stored_file_response(app, path, document.original_name, document.mime_type, False)
 
     @app.post("/siparis-belgeleri/<int:document_id>/sil")
     def delete_order_document(document_id):
@@ -4404,13 +4517,10 @@ def create_app(test_config=None):
         except ValueError:
             path = None
         create_database_backup(app, "before_order_document_delete")
+        if path:
+            delete_persistent_file(app, path)
         db.session.delete(document)
         db.session.commit()
-        if path and os.path.isfile(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
         flash("Belge siparişten kaldırıldı.", "success")
         return redirect(url_for("order_detail", order_id=order_id))
 

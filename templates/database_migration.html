@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Business OS · Neon Aktarımı</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#f3f6fb;color:#172033;font:16px system-ui;padding:28px}.card{max-width:760px;margin:auto;background:#fff;border:1px solid #dbe3ef;border-radius:22px;padding:30px;box-shadow:0 14px 40px #1720330d}h1{margin-top:0}p{line-height:1.6;color:#64748b}.warning,.error,.success{padding:14px;border-radius:10px}.warning{background:#fff7ed;color:#9a3412}.error{background:#fef2f2;color:#b91c1c}.success{background:#ecfdf5;color:#047857}label{display:block;font-weight:650;margin:20px 0 8px}input,button{width:100%;min-height:48px;border-radius:10px;font:inherit}input{border:1px solid #cbd5e1;padding:10px}button{margin-top:22px;border:0;background:#1684f6;color:#fff;font-weight:700}table{width:100%;border-collapse:collapse;margin-top:18px}td,th{padding:8px;border-bottom:1px solid #e2e8f0;text-align:left}td:last-child,th:last-child{text-align:right}</style></head>
+<body><main class="card"><h1>SQLite → Neon veri aktarımı</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if result %}<p class="success"><strong>Aktarım tamamlandı.</strong> {{ result.total_rows }} kayıt ve {{ result.file_count }} belge Neon'a kopyalandı; tablo sayıları eşleşti.</p>
+<table><tr><th>Tablo</th><th>Kayıt</th></tr>{% for name,count in result.target_counts.items() %}<tr><td>{{ name }}</td><td>{{ count }}</td></tr>{% endfor %}</table>
+{% if result.archived_legacy_rows %}<p class="warning">Güncel uygulamada kullanılmayan {{ result.archived_legacy_rows }} eski kayıt da Neon'daki koruma arşivine aktarıldı.</p>{% endif %}
+{% else %}<p class="warning">Bu işlem yalnız Neon boşsa çalışır. Yüklenen yedek önce doğrulanır; tüm kopyalama tek işlemde tamamlanamazsa hiçbir kayıt kaydedilmez.</p>
+<form method="post" enctype="multipart/form-data">
+<label for="database">Doğrulanmış aktarım paketi</label><input id="database" name="database" type="file" accept=".zip,.db,.sqlite,.sqlite3" required>
+<label for="confirmation">Onay kutusuna AKTAR yazın</label><input id="confirmation" name="confirmation" required autocomplete="off">
+<button type="submit">Neon'a aktar</button></form>{% endif %}
+</main></body></html>
