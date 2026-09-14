@@ -2619,12 +2619,17 @@ def create_app(test_config=None):
             os.close(descriptor)
             try:
                 create_sqlite_transfer_package(db.engine, package_path, app.instance_path, db.metadata)
-            except Exception:
+            except Exception as error:
+                app.logger.exception("Yerel aktarım paketi oluşturulamadı")
                 try:
                     os.remove(package_path)
                 except OSError:
                     pass
-                raise
+                if isinstance(error, RuntimeError):
+                    flash(str(error), "error")
+                else:
+                    flash(f"Aktarım paketi oluşturulamadı ({type(error).__name__}). Veri değiştirilmedi.", "error")
+                return redirect(url_for("backups"))
             response = send_file(
                 package_path,
                 as_attachment=True,
