@@ -25,6 +25,7 @@ from flask import Flask, abort, flash, make_response, redirect, render_template,
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event, func, inspect, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
 from customer_movement_report import register_report
 from stock_sorting import stock_text_sort_key
@@ -904,7 +905,7 @@ def calculate_customer_balances(customer_ids=None):
     balances = {customer_id: Decimal("0") for customer_id in ids}
     if not ids:
         return balances
-    invoices = Invoice.query.filter(Invoice.customer_id.in_(ids)).all()
+    invoices = Invoice.query.options(selectinload(Invoice.items)).filter(Invoice.customer_id.in_(ids)).all()
     for invoice in invoices:
         balances[invoice.customer_id] += invoice.total_amount if invoice.invoice_type == "Satış" else -invoice.total_amount
     for transaction in AccountTransaction.query.filter(AccountTransaction.customer_id.in_(ids)).all():
@@ -1050,7 +1051,7 @@ def build_customer_balances_pdf(customers, balances):
     return output
 
 
-def delivered_sales_collection_tracking(today=None):
+def delivered_sales_collection_tracking(today=None, delivered_sales=None):
     """Teslim edilmiş satışları, cari tahsilatları düşerek sipariş bazında izler.
 
     Tahsilatlar aynı carinin en eski teslim edilmiş satışından başlanarak mahsup
@@ -1058,7 +1059,12 @@ def delivered_sales_collection_tracking(today=None):
     listesindeki açık tutarı doğrudan azaltır.
     """
     today = today or date.today()
-    delivered_sales = Order.query.filter_by(order_type="Satış", status="Teslim Edildi").all()
+    if delivered_sales is None:
+        delivered_sales = Order.query.options(
+            selectinload(Order.items),
+            selectinload(Order.history),
+            joinedload(Order.customer),
+        ).filter_by(order_type="Satış", status="Teslim Edildi").all()
     grouped_orders = {}
     for order in delivered_sales:
         delivered_events = [event for event in order.history if event.status == "Teslim Edildi"]
@@ -1068,18 +1074,22 @@ def delivered_sales_collection_tracking(today=None):
         delivered_at = delivered_at or order.delivery_date or (order.updated_at or order.created_at).date()
         grouped_orders.setdefault(order.customer_id, []).append((delivered_at, order))
 
-    items = []
     credit_types = {"Tahsilat", "Alacak Dekontu", "Alacak Devir"}
+    customer_ids = list(grouped_orders)
+    collections_by_customer = {customer_id: Decimal("0") for customer_id in customer_ids}
+    if customer_ids:
+        transactions = AccountTransaction.query.filter(
+            AccountTransaction.customer_id.in_(customer_ids),
+            AccountTransaction.transaction_type.in_(credit_types),
+            AccountTransaction.transaction_date <= today,
+        ).all()
+        for transaction in transactions:
+            collections_by_customer[transaction.customer_id] += transaction.credit or Decimal("0")
+
+    items = []
     for customer_id, dated_orders in grouped_orders.items():
         dated_orders.sort(key=lambda entry: (entry[0], entry[1].id))
-        available_collection = sum(
-            ((transaction.credit or Decimal("0")) for transaction in AccountTransaction.query.filter(
-                AccountTransaction.customer_id == customer_id,
-                AccountTransaction.transaction_type.in_(credit_types),
-                AccountTransaction.transaction_date <= today,
-            ).all()),
-            Decimal("0"),
-        )
+        available_collection = collections_by_customer[customer_id]
         for delivered_at, order in dated_orders:
             amount = order.total_amount
             collected = min(max(available_collection, Decimal("0")), amount)
@@ -1923,21 +1933,26 @@ def create_app(test_config=None):
     @app.get("/")
     def dashboard():
         today = date.today()
-        recent_orders = Order.query.order_by(Order.created_at.desc()).limit(7).all()
-        active_count = Order.query.filter(~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
-        today_orders = Order.query.filter(Order.order_date == today, Order.status != "İptal Edildi").all()
+        all_orders = Order.query.options(
+            selectinload(Order.items),
+            selectinload(Order.history),
+            joinedload(Order.customer),
+        ).all()
+        recent_orders = sorted(all_orders, key=lambda order: order.created_at, reverse=True)[:7]
+        active_count = sum(order.status not in {"Teslim Edildi", "İptal Edildi"} for order in all_orders)
+        today_orders = [order for order in all_orders if order.order_date == today and order.status != "İptal Edildi"]
         today_sales = [order for order in today_orders if order.order_type == "Satış"]
         today_purchases = [order for order in today_orders if order.order_type == "Satın Alma"]
         status_groups = {}
         for order_type in ORDER_TYPES:
             counts = []
             for status in ORDER_STATUSES:
-                count = Order.query.filter_by(order_type=order_type, status=status).count()
+                count = sum(order.order_type == order_type and order.status == status for order in all_orders)
                 if count:
                     counts.append({"name": status, "count": count})
             status_groups[order_type] = {"items": counts, "max": max((item["count"] for item in counts), default=1), "total": sum(item["count"] for item in counts)}
         exit_orders_by_date = {}
-        completed_orders = Order.query.filter(Order.status.in_(["Sevk Edildi", "Teslim Edildi"])).all()
+        completed_orders = [order for order in all_orders if order.status in {"Sevk Edildi", "Teslim Edildi"}]
         for order in completed_orders:
             exit_events = [event for event in order.history if event.status in ["Sevk Edildi", "Teslim Edildi"]]
             exit_date = min((event.created_at.date() for event in exit_events), default=(order.updated_at or order.created_at).date())
@@ -1956,31 +1971,35 @@ def create_app(test_config=None):
         overdue_count = Order.query.filter(Order.delivery_date < today, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
         due_today_count = Order.query.filter(Order.delivery_date == today, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
         customer_balances = calculate_customer_balances()
-        collection_tracking = delivered_sales_collection_tracking(today)
+        collection_tracking = delivered_sales_collection_tracking(
+            today,
+            [order for order in all_orders if order.order_type == "Satış" and order.status == "Teslim Edildi"],
+        )
         open_collection_tracking = [item for item in collection_tracking if item["remaining"] > 0]
         overdue_collections = [item for item in open_collection_tracking if item["state"] == "overdue"]
         due_soon_collections = [item for item in open_collection_tracking if item["state"] in {"due_today", "due_soon"}]
         total_debit_balance = sum((balance for balance in customer_balances.values() if balance > 0), Decimal("0"))
         total_credit_balance = sum((-balance for balance in customer_balances.values() if balance < 0), Decimal("0"))
         month_start = today.replace(day=1)
-        today_expense = sum((expense.amount for expense in Expense.query.filter(Expense.expense_date == today).all()), Decimal("0"))
-        month_expense = sum((expense.amount for expense in Expense.query.filter(Expense.expense_date >= month_start, Expense.expense_date <= today).all()), Decimal("0"))
+        today_expense = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.expense_date == today).scalar()
+        month_expense = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.expense_date >= month_start, Expense.expense_date <= today).scalar()
         recurring_expenses = RecurringExpense.query.filter_by(active=True).all()
         recurring_due = sorted(
             ({"expense": item, "due_date": item.due_date_for(today), "recorded": item.is_recorded_for(today)} for item in recurring_expenses),
             key=lambda item: item["due_date"],
         )
-        cashflow_orders = Order.query.filter(Order.status != "İptal Edildi").all()
+        cashflow_orders = [order for order in all_orders if order.status != "İptal Edildi"]
         pending_expected = calculate_pending_delivery_amounts(cashflow_orders)
         pending_delivery_sales = [order for order in cashflow_orders if order.order_type == "Satış" and pending_expected.get(order.id, 0) > 0]
         pending_delivery_purchases = [order for order in cashflow_orders if order.order_type == "Satın Alma" and pending_expected.get(order.id, 0) > 0]
         treasury = calculate_treasury(today)
         month_end = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
-        forecast_sales_orders = Order.query.filter(
-            Order.order_type == "Satış",
-            ~Order.status.in_(FINANCIAL_ORDER_STATUSES + ["İptal Edildi"]),
-            db.or_(Order.delivery_date.is_(None), Order.delivery_date <= month_end),
-        ).all()
+        forecast_sales_orders = [
+            order for order in all_orders
+            if order.order_type == "Satış"
+            and order.status not in FINANCIAL_ORDER_STATUSES + ["İptal Edildi"]
+            and (order.delivery_date is None or order.delivery_date <= month_end)
+        ]
         forecast_sales_by_customer = {}
         for order in forecast_sales_orders:
             forecast_sales_by_customer.setdefault(order.customer_id, Decimal("0"))
@@ -1997,11 +2016,12 @@ def create_app(test_config=None):
         ).all()
         forecast_incoming_checks = sum((item.credit or Decimal("0") for item in month_checks if item.transaction_type == "Tahsilat"), Decimal("0"))
         forecast_outgoing_checks = sum((item.debit or Decimal("0") for item in month_checks if item.transaction_type == "Ödeme"), Decimal("0"))
-        forecast_purchase_orders = Order.query.filter(
-            Order.order_type == "Satın Alma",
-            ~Order.status.in_(FINANCIAL_ORDER_STATUSES + ["İptal Edildi"]),
-            db.or_(Order.delivery_date.is_(None), Order.delivery_date <= month_end),
-        ).all()
+        forecast_purchase_orders = [
+            order for order in all_orders
+            if order.order_type == "Satın Alma"
+            and order.status not in FINANCIAL_ORDER_STATUSES + ["İptal Edildi"]
+            and (order.delivery_date is None or order.delivery_date <= month_end)
+        ]
         forecast_purchases_by_supplier = {}
         for order in forecast_purchase_orders:
             forecast_purchases_by_supplier.setdefault(order.customer_id, Decimal("0"))
@@ -2020,7 +2040,7 @@ def create_app(test_config=None):
             customer_count=Customer.query.count(),
             product_count=Product.query.filter_by(active=True).count(),
             active_count=active_count,
-            completed_count=Order.query.filter_by(status="Teslim Edildi").count(),
+            completed_count=sum(order.status == "Teslim Edildi" for order in all_orders),
             today_sales_count=len(today_sales),
             today_sales_amount=sum((order.total_amount for order in today_sales), Decimal("0")),
             today_purchase_count=len(today_purchases),
@@ -3295,7 +3315,7 @@ def create_app(test_config=None):
             physical_stock[movement.product_id] += movement.signed_quantity
         reserved_stock = {product_id: 0 for product_id in product_ids}
         expected_stock = {product_id: 0 for product_id in product_ids}
-        active_orders = Order.query.filter(~Order.status.in_(FINANCIAL_ORDER_STATUSES + ["İptal Edildi"])).all()
+        active_orders = Order.query.options(selectinload(Order.items)).filter(~Order.status.in_(FINANCIAL_ORDER_STATUSES + ["İptal Edildi"])).all()
         for order in active_orders:
             for item in order.items:
                 if item.product_id not in physical_stock:
@@ -3330,11 +3350,11 @@ def create_app(test_config=None):
             selected_stock_movements = StockMovement.query.filter_by(product_id=selected_stock_product.id).order_by(
                 StockMovement.movement_date.desc(), StockMovement.id.desc()
             ).all()
-        recent_stock_movements = StockMovement.query.order_by(StockMovement.movement_date.desc(), StockMovement.id.desc()).limit(12).all()
+        recent_stock_movements = StockMovement.query.options(joinedload(StockMovement.product)).order_by(StockMovement.movement_date.desc(), StockMovement.id.desc()).limit(12).all()
         displayed_stock_movement_ids = {movement.id for movement in selected_stock_movements + recent_stock_movements}
         stock_movement_invoices = {
             item.stock_movement_id: item.invoice
-            for item in InvoiceItem.query.filter(InvoiceItem.stock_movement_id.in_(displayed_stock_movement_ids)).all()
+            for item in InvoiceItem.query.options(joinedload(InvoiceItem.invoice)).filter(InvoiceItem.stock_movement_id.in_(displayed_stock_movement_ids)).all()
         } if displayed_stock_movement_ids else {}
         stock_picker_products = [
             {
@@ -3977,13 +3997,18 @@ def create_app(test_config=None):
             kind: {order_status: {"count": 0, "total": Decimal("0")} for order_status in ORDER_STATUSES}
             for kind in ORDER_TYPES
         }
-        for summary_order in Order.query.all():
+        summary_orders = Order.query.options(selectinload(Order.items)).all()
+        for summary_order in summary_orders:
             if summary_order.order_type not in status_summary or summary_order.status not in status_summary[summary_order.order_type]:
                 continue
             bucket = status_summary[summary_order.order_type][summary_order.status]
             bucket["count"] += 1
             bucket["total"] += summary_order.total_amount
-        records = Order.query.join(Customer)
+        records = Order.query.options(
+            selectinload(Order.items),
+            joinedload(Order.customer),
+            selectinload(Order.invoices),
+        ).join(Customer)
         if query:
             search_value = f"%{normalize_search_text(query)}%"
             records = records.filter(db.or_(
@@ -4009,20 +4034,20 @@ def create_app(test_config=None):
                 func.normalize_tr(Customer.code).like(customer_search_value),
             ))
         if delivery_pending:
-            all_cashflow_orders = Order.query.filter(Order.status != "İptal Edildi").all()
+            all_cashflow_orders = Order.query.options(selectinload(Order.items)).filter(Order.status != "İptal Edildi").all()
             pending_expected = calculate_pending_delivery_amounts(all_cashflow_orders)
             open_ids = {order.id for order in all_cashflow_orders if pending_expected.get(order.id, 0) > 0}
             records = records.filter(Order.id.in_(open_ids)) if open_ids else records.filter(db.false())
             counts = {kind: sum(1 for order in all_cashflow_orders if order.order_type == kind and order.id in open_ids) for kind in ORDER_TYPES}
         elif active_only:
-            counts = {kind: Order.query.filter(Order.order_type == kind, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count() for kind in ORDER_TYPES}
+            counts = {kind: sum(order.order_type == kind and order.status not in {"Teslim Edildi", "İptal Edildi"} for order in summary_orders) for kind in ORDER_TYPES}
         else:
-            counts = {kind: Order.query.filter_by(order_type=kind).count() for kind in ORDER_TYPES}
+            counts = {kind: sum(order.order_type == kind for order in summary_orders) for kind in ORDER_TYPES}
         listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all() if delivery_pending else records.order_by(Order.order_date.desc(), Order.id.desc()).all()
         listed_sales_ids = [order.id for order in listed_orders if order.order_type == "Satış"]
         linked_by_source = {order_id: [] for order_id in listed_sales_ids}
         if listed_sales_ids:
-            for linked_order in Order.query.filter(Order.source_order_id.in_(listed_sales_ids)).order_by(Order.id).all():
+            for linked_order in Order.query.options(selectinload(Order.items)).filter(Order.source_order_id.in_(listed_sales_ids)).order_by(Order.id).all():
                 linked_by_source[linked_order.source_order_id].append(linked_order)
         listed_purchase_source_ids = {
             order.source_order_id for order in listed_orders
@@ -4030,7 +4055,7 @@ def create_app(test_config=None):
         }
         source_orders_by_id = {
             source_order.id: source_order
-            for source_order in Order.query.filter(Order.id.in_(listed_purchase_source_ids)).all()
+            for source_order in Order.query.options(selectinload(Order.items)).filter(Order.id.in_(listed_purchase_source_ids)).all()
         } if listed_purchase_source_ids else {}
         procurement_summaries = {
             order.id: procurement_summary(order, linked_by_source.get(order.id, []))
@@ -4058,7 +4083,7 @@ def create_app(test_config=None):
             export_args["active"] = "1"
         if delivery_pending:
             export_args["delivery_pending"] = "1"
-        customers_list = Customer.query.order_by(Customer.name).all()
+        customers_list = Customer.query.join(Order).distinct().order_by(Customer.name).all()
         return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, source_orders_by_id=source_orders_by_id, export_args=export_args)
 
     @app.get("/siparisler/excel")

@@ -123,7 +123,8 @@
       const tabs=document.querySelector('#workspace-tabs');
       const stage=document.querySelector('#workspace-stage');
       if(!source || !tabs || !stage) return;
-      if(window.matchMedia('(max-width: 900px)').matches){
+      const useDirectNavigation={{ 'true' if config.WEB_AUTH_ENABLED else 'false' }} || window.matchMedia('(max-width: 900px)').matches;
+      if(useDirectNavigation){
         document.body.classList.add('workspace-mobile-direct');
         return;
       }
