@@ -103,6 +103,40 @@ def apply_order_invoice_status_filter(records, invoice_status):
     return records.filter(Order.id.in_(invoiced_order_ids) if invoice_status == "Faturalandı" else ~Order.id.in_(invoiced_order_ids))
 
 
+def apply_order_text_filters(records, query="", customer_query="", dialect_name=None):
+    """Apply portable text filters to order list queries and exports."""
+    dialect_name = dialect_name or db.engine.dialect.name
+    if query:
+        if dialect_name == "sqlite":
+            search_value = f"%{normalize_search_text(query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Order.order_no).like(search_value),
+                func.normalize_tr(Customer.name).like(search_value),
+                func.normalize_tr(Customer.code).like(search_value),
+            ))
+        else:
+            search_value = f"%{query}%"
+            records = records.filter(db.or_(
+                Order.order_no.ilike(search_value),
+                Customer.name.ilike(search_value),
+                Customer.code.ilike(search_value),
+            ))
+    if customer_query:
+        if dialect_name == "sqlite":
+            customer_search_value = f"%{normalize_search_text(customer_query)}%"
+            records = records.filter(db.or_(
+                func.normalize_tr(Customer.name).like(customer_search_value),
+                func.normalize_tr(Customer.code).like(customer_search_value),
+            ))
+        else:
+            customer_search_value = f"%{customer_query}%"
+            records = records.filter(db.or_(
+                Customer.name.ilike(customer_search_value),
+                Customer.code.ilike(customer_search_value),
+            ))
+    return records
+
+
 class InvoicePrefillPlaceholder:
     """Şablonda boş fatura için güvenli, yanlışsız bir sipariş yer tutucusu."""
     class Customer:
@@ -4044,13 +4078,7 @@ def create_app(test_config=None):
             joinedload(Order.customer),
             selectinload(Order.invoices),
         ).join(Customer)
-        if query:
-            search_value = f"%{normalize_search_text(query)}%"
-            records = records.filter(db.or_(
-                func.normalize_tr(Order.order_no).like(search_value),
-                func.normalize_tr(Customer.name).like(search_value),
-                func.normalize_tr(Customer.code).like(search_value),
-            ))
+        records = apply_order_text_filters(records, query, customer_query)
         if selected_statuses:
             records = records.filter(Order.status.in_(selected_statuses))
         records = apply_order_invoice_status_filter(records, selected_invoice_status)
@@ -4062,12 +4090,6 @@ def create_app(test_config=None):
             records = records.filter(Order.order_type == order_type)
         if selected_customer:
             records = records.filter(Order.customer_id == selected_customer.id)
-        if customer_query:
-            customer_search_value = f"%{normalize_search_text(customer_query)}%"
-            records = records.filter(db.or_(
-                func.normalize_tr(Customer.name).like(customer_search_value),
-                func.normalize_tr(Customer.code).like(customer_search_value),
-            ))
         if delivery_pending:
             all_cashflow_orders = Order.query.options(selectinload(Order.items)).filter(Order.status != "İptal Edildi").all()
             pending_expected = calculate_pending_delivery_amounts(all_cashflow_orders)
@@ -4149,13 +4171,7 @@ def create_app(test_config=None):
         selected_customer = db.session.get(Customer, customer_id) if customer_id else None
 
         records = Order.query.join(Customer)
-        if query:
-            search_value = f"%{normalize_search_text(query)}%"
-            records = records.filter(db.or_(
-                func.normalize_tr(Order.order_no).like(search_value),
-                func.normalize_tr(Customer.name).like(search_value),
-                func.normalize_tr(Customer.code).like(search_value),
-            ))
+        records = apply_order_text_filters(records, query, customer_query)
         if selected_statuses:
             records = records.filter(Order.status.in_(selected_statuses))
         records = apply_order_invoice_status_filter(records, selected_invoice_status)
@@ -4167,12 +4183,6 @@ def create_app(test_config=None):
             records = records.filter(Order.order_type == order_type)
         if selected_customer:
             records = records.filter(Order.customer_id == selected_customer.id)
-        if customer_query:
-            customer_search_value = f"%{normalize_search_text(customer_query)}%"
-            records = records.filter(db.or_(
-                func.normalize_tr(Customer.name).like(customer_search_value),
-                func.normalize_tr(Customer.code).like(customer_search_value),
-            ))
 
         pending_expected = {}
         if delivery_pending:
@@ -4329,13 +4339,7 @@ def create_app(test_config=None):
         selected_customer = db.session.get(Customer, customer_id) if customer_id else None
 
         records = Order.query.join(Customer)
-        if query:
-            search_value = f"%{normalize_search_text(query)}%"
-            records = records.filter(db.or_(
-                func.normalize_tr(Order.order_no).like(search_value),
-                func.normalize_tr(Customer.name).like(search_value),
-                func.normalize_tr(Customer.code).like(search_value),
-            ))
+        records = apply_order_text_filters(records, query, customer_query)
         if selected_statuses:
             records = records.filter(Order.status.in_(selected_statuses))
         records = apply_order_invoice_status_filter(records, selected_invoice_status)
@@ -4347,12 +4351,6 @@ def create_app(test_config=None):
             records = records.filter(Order.order_type == order_type)
         if selected_customer:
             records = records.filter(Order.customer_id == selected_customer.id)
-        if customer_query:
-            customer_search_value = f"%{normalize_search_text(customer_query)}%"
-            records = records.filter(db.or_(
-                func.normalize_tr(Customer.name).like(customer_search_value),
-                func.normalize_tr(Customer.code).like(customer_search_value),
-            ))
         if delivery_pending:
             all_cashflow_orders = Order.query.filter(Order.status != "İptal Edildi").all()
             pending_expected = calculate_pending_delivery_amounts(all_cashflow_orders)
