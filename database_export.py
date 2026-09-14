@@ -71,10 +71,14 @@ def _table_metrics(connection, metadata: MetaData) -> dict:
             financial[column] = format(total, "f")
         binary = {}
         for column in binary_columns:
-            binary[column] = _digest([_canonical(row[column]) for row in rows if row[column] is not None])
+            binary[column] = _digest(sorted(
+                _digest(_canonical(row[column])) for row in rows if row[column] is not None
+            ))
         metrics[table.name] = {
             "rows": len(rows),
-            "identity_sha256": _digest(identities),
+            # SQL never promises a row order without ORDER BY. Compare the
+            # complete primary-key set, independent of PostgreSQL/SQLite scan order.
+            "identity_sha256": _digest(sorted(_digest(identity) for identity in identities)),
             "financial_totals": financial,
             "binary_sha256": binary,
         }
