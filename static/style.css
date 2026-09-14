@@ -1239,6 +1239,33 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 .collection-actions{padding-top:16px}
 @media(max-width:560px){.collection-grid,.collection-check-fields,.collection-card-fields{grid-template-columns:1fr}.collection-customer,.collection-description{grid-column:auto}.collection-actions .button{flex:1;text-align:center}}
 
+/* Mobile consistency layer: forms stay readable, while dense records scroll inside their own panel. */
+@media(max-width:560px){
+  .content{width:100%;max-width:100%;overflow-x:hidden}
+  .topbar{gap:8px}.topbar>.header-actions{min-width:0;width:calc(100% - 48px);margin-left:48px;flex-wrap:wrap}
+  .topbar>.header-actions .button{flex:1 1 132px;min-width:0;white-space:normal;line-height:1.2}
+  .header-actions,.actions,.row-actions,.panel-head{min-width:0;flex-wrap:wrap}
+  .panel-head{align-items:flex-start;gap:10px}.panel-head>div{min-width:0}.panel-head h2,.panel-head p{overflow-wrap:anywhere}
+  .panel-head>.button,.panel-head>form,.panel-head>form>.button{max-width:100%}
+  .filters{align-items:stretch;gap:9px;padding:12px}
+  .filters input:not([type="hidden"]),.filters select,.filters .filter-static,.filters .status-multiselect,.filters .button,.filters button{width:100%;min-width:0;max-width:none}
+  .filters .status-multiselect-options{left:0;right:0;min-width:0;max-width:calc(100vw - 46px)}
+  .form-grid,.form-grid.three,.form-grid.four,.collection-overview,.treasury-summary,.page-summary{grid-template-columns:1fr}
+  .form-grid label,.form-grid input,.form-grid select,.form-grid textarea{min-width:0;max-width:100%}
+  .actions>.button,.actions>button{flex:1 1 100%;text-align:center}
+  .detail-navigation{flex-wrap:wrap}.detail-navigation .button{flex:1 1 145px;text-align:center}
+  .table-wrap{width:100%;max-width:100%;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  .table-wrap>.compact-table{width:max-content;min-width:680px}
+  .table-wrap>.compact-table th,.table-wrap>.compact-table td{white-space:nowrap}
+  .table-wrap>.compact-table td:nth-child(4),.table-wrap>.compact-table td .block{white-space:normal;overflow-wrap:anywhere}
+  .order-summary,.financial-summary,.personal-summary{grid-template-columns:1fr;gap:10px}
+  .order-summary>div,.financial-summary>div,.personal-summary>div{min-width:0}
+  .order-summary a,.order-summary b,.order-summary span{overflow-wrap:anywhere}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+
 /* Stok hareketindeki arama listesi panel dışında da görünür kalmalıdır. */
 .panel.stock-movement-panel{position:relative;z-index:9;overflow:visible}
 .stock-movement-panel .stock-product-combobox .product-results{z-index:100}
