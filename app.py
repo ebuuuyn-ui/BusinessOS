@@ -4720,6 +4720,7 @@ def create_app(test_config=None):
 
     @app.get("/siparisler/<int:order_id>/pdf")
     def export_order_pdf(order_id):
+        import reportlab
         from reportlab.lib import colors
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.lib.pagesizes import A4, landscape
@@ -4730,14 +4731,17 @@ def create_app(test_config=None):
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         order = db.get_or_404(Order, order_id)
+        # Vercel Linux'ta macOS Arial bulunmaz. ReportLab'in Vera yazı tipi
+        # uygulamayla birlikte gelir ve Türkçe karakterleri PDF'e gömer.
         regular_font = "/System/Library/Fonts/Supplemental/Arial.ttf"
         bold_font = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-        if os.path.exists(regular_font) and os.path.exists(bold_font):
-            pdfmetrics.registerFont(TTFont("BusinessArial", regular_font))
-            pdfmetrics.registerFont(TTFont("BusinessArialBold", bold_font))
-            font_name, bold_name = "BusinessArial", "BusinessArialBold"
-        else:
-            font_name, bold_name = "Helvetica", "Helvetica-Bold"
+        if not (os.path.isfile(regular_font) and os.path.isfile(bold_font)):
+            font_directory = os.path.join(os.path.dirname(reportlab.__file__), "fonts")
+            regular_font = os.path.join(font_directory, "Vera.ttf")
+            bold_font = os.path.join(font_directory, "VeraBd.ttf")
+        pdfmetrics.registerFont(TTFont("BusinessOrderPDF", regular_font))
+        pdfmetrics.registerFont(TTFont("BusinessOrderPDF-Bold", bold_font))
+        font_name, bold_name = "BusinessOrderPDF", "BusinessOrderPDF-Bold"
         output = BytesIO()
         document = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=12*mm, leftMargin=12*mm, topMargin=12*mm, bottomMargin=12*mm, title=order.order_no)
         styles = getSampleStyleSheet()
