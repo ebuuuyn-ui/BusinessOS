@@ -142,11 +142,11 @@ def _read_only_source(engine):
             transaction.rollback()
 
 
-def create_sqlite_transfer_package(source_engine, output_path, instance_path: str | None = None) -> dict:
+def create_sqlite_transfer_package(source_engine, output_path, instance_path: str | None = None, metadata: MetaData | None = None) -> dict:
     """Create one verified ZIP package from a source engine without modifying it.
 
-    All discovered tables are reflected rather than relying on a hard-coded
-    model list.  This includes binary StoredFile-style tables when they exist.
+    The running application's metadata can be supplied to avoid PostgreSQL
+    reflection differences. It includes binary StoredFile-style tables.
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -155,18 +155,19 @@ def create_sqlite_transfer_package(source_engine, output_path, instance_path: st
         sqlite_path = temporary_path / "business_os.db"
         documents_zip = temporary_path / "documents.zip"
         with _read_only_source(source_engine) as source:
-            metadata = MetaData()
-            metadata.reflect(bind=source)
-            if not metadata.tables:
+            transfer_metadata = metadata or MetaData()
+            if metadata is None:
+                transfer_metadata.reflect(bind=source)
+            if not transfer_metadata.tables:
                 raise RuntimeError("Aktarılacak veritabanı tablosu bulunamadı.")
-            source_metrics = _table_metrics(source, metadata)
-            stored_file_entries = _stored_file_entries(source, metadata)
+            source_metrics = _table_metrics(source, transfer_metadata)
+            stored_file_entries = _stored_file_entries(source, transfer_metadata)
             target_engine = create_engine(f"sqlite:///{sqlite_path}")
             try:
-                metadata.create_all(target_engine)
+                transfer_metadata.create_all(target_engine)
                 with target_engine.begin() as destination:
                     destination.execute(text("PRAGMA foreign_keys = OFF"))
-                    _copy_table_rows(source, destination, metadata)
+                    _copy_table_rows(source, destination, transfer_metadata)
                 target_engine.dispose()
             finally:
                 target_engine.dispose()
@@ -174,7 +175,7 @@ def create_sqlite_transfer_package(source_engine, output_path, instance_path: st
         target_engine = create_engine(f"sqlite:///{sqlite_path}")
         try:
             with target_engine.connect() as target:
-                target_metrics = _table_metrics(target, metadata)
+                target_metrics = _table_metrics(target, transfer_metadata)
                 foreign_key_errors = target.execute(text("PRAGMA foreign_key_check")).fetchall()
         finally:
             target_engine.dispose()

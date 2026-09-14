@@ -2618,7 +2618,7 @@ def create_app(test_config=None):
             descriptor, package_path = tempfile.mkstemp(prefix="business-os-aktarim-", suffix=".zip")
             os.close(descriptor)
             try:
-                create_sqlite_transfer_package(db.engine, package_path, app.instance_path)
+                create_sqlite_transfer_package(db.engine, package_path, app.instance_path, db.metadata)
             except Exception:
                 try:
                     os.remove(package_path)
