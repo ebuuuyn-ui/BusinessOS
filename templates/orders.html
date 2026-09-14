@@ -109,6 +109,11 @@
       </tbody>
     </table>
   </div>
+  {% if total_pages > 1 %}<nav class="list-pagination" aria-label="Sipariş sayfaları">
+    {% if page > 1 %}<a class="button" href="{{ url_for('orders', page=page-1, **page_args) }}">← Önceki</a>{% endif %}
+    <span>{{ total_count }} kayıt · {{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="button" href="{{ url_for('orders', page=page+1, **page_args) }}">Sonraki →</a>{% endif %}
+  </nav>{% endif %}
   {% else %}<div class="empty"><h3>Sipariş bulunamadı</h3><p>Bu bölümde henüz kayıt yok veya filtreyle eşleşen sipariş bulunamadı.</p></div>{% endif %}
 </div>
 

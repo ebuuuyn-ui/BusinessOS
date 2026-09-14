@@ -4043,7 +4043,17 @@ def create_app(test_config=None):
             counts = {kind: sum(order.order_type == kind and order.status not in {"Teslim Edildi", "İptal Edildi"} for order in summary_orders) for kind in ORDER_TYPES}
         else:
             counts = {kind: sum(order.order_type == kind for order in summary_orders) for kind in ORDER_TYPES}
-        listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all() if delivery_pending else records.order_by(Order.order_date.desc(), Order.id.desc()).all()
+        page = max(request.args.get("page", 1, type=int), 1)
+        if delivery_pending:
+            listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all()
+            total_count = len(listed_orders)
+            total_pages = 1
+        else:
+            pagination = records.order_by(Order.order_date.desc(), Order.id.desc()).paginate(page=page, per_page=30, error_out=False)
+            listed_orders = pagination.items
+            total_count = pagination.total
+            total_pages = pagination.pages or 1
+            page = min(page, total_pages)
         listed_sales_ids = [order.id for order in listed_orders if order.order_type == "Satış"]
         linked_by_source = {order_id: [] for order_id in listed_sales_ids}
         if listed_sales_ids:
@@ -4061,9 +4071,7 @@ def create_app(test_config=None):
             order.id: procurement_summary(order, linked_by_source.get(order.id, []))
             for order in listed_orders if order.order_type == "Satış"
         }
-        invoice_counts = dict(db.session.query(Invoice.order_id, func.count(Invoice.id)).filter(
-            Invoice.order_id.in_([order.id for order in listed_orders])
-        ).group_by(Invoice.order_id).all()) if listed_orders else {}
+        invoice_counts = {order.id: len(order.invoices) for order in listed_orders}
         pending_expected = pending_expected if delivery_pending else {}
         listed_total = sum((pending_expected.get(order.id, order.total_amount) for order in listed_orders), Decimal("0"))
         export_args = {}
@@ -4084,7 +4092,9 @@ def create_app(test_config=None):
         if delivery_pending:
             export_args["delivery_pending"] = "1"
         customers_list = Customer.query.join(Order).distinct().order_by(Customer.name).all()
-        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, source_orders_by_id=source_orders_by_id, export_args=export_args)
+        page_args = request.args.to_dict(flat=False)
+        page_args.pop("page", None)
+        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, source_orders_by_id=source_orders_by_id, export_args=export_args, page=page, total_pages=total_pages, total_count=total_count, page_args=page_args)
 
     @app.get("/siparisler/excel")
     def export_orders_excel():
