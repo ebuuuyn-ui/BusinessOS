@@ -31,6 +31,7 @@ from customer_movement_report import register_report
 from stock_sorting import stock_text_sort_key
 from web_auth import install_web_auth
 from database_migration import MigrationError, migrate_sqlite_database
+from database_export import create_sqlite_transfer_package
 from account_exports import statement_period, export_xlsx as account_export_xlsx, export_pdf as account_export_pdf
 
 try:
@@ -1261,6 +1262,11 @@ def create_database_backup(app, label="automatic", target_dir=None, keep=250):
     return backup_path
 
 
+def uses_local_sqlite():
+    """Whether this edition has a local database that can be snapshotted."""
+    return db.engine.dialect.name == "sqlite"
+
+
 def ensure_scheduled_backups(app):
     """Create one hourly local snapshot and one daily copy outside the project."""
     now = datetime.now()
@@ -2129,16 +2135,18 @@ def create_app(test_config=None):
 
     @app.get("/yedekler")
     def backups():
-        backup_dir = os.path.join(app.instance_path, "backups")
-        os.makedirs(backup_dir, exist_ok=True)
         files = []
-        backup_names = [item for item in os.listdir(backup_dir) if item.endswith(".db")]
-        backup_names.sort(key=lambda item: os.path.getmtime(os.path.join(backup_dir, item)), reverse=True)
-        for name in backup_names[:80]:
-            path = os.path.join(backup_dir, name)
-            files.append({"name": name, "size": os.path.getsize(path), "modified": datetime.fromtimestamp(os.path.getmtime(path))})
+        local_sqlite = uses_local_sqlite()
+        if local_sqlite:
+            backup_dir = os.path.join(app.instance_path, "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_names = [item for item in os.listdir(backup_dir) if item.endswith(".db")]
+            backup_names.sort(key=lambda item: os.path.getmtime(os.path.join(backup_dir, item)), reverse=True)
+            for name in backup_names[:80]:
+                path = os.path.join(backup_dir, name)
+                files.append({"name": name, "size": os.path.getsize(path), "modified": datetime.fromtimestamp(os.path.getmtime(path))})
         archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
-        return render_template("backups.html", files=files, archive_dir=archive_dir)
+        return render_template("backups.html", files=files, archive_dir=archive_dir, local_sqlite=local_sqlite)
 
     @app.route("/faturalar", methods=["GET", "POST"])
     def invoices():
@@ -2595,6 +2603,9 @@ def create_app(test_config=None):
 
     @app.post("/yedekler/olustur")
     def create_manual_backup():
+        if not uses_local_sqlite():
+            flash("Web sürümünde kalıcı sunucu yedeği oluşturulmaz. Yerel uygulamaya geri yüklenebilir aktarım paketini indirin.", "info")
+            return redirect(url_for("backups"))
         backup_path = create_database_backup(app, "manual")
         archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
         create_database_backup(app, "manual", target_dir=archive_dir, keep=90)
@@ -2603,6 +2614,25 @@ def create_app(test_config=None):
 
     @app.get("/yedekler/guncel-indir")
     def download_current_backup():
+        if not uses_local_sqlite():
+            descriptor, package_path = tempfile.mkstemp(prefix="business-os-aktarim-", suffix=".zip")
+            os.close(descriptor)
+            try:
+                create_sqlite_transfer_package(db.engine, package_path, app.instance_path)
+            except Exception:
+                try:
+                    os.remove(package_path)
+                except OSError:
+                    pass
+                raise
+            response = send_file(
+                package_path,
+                as_attachment=True,
+                download_name=f"Business-OS-Yerel-Aktarim-{date.today().isoformat()}.zip",
+                mimetype="application/zip",
+            )
+            response.call_on_close(lambda: os.path.exists(package_path) and os.remove(package_path))
+            return response
         backup_path = create_database_backup(app, "download")
         return send_file(backup_path, as_attachment=True, download_name=f"Business-OS-Yedek-{date.today().isoformat()}.db")
 
