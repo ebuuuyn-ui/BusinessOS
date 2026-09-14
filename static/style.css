@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 30005)
+Total output lines: 1235
+
 :root{--navy:#14213d;--blue:#2563eb;--bg:#f4f6f9;--text:#172033;--muted:#6b7280;--line:#e5e7eb;--white:#fff;--shadow:0 8px 28px rgba(20,33,61,.07)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -138,6 +141,7 @@ main{margin-left:0}
 
 .topbar>.header-actions{margin-left:auto}
 .workspace-tabs{display:flex;align-items:end;gap:5px;min-height:43px;padding:7px 24px 0;border-bottom:1px solid var(--line);background:rgba(255,255,255,.9);overflow:auto}.workspace-tab{display:flex;align-items:center;gap:9px;min-width:150px;max-width:250px;height:35px;padding:7px 9px 7px 12px;border:1px solid transparent;border-radius:10px 10px 0 0;background:transparent;color:var(--muted);font-size:11px;font-weight:720;box-shadow:none}.workspace-tab>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-tab:hover{background:#f3f6fb;color:var(--text)}.workspace-tab.active{border-color:var(--line);border-bottom-color:#fff;background:#fff;color:var(--blue)}.workspace-tab-close{display:grid;place-items:center;flex:0 0 auto;width:18px;height:18px;margin-left:auto;border-radius:6px;color:#8c96a7;font-size:17px;font-weight:500;line-height:1}.workspace-tab-close:hover{background:#fdeeed;color:#c52c24}.workspace-stage{height:calc(100vh - 131px);min-height:520px;background:var(--bg)}.workspace-frame{display:block;width:100%;height:100%;border:0;background:var(--bg)}.workspace-frame[hidden]{display:none!important}body.workspace-embedded .sidebar,body.workspace-embedded .topbar,body.workspace-embedded .workspace-tabs,body.workspace-embedded .workspace-stage{display:none!important}body.workspace-embedded main{margin-left:0!important;min-height:0}body.workspace-embedded .content{max-width:none;padding:20px 24px}body.workspace-embedded .toast-stack{position:fixed}@media(max-width:900px){.workspace-tabs{padding-left:14px;padding-right:14px}.workspace-stage{height:calc(100vh - 131px)}body.workspace-embedded .content{padding:16px}}
+.list-pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin:18px 0}.list-pagination span{color:var(--muted);font-weight:700}.list-pagination .button{min-width:110px;text-align:center}
 .header-actions{display:flex!important;flex-direction:row!important;gap:8px}
 .detail-navigation{display:flex;align-items:center;gap:8px;margin:0 0 12px}.detail-navigation .button{min-height:34px;padding:7px 11px;font-size:11px}
 .order-invoice-action{display:flex;align-items:center;gap:10px;margin:10px 0 14px;padding:10px 12px;border:1px solid #cbdcf8;border-radius:10px;background:#f6f9ff;font-size:11px;color:var(--muted)}.order-invoice-action .button{flex:0 0 auto}.order-invoice-action span{line-height:1.35}@media(max-width:700px){.order-invoice-action{align-items:flex-start;flex-direction:column}}
@@ -815,7 +819,7 @@ main{margin:0}
 .profit-card{display:flex;flex-direction:column;padding:16px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:var(--shadow)}
 .profit-card small,.profit-card span{color:var(--muted)}
 .profit-card span{font-size:9px}
-.profit-card strong{margin:4px 0;font-size:21px}
+.profit-card strong{ma…5 tokens truncated…ze:21px}
 .profit-card.revenue{background:#f3f7ff;border-color:#bed0f4}
 .profit-card.revenue strong{color:#3155a5}
 .profit-card.cost,.profit-card.expense{background:#fff8ed;border-color:#efd2a5}

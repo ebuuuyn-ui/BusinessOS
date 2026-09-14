@@ -3,6 +3,7 @@ import sqlite3
 import unicodedata
 import csv
 import calendar
+import math
 import hashlib
 import json
 import mimetypes
@@ -2819,6 +2820,8 @@ def create_app(test_config=None):
         balance_sort = request.args.get("sort", "amount_desc").strip()
         if view == "balances":
             customer_records, balances, balance_filter, balance_sort = customer_balance_view(query, balance_filter, balance_sort)
+            total_count = len(customer_records)
+            page = total_pages = 1
         else:
             records = Customer.query
             if query:
@@ -2833,13 +2836,17 @@ def create_app(test_config=None):
                 else:
                     pattern = f"%{query}%"
                     records = records.filter(db.or_(Customer.name.ilike(pattern), Customer.code.ilike(pattern), Customer.contact_name.ilike(pattern), Customer.phone.ilike(pattern), Customer.mobile.ilike(pattern), Customer.email.ilike(pattern), Customer.city.ilike(pattern)))
-            customer_records = records.order_by(Customer.name).all()
+            page_size = 50
+            total_count = records.count()
+            total_pages = max(1, math.ceil(total_count / page_size))
+            page = min(max(request.args.get("page", 1, type=int) or 1, 1), total_pages)
+            customer_records = records.order_by(Customer.name).offset((page - 1) * page_size).limit(page_size).all()
             balances = calculate_customer_balances([customer.id for customer in customer_records])
             balance_filter = ""
             balance_sort = "amount_desc"
         visible_debit_total = sum((balances[customer.id] for customer in customer_records if balances[customer.id] > 0), Decimal("0"))
         visible_credit_total = sum((-balances[customer.id] for customer in customer_records if balances[customer.id] < 0), Decimal("0"))
-        return render_template("customers.html", customers=customer_records, customer_balances=balances, query=query, balance_filter=balance_filter, view=view, balance_sort=balance_sort, visible_debit_total=visible_debit_total, visible_credit_total=visible_credit_total)
+        return render_template("customers.html", customers=customer_records, customer_balances=balances, query=query, balance_filter=balance_filter, view=view, balance_sort=balance_sort, visible_debit_total=visible_debit_total, visible_credit_total=visible_credit_total, total_count=total_count, page=page, total_pages=total_pages)
 
     register_report(app, Customer, Order, AccountTransaction, normalize_search_text)
 

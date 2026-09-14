@@ -123,6 +123,10 @@
       const tabs=document.querySelector('#workspace-tabs');
       const stage=document.querySelector('#workspace-stage');
       if(!source || !tabs || !stage) return;
+      if(window.matchMedia('(max-width: 900px)').matches){
+        document.body.classList.add('workspace-mobile-direct');
+        return;
+      }
       const pages=new Map(); let activeId=''; let nextId=0;
       const pageTitle=()=>document.querySelector('.topbar b')?.textContent.trim()||'Business OS';
       const frameUrl=url=>{
