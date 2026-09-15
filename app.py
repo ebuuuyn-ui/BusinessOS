@@ -2127,36 +2127,31 @@ def create_app(test_config=None):
         )
 
     def collection_tracking_context():
-        from collection_tracking import customer_summaries, filter_customers
+        from invoice_maturity import build_maturity_groups, filter_groups
         today = date.today()
-        selected_state = request.args.get("state", "open").strip()
-        query = request.args.get("q", "").strip()
-        tracking_kind = request.args.get("kind", "sales").strip()
-        if tracking_kind not in {"sales", "purchase"}:
+        tracking_kind = request.args.get('kind', 'sales').strip()
+        if tracking_kind not in {'sales', 'purchase'}:
             abort(400)
-        is_purchase = tracking_kind == "purchase"
-        all_items = delivered_purchase_payment_tracking(today) if is_purchase else delivered_sales_collection_tracking(today)
-        if selected_state not in {"open", "overdue", "due_soon", "paid", "all"}:
-            selected_state = "open"
-        all_customers = customer_summaries(all_items, today)
-        if is_purchase:
-            for group in all_customers:
-                if group['state'] == 'paid':
-                    group['state_label'] = 'Ödendi'
-                elif group['state'] == 'open':
-                    group['state_label'] = 'Açık ödeme'
-        customers = filter_customers(all_customers, selected_state, query, normalize_search_text)
-        items = [item for group in customers for item in group['orders']]
-        summary = {
-            "open_amount": sum((item["remaining"] for item in all_items if item["remaining"] > 0), Decimal("0")),
-            "overdue_amount": sum((item["remaining"] for item in all_items if item["remaining"] > 0 and item["state"] == "overdue"), Decimal("0")),
-            "overdue_count": sum(1 for item in all_items if item["remaining"] > 0 and item["state"] == "overdue"),
-            "due_soon_amount": sum((item["remaining"] for item in all_items if item["remaining"] > 0 and item["state"] in {"due_today", "due_soon"}), Decimal("0")),
-            "due_soon_count": sum(1 for item in all_items if item["remaining"] > 0 and item["state"] in {"due_today", "due_soon"}),
-        }
-        summary['overdue_customers'] = sum(g['overdue_amount'] > 0 for g in all_customers)
-        summary['due_soon_customers'] = sum(g['due_soon_amount'] > 0 for g in all_customers)
-        return dict(items=items, customers=customers, summary=summary, selected_state=selected_state, query=query, today=today, tracking_kind=tracking_kind, is_purchase=is_purchase)
+        is_purchase = tracking_kind == 'purchase'
+        state = request.args.get('state', 'open').strip()
+        if state not in {'open', 'overdue', 'due_soon', 'undated', 'paid', 'all'}:
+            state = 'open'
+        query = request.args.get('q', '').strip()
+        all_groups = build_maturity_groups(
+            Customer.query.all(),
+            Invoice.query.options(selectinload(Invoice.items)).all(),
+            AccountTransaction.query.all(), today, purchase=is_purchase)
+        customers = filter_groups(all_groups, state, query, normalize_search_text)
+        summary = {key: sum((g[field] for g in all_groups), Decimal('0')) for key, field in (
+            ('open_amount', 'remaining'), ('overdue_amount', 'overdue_amount'),
+            ('due_soon_amount', 'due_soon_amount'), ('undated_amount', 'undated_amount'))}
+        summary['overdue_customers'] = sum(bool(g['overdue_amount']) for g in all_groups)
+        summary['due_soon_customers'] = sum(bool(g['due_soon_amount']) for g in all_groups)
+        summary['overdue_count'] = sum(i['state'] == 'overdue' for g in all_groups for i in g['entries'])
+        summary['due_soon_count'] = sum(i['state'] in {'due_today', 'due_soon'} for g in all_groups for i in g['entries'])
+        items = [dict(i, customer=g['customer']) for g in customers for i in g['entries']]
+        return dict(items=items, customers=customers, summary=summary, selected_state=state,
+                    query=query, today=today, tracking_kind=tracking_kind, is_purchase=is_purchase)
 
     @app.get("/tahsilat-takibi")
     def collection_tracking():
@@ -2177,7 +2172,7 @@ def create_app(test_config=None):
         output = (export_excel if file_format == "excel" else export_pdf)(context)
         extension = "xlsx" if file_format == "excel" else "pdf"
         mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_format == "excel" else "application/pdf"
-        label = 'Cari' if view == 'summary' else 'Siparis-Ayrinti'
+        label = 'Cari' if view == 'summary' else 'Fatura-Hareket-Ayrinti'
         prefix = 'Odeme-Takibi' if context['is_purchase'] else 'Tahsilat-Takibi'
         return send_file(output, as_attachment=True, download_name=f"{prefix}-{label}-{context['today'].isoformat()}.{extension}", mimetype=mimetype)
 

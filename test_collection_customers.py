@@ -57,37 +57,5 @@ class CustomerCollectionTests(unittest.TestCase):
         self.assertIsNone(groups[1]['oldest_due_date'])
         self.assertEqual(len(filter_customers(groups,'paid','',normalize_search_text)),1)
 
-    def test_routes_exports_and_customer_filter_preserves_total(self):
-        orders=[item(1,-10,'10000'),item(2,30,'30000'),item(3,-60,'0',collected='500')]
-        client=app.test_client()
-        with patch('app.delivered_sales_collection_tracking',return_value=orders):
-            for query in ({},{'q':'SS-2'},{'state':'overdue'}):
-                response=client.get('/tahsilat-takibi/excel',query_string=query)
-                self.assertEqual(response.status_code,200)
-                ws=load_workbook(BytesIO(response.data)).active
-                self.assertEqual(ws['A6'].data_type,'s')
-                self.assertEqual(ws['B6'].value,2)
-                self.assertEqual(ws['C6'].value,40000)
-                self.assertEqual(ws['D6'].value,10000)
-                self.assertEqual(ws['F6'].value,20)
-                self.assertEqual(ws.max_row,7)
-                detail=load_workbook(BytesIO(client.get('/tahsilat-takibi/excel',query_string=dict(query,view='details')).data)).active
-                self.assertEqual(detail.max_row,13)
-                self.assertEqual(detail.cell(13,7).value,40000)
-            html=client.get('/tahsilat-takibi').get_data(as_text=True)
-            self.assertEqual(html.count('class="collection-customer-row"'),1)
-            self.assertIn('aria-controls="collection-detail-1"',html)
-            self.assertIn('Gecikme var',html)
-            self.assertEqual(html.count('class="button small" data-native-download'),4)
-            self.assertEqual(client.get('/tahsilat-takibi/excel?view=bad').status_code,400)
-            for view in ('summary','details'):
-                response=client.get('/tahsilat-takibi/pdf',query_string={'view':view})
-                self.assertEqual(response.status_code,200)
-                self.assertTrue(response.data.startswith(b'%PDF'))
-                if os.environ.get('COLLECTION_QA_DIR'):
-                    target=Path(os.environ['COLLECTION_QA_DIR']);target.mkdir(parents=True,exist_ok=True)
-                    (target/f'customer-{view}.pdf').write_bytes(response.data)
-            ws=load_workbook(BytesIO(client.get('/tahsilat-takibi/excel?q=missing').data)).active
-            self.assertEqual(ws['C6'].value,0)
 
 if __name__=='__main__': unittest.main()

@@ -7,21 +7,21 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 from collection_exports import filter_label
 
-HEADERS = ['Cari', 'Açık Sipariş', 'Kalan Borç', 'Gecikmiş Tutar', 'Ortalama Vade', 'Ortalama Gün', 'En Eski Açık Vade', 'Durum']
-NOTE = ('Teslim edilmiş satışlar; tahsilatlar en eski siparişten düşülür. Ortalama gün = toplam(kalan borç × vadeye kalan gün) / toplam kalan borç. '
-        'Eksi gün gecikmeyi gösterir. Kapanan siparişler ortalamaya alınmaz. Ortalama, gerçek vadeleri değiştirmez. '
-        'Filtreler cariyi seçer; carinin tüm teslim edilmiş siparişleri hesaba katılır. Tutarlar TL.')
+HEADERS = ['Cari', 'Açık Kayıt', 'Net Bakiye', 'Gecikmiş Tutar', 'Ortalama Vade', 'Vadesi Belirtilmemiş', 'En Eski Açık Vade', 'Durum']
+NOTE = ('Net bakiye faturalar ve tüm cari hareketleriyle aynıdır. Mahsuplar en eski fatura/hareketten düşülür. '
+        'Ortalama vade yalnız vadesi bilinen açık tutarlardan hesaplanır. Vadesi belirtilmemiş tutarlar ortalamaya ve gecikmeye dahil edilmez. '
+        'Arama cariyi seçer; tüm hareketleri hesapta kalır. Tutarlar TL.')
 
 
 def rows(context):
     return [[g['customer'].name,g['open_count'],g['remaining'],g['overdue_amount'],g['average_due_date'],
-             g['average_days'],g['oldest_due_date'],g['state_label']] for g in context['customers']]
+             g['undated_amount'],g['oldest_due_date'],g['state_label']] for g in context['customers']]
 
 
 def total_row(context):
     groups=context['customers']
     return ['Liste Toplamı',sum(g['open_count'] for g in groups),sum((g['remaining'] for g in groups),Decimal('0')),
-            sum((g['overdue_amount'] for g in groups),Decimal('0')),None,None,None,None]
+            sum((g['overdue_amount'] for g in groups),Decimal('0')),None,sum((g['undated_amount'] for g in groups),Decimal('0')),None,None]
 
 
 def export_excel(context):
@@ -49,7 +49,7 @@ def export_excel(context):
             cell.alignment=Alignment(vertical='top',wrap_text=True)
             if isinstance(cell.value,date): cell.number_format='dd.mm.yyyy'
             if cell.row>=6 and cell.column in (3,4,6):
-                cell.number_format='#,##0.0;[Red]-#,##0.0' if cell.column==6 else '#,##0.00'
+                cell.number_format='#,##0.00'
                 cell.alignment=Alignment(horizontal='right',vertical='top')
             if cell.row in (5,ws.max_row):
                 cell.fill=PatternFill('solid',fgColor='24456A' if cell.row==5 else 'E9EFF8')
@@ -93,9 +93,9 @@ def export_pdf(context):
     out=BytesIO()
     doc=SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=24,rightMargin=24,topMargin=24,bottomMargin=30,title=tracking_text('Cari Bazında Tahsilat Takibi', context))
     story=[p(tracking_text('Cari Bazında Tahsilat Takibi', context),title),p(f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"),Spacer(1,6),p(tracking_text(NOTE, context)),Spacer(1,9),p(f"Filtrelenen liste: {len(context['customers'])} cari"),Spacer(1,6)]
-    data=[[p('Açık\nSipariş' if h=='Açık Sipariş' else h,header) for h in [tracking_text(h, context) for h in HEADERS]]]
+    data=[[p('Açık\nKayıt' if h=='Açık Kayıt' else h,header) for h in [tracking_text(h, context) for h in HEADERS]]]
     for row in rows(context)+[total_row(context)]:
-        data.append([p('—' if v is None else money(v) if idx in (2,3) else f'{v:.1f}'.replace('.',',') if idx==5 else v.strftime('%d.%m.%Y') if isinstance(v,date) else v,right if idx in (1,2,3,5) else body) for idx,v in enumerate(row)])
+        data.append([p('—' if v is None else money(v) if idx in (2,3,5) else v.strftime('%d.%m.%Y') if isinstance(v,date) else v,right if idx in (1,2,3,5) else body) for idx,v in enumerate(row)])
     table=Table(data,colWidths=[width*x/100 for x in (27,7,12,12,11,8,12,11)],repeatRows=1,splitByRow=1,splitInRow=1)
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#24456A')),('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#E9EFF8')),('VALIGN',(0,0),(-1,-1),'TOP'),('LINEBELOW',(0,0),(-1,-1),.3,colors.HexColor('#D6DFEA')),('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white,colors.HexColor('#F4F7FB')]),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),('TOPPADDING',(0,0),(-1,-1),6),('BOTTOMPADDING',(0,0),(-1,-1),6)]))
     story.append(table)

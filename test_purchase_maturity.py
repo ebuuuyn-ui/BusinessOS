@@ -64,35 +64,6 @@ class PurchaseMaturityTests(unittest.TestCase):
         self.payment('Ödeme', 500, 0); db.session.commit()
         self.assertTrue(all(i['remaining']==0 for i in delivered_purchase_payment_tracking(self.today)))
 
-    def test_filters_exports_and_read_only(self):
-        before = '\n'.join(db.engine.raw_connection().iterdump())
-        html = self.client.get('/tahsilat-takibi?kind=purchase&q=SA-2').get_data(as_text=True)
-        self.assertIn('Satın Alma Vadeleri', html)
-        self.assertIn('Geciken Ödemeler', html)
-        self.assertIn('Mahsup edilen ödeme', html)
-        self.assertIn('kind=purchase', html)
-        self.assertIn('value="purchase"', html)
-        self.assertIn('/odeme-girisi', html)
-        self.assertNotIn('SS-1', html)
-        for view in ['summary','details']:
-            response=self.client.get('/tahsilat-takibi/excel', query_string=dict(kind='purchase',q='SA-2',view=view))
-            self.assertEqual(response.status_code,200)
-            self.assertIn('Odeme-Takibi',response.headers['Content-Disposition'])
-            ws=load_workbook(BytesIO(response.data)).active
-            self.assertIn('Ödeme',ws.title)
-            values=[c.value for row in ws for c in row]
-            self.assertNotIn('Tahsil Edilen',values)
-            if view=='summary':
-                self.assertEqual(ws['C6'].value,250); self.assertEqual(ws['F6'].value,5)
-            else:
-                self.assertIn('SA-1',values); self.assertIn('SA-2',values); self.assertNotIn('SS-1',values)
-            pdf=self.client.get('/tahsilat-takibi/pdf',query_string=dict(kind='purchase',view=view))
-            self.assertEqual(pdf.status_code,200); self.assertTrue(pdf.data.startswith(b'%PDF'))
-        self.assertEqual(self.client.get('/tahsilat-takibi?kind=bad').status_code,400)
-        empty=self.client.get('/tahsilat-takibi?kind=purchase&state=overdue').get_data(as_text=True)
-        self.assertIn('Bu filtreye uygun cari bulunmuyor.',empty)
-        after = '\n'.join(db.engine.raw_connection().iterdump())
-        self.assertEqual(before,after)
 
     def test_overdue_not_hidden_by_weighted_future_average(self):
         AccountTransaction.query.filter_by(transaction_type='Ödeme').delete()

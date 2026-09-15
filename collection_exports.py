@@ -7,9 +7,9 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 import math
 
-HEADERS = ['Cari', 'Sipariş No', 'Teslim Tarihi', 'Vade Tarihi', 'Sipariş Tutarı', 'Tahsil Edilen', 'Kalan', 'Durum']
-STATES = {'open': 'Açık tahsilatlar', 'overdue': 'Geciken tahsilatlar', 'due_soon': '7 gün içinde vadeli', 'paid': 'Tahsil edilenler', 'all': 'Tümü'}
-NOTE = 'Vade, teslim tarihinden itibaren 30 gündür. Tahsilatlar en eski açık siparişten düşülür. Seçilen carilerin tüm teslim edilmiş siparişleri gösterilir. Tutarlar TL; bu rapor fatura bazlı cari hesap ekstresi değildir.'
+HEADERS = ['Cari', 'Fatura / Hareket', 'Belge Tarihi', 'Vade Tarihi', 'Tutar', 'Mahsup Edilen', 'Kalan', 'Durum']
+STATES = {'open': 'Açık tahsilatlar', 'overdue': 'Geciken tahsilatlar', 'due_soon': '7 gün içinde vadeli', 'paid': 'Tahsil edilenler', 'all': 'Tümü', 'undated': 'Vadesi belirtilmemiş'}
+NOTE = 'Tutarlar faturalar ve tüm cari hareketleriyle netleştirilir. Mahsuplar en eski fatura/hareketten düşülür; kayıtlı ödeme-fatura eşleştirmesi değildir. Vade yalnız faturadaki tarihtir; vadesiz tutarlar gecikmiş sayılmaz.'
 
 
 def filter_label(context):
@@ -17,7 +17,7 @@ def filter_label(context):
 
 
 def rows(context):
-    return [[i['customer'].name, i['order'].order_no, i['delivered_at'], i['due_date'], i['amount'], i['collected'], i['remaining'], i['state_label']] for i in context['items']]
+    return [[i['customer'].name, i['reference'], i['document_date'], i['due_date'] or 'Vadesi belirtilmemiş', i['amount'], i['collected'], i['remaining'], i['state_label']] for i in context['items']]
 
 
 def totals(context):
@@ -33,7 +33,7 @@ def export_excel(context):
     ws.title = tracking_text('Tahsilat Takibi', context)
     summary = context['summary']
     top = [
-        tracking_text('Tahsilat Takibi - Sipariş Bazında Tahsilat Vadesi', context),
+        tracking_text('Tahsilat Takibi - Fatura ve Cari Hareket Vadeleri', context),
         f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}",
         tracking_text(NOTE, context),
         'Genel Özet (filtrelerden bağımsız)',
@@ -41,17 +41,17 @@ def export_excel(context):
     for text in top:
         ws.append([text])
         ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=8)
-    ws.append([tracking_text('Geciken Tahsilatlar', context), float(summary['overdue_amount']), 'Sipariş sayısı', summary['overdue_count']])
-    ws.append(['7 Gün İçinde Vadeli', float(summary['due_soon_amount']), 'Sipariş sayısı', summary['due_soon_count']])
+    ws.append([tracking_text('Geciken Tahsilatlar', context), float(summary['overdue_amount']), 'Kayıt sayısı', summary['overdue_count']])
+    ws.append(['7 Gün İçinde Vadeli', float(summary['due_soon_amount']), 'Kayıt sayısı', summary['due_soon_count']])
     ws.append([tracking_text('Açık Tahsilat Toplamı', context), float(summary['open_amount'])])
-    ws.append([f"Filtrelenen Liste - {len(context['items'])} sipariş"])
+    ws.append([f"Filtrelenen Liste - {len(context['items'])} kayıt"])
     ws.merge_cells('A8:H8')
     ws.append([tracking_text(h, context) for h in HEADERS])
     for row in rows(context):
         ws.append([float(v) if isinstance(v, Decimal) else v for v in row])
     last_data = ws.max_row
     if not context['items']:
-        ws.append([tracking_text('Bu filtreye uygun teslim edilmiş satış bulunmuyor.', context)])
+        ws.append([tracking_text('Bu filtreye uygun fatura / cari hareketi bulunmuyor.', context)])
         ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=8)
     ws.append(['Filtrelenen Liste Toplamı', '', '', '', *map(float, totals(context)), ''])
     widths = [44, 23, 18, 18, 22, 22, 22, 26]
@@ -118,8 +118,8 @@ def export_pdf(context):
     doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=30, title=tracking_text('Tahsilat Takibi', context))
     story = [para(tracking_text('Tahsilat Takibi', context), title), para(f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"), para(tracking_text(NOTE, context)), para('Genel Özet (filtrelerden bağımsız)', heading)]
     s = context['summary']
-    story.append(para(f"Geciken: {money(s['overdue_amount'])} TL ({s['overdue_count']} sipariş) | 7 gün içinde vadeli: {money(s['due_soon_amount'])} TL ({s['due_soon_count']} sipariş) | Açık toplam: {money(s['open_amount'])} TL"))
-    story.append(para(f"Filtrelenen Liste - {len(context['items'])} sipariş", heading))
+    story.append(para(f"Geciken: {money(s['overdue_amount'])} TL ({s['overdue_count']} kayıt) | 7 gün içinde vadeli: {money(s['due_soon_amount'])} TL ({s['due_soon_count']} kayıt) | Açık toplam: {money(s['open_amount'])} TL"))
+    story.append(para(f"Filtrelenen Liste - {len(context['items'])} kayıt", heading))
     data = [[para(h, header) for h in [tracking_text(h, context) for h in HEADERS]]]
     for row in rows(context):
         data.append([para(money(value), right) if idx in (4,5,6) else para(value.strftime('%d.%m.%Y') if isinstance(value, date) else value) for idx, value in enumerate(row)])
@@ -128,7 +128,7 @@ def export_pdf(context):
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#24456A')), ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#E9EFF8')), ('VALIGN',(0,0),(-1,-1),'TOP'), ('LINEBELOW',(0,0),(-1,-1),.3,colors.HexColor('#D6DFEA')), ('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white,colors.HexColor('#F4F7FB')]), ('LEFTPADDING',(0,0),(-1,-1),5), ('RIGHTPADDING',(0,0),(-1,-1),5), ('TOPPADDING',(0,0),(-1,-1),6), ('BOTTOMPADDING',(0,0),(-1,-1),6)]))
     story.append(table)
     if not context['items']:
-        story.extend([Spacer(1,8), para(tracking_text('Bu filtreye uygun teslim edilmiş satış bulunmuyor.', context))])
+        story.extend([Spacer(1,8), para(tracking_text('Bu filtreye uygun fatura / cari hareketi bulunmuyor.', context))])
     def footer(canvas, doc):
         canvas.saveState()
         canvas.setFont('CollectionFont', 8)
