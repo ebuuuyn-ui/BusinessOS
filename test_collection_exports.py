@@ -9,7 +9,7 @@ from collection_exports import export_excel, export_pdf
 
 class CollectionExportTests(unittest.TestCase):
     def context(self, count):
-        item=dict(customer=SimpleNamespace(name='=FORMULA <Firma>'),reference='F-001',document_date=date.today(),due_date=None,
+        item=dict(invoice=SimpleNamespace(id=1),customer=SimpleNamespace(name='=FORMULA <Firma>'),reference='F-001',document_date=date.today(),due_date=None,
                   amount=Decimal('100'),collected=Decimal('0'),remaining=Decimal('100'),state_label='Vadesi belirtilmemiş')
         return dict(is_purchase=True,items=[dict(item,reference=f'F-{i}') for i in range(count)],today=date.today(),selected_state='undated',query='',
                     summary=dict(overdue_amount=0,overdue_count=0,due_soon_amount=0,due_soon_count=0,open_amount=100*count))

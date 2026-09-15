@@ -2134,7 +2134,7 @@ def create_app(test_config=None):
             abort(400)
         is_purchase = tracking_kind == 'purchase'
         state = request.args.get('state', 'open').strip()
-        if state not in {'open', 'overdue', 'due_soon', 'undated', 'paid', 'all'}:
+        if state not in {'open', 'overdue', 'due_soon', 'undated', 'other', 'paid', 'all'}:
             state = 'open'
         query = request.args.get('q', '').strip()
         all_groups = build_maturity_groups(
@@ -2144,7 +2144,7 @@ def create_app(test_config=None):
         customers = filter_groups(all_groups, state, query, normalize_search_text)
         summary = {key: sum((g[field] for g in all_groups), Decimal('0')) for key, field in (
             ('open_amount', 'remaining'), ('overdue_amount', 'overdue_amount'),
-            ('due_soon_amount', 'due_soon_amount'), ('undated_amount', 'undated_amount'))}
+            ('due_soon_amount', 'due_soon_amount'), ('undated_amount', 'undated_amount'), ('other_amount', 'other_amount'))}
         summary['overdue_customers'] = sum(bool(g['overdue_amount']) for g in all_groups)
         summary['due_soon_customers'] = sum(bool(g['due_soon_amount']) for g in all_groups)
         summary['overdue_count'] = sum(i['state'] == 'overdue' for g in all_groups for i in g['entries'])

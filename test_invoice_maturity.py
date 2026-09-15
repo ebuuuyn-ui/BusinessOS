@@ -55,7 +55,7 @@ class InvoiceMaturityTests(unittest.TestCase):
         party=next(x for x in g if x['customer'].id==self.customer.id)
         self.assertEqual(party['remaining'],950)
         self.assertEqual(party['overdue_amount'],400)
-        self.assertEqual(party['undated_amount'],550)
+        self.assertEqual(party['undated_amount'],500)
         self.assertEqual(party['average_due_date'],self.today-timedelta(days=5))
         self.assertEqual(self.groups(False),[])
 
@@ -74,8 +74,37 @@ class InvoiceMaturityTests(unittest.TestCase):
         self.tx(0,150);db.session.commit()
         self.assertEqual(self.groups(),[])
         g=self.groups(True)[0]
-        self.assertEqual(g['remaining'],50);self.assertEqual(g['undated_amount'],50)
+        self.assertEqual(g['remaining'],50);self.assertEqual(g['undated_amount'],0);self.assertEqual(g['other_amount'],50)
         self.assertEqual(g['overdue_amount'],0);self.assertIsNone(g['average_due_date'])
+
+    def test_receipts_and_payments_have_no_maturity_warning(self):
+        from invoice_maturity import filter_groups
+        from collection_exports import rows
+        for purchase, kind, debit, credit in [(True, 'Tahsilat', 0, 150), (False, 'Ödeme', 150, 0)]:
+            with self.subTest(kind=kind):
+                db.session.query(AccountTransaction).delete()
+                db.session.add(AccountTransaction(customer=self.customer,transaction_type=kind,
+                    description=kind,debit=debit,credit=credit,transaction_date=self.today))
+                db.session.commit()
+                g=self.groups(purchase)[0]
+                self.assertEqual(g['remaining'],150)
+                self.assertEqual(g['undated_amount'],0)
+                self.assertEqual(g['other_amount'],150)
+                self.assertEqual(g['average_label'],'—')
+                self.assertEqual(g['entries'][0]['state'],'other')
+                self.assertEqual(filter_groups([g],'undated','',str.lower),[])
+                self.assertEqual(filter_groups([g],'other','',str.lower),[g])
+                item=dict(g['entries'][0],customer=self.customer)
+                self.assertEqual(rows(dict(items=[item]))[0][3],'—')
+                url='/tahsilat-takibi?kind='+('purchase' if purchase else 'sales')
+                html=self.client.get(url).get_data(as_text=True)
+                detail=html.split('Fatura dışı cari hareketleri · Vade uygulanmaz')[1]
+                self.assertNotIn('Vadesi belirtilmemiş',detail)
+                self.assertIn('Fatura dışı bakiye',detail)
+                response=self.client.get('/tahsilat-takibi/excel',query_string=dict(kind='purchase' if purchase else 'sales',view='details'))
+                ws=load_workbook(BytesIO(response.data)).active
+                self.assertEqual(ws['D10'].value,'—')
+                self.assertEqual(ws['H10'].value,'Fatura dışı bakiye')
 
     def test_future_movements_and_zero_balance_match_account_screen(self):
         self.invoice('SAT','Satış',100,days=10)
@@ -119,7 +148,7 @@ class InvoiceMaturityTests(unittest.TestCase):
             r=self.client.get('/tahsilat-takibi/pdf',query_string=dict(kind='purchase',view=view))
             self.assertEqual(r.status_code,200);self.assertTrue(r.data.startswith(b'%PDF'))
         self.assertEqual(self.client.get('/tahsilat-takibi?kind=sales').status_code,200)
-        for state in ['open','paid','overdue','due_soon','undated','all']:
+        for state in ['open','paid','overdue','due_soon','undated','other','all']:
             self.assertEqual(self.client.get('/tahsilat-takibi',query_string=dict(kind='purchase',state=state)).status_code,200)
         self.assertEqual(before,snapshot())
 

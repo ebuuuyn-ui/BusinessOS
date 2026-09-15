@@ -7,9 +7,9 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 from collection_exports import filter_label
 
-HEADERS = ['Cari', 'Açık Kayıt', 'Net Bakiye', 'Gecikmiş Tutar', 'Ortalama Vade', 'Vadesi Belirtilmemiş', 'En Eski Açık Vade', 'Durum']
+HEADERS = ['Cari', 'Açık Kayıt', 'Net Bakiye', 'Gecikmiş Tutar', 'Ortalama Vade', 'Vadesiz Fatura Tutarı', 'En Eski Açık Vade', 'Durum']
 NOTE = ('Net bakiye faturalar ve tüm cari hareketleriyle aynıdır. Mahsuplar en eski fatura/hareketten düşülür. '
-        'Ortalama vade yalnız vadesi bilinen açık tutarlardan hesaplanır. Vadesi belirtilmemiş tutarlar ortalamaya ve gecikmeye dahil edilmez. '
+        'Ortalama vade yalnız vadesi bilinen açık tutarlardan hesaplanır. Vadesiz faturalar ortalamaya ve gecikmeye dahil edilmez. Fatura dışı bakiye net tutara dahildir; vade uygulanmaz. '
         'Arama cariyi seçer; tüm hareketleri hesapta kalır. Tutarlar TL.')
 
 

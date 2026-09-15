@@ -8,8 +8,8 @@ from xml.sax.saxutils import escape
 import math
 
 HEADERS = ['Cari', 'Fatura / Hareket', 'Belge Tarihi', 'Vade Tarihi', 'Tutar', 'Mahsup Edilen', 'Kalan', 'Durum']
-STATES = {'open': 'Açık tahsilatlar', 'overdue': 'Geciken tahsilatlar', 'due_soon': '7 gün içinde vadeli', 'paid': 'Tahsil edilenler', 'all': 'Tümü', 'undated': 'Vadesi belirtilmemiş'}
-NOTE = 'Tutarlar faturalar ve tüm cari hareketleriyle netleştirilir. Mahsuplar en eski fatura/hareketten düşülür; kayıtlı ödeme-fatura eşleştirmesi değildir. Vade yalnız faturadaki tarihtir; vadesiz tutarlar gecikmiş sayılmaz.'
+STATES = {'open': 'Açık tahsilatlar', 'overdue': 'Geciken tahsilatlar', 'due_soon': '7 gün içinde vadeli', 'paid': 'Tahsil edilenler', 'all': 'Tümü', 'undated': 'Vadesi belirtilmemiş faturalar', 'other': 'Fatura dışı bakiyeler'}
+NOTE = 'Tutarlar faturalar ve tüm cari hareketleriyle netleştirilir. Mahsuplar en eski fatura/hareketten düşülür; kayıtlı ödeme-fatura eşleştirmesi değildir. Vade yalnız faturadaki tarihtir; vade tarihi olmayan açık faturalar gecikmiş sayılmaz. Fatura dışı cari hareketlerine vade uygulanmaz.'
 
 
 def filter_label(context):
@@ -17,7 +17,7 @@ def filter_label(context):
 
 
 def rows(context):
-    return [[i['customer'].name, i['reference'], i['document_date'], i['due_date'] or 'Vadesi belirtilmemiş', i['amount'], i['collected'], i['remaining'], i['state_label']] for i in context['items']]
+    return [[i['customer'].name, i['reference'], i['document_date'], i['due_date'] or ('Vadesi belirtilmemiş' if i.get('invoice') is not None and i['remaining'] else '—'), i['amount'], i['collected'], i['remaining'], i['state_label']] for i in context['items']]
 
 
 def totals(context):
@@ -33,7 +33,7 @@ def export_excel(context):
     ws.title = tracking_text('Tahsilat Takibi', context)
     summary = context['summary']
     top = [
-        tracking_text('Tahsilat Takibi - Fatura ve Cari Hareket Vadeleri', context),
+        tracking_text('Tahsilat Takibi - Fatura Vadeleri ve Cari Bakiyeler', context),
         f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}",
         tracking_text(NOTE, context),
         'Genel Özet (filtrelerden bağımsız)',

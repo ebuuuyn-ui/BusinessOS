@@ -24,6 +24,6 @@
 
 .collection-overview{grid-template-columns:repeat(4,minmax(0,1fr))}
 .collection-overview-card.undated{background:#f5f6fa;border-color:#d6dbe6;color:#526074}
-.collection-state.undated{background:#eef0f5;color:#526074}
+.collection-state.other,.collection-state.undated{background:#eef0f5;color:#526074}
 @media(max-width:1100px){.collection-overview{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.collection-overview{grid-template-columns:1fr}}

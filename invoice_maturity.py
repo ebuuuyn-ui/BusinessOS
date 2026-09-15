@@ -52,6 +52,8 @@ def build_maturity_groups(customers, invoices, transactions, today, purchase=Fal
             days = (due - today).days if due else None
             if not item['remaining']:
                 state, label = 'paid', 'Kapandı'
+            elif item['invoice'] is None:
+                state, label = 'other', 'Fatura dışı bakiye'
             elif due is None:
                 state, label = 'undated', 'Vadesi belirtilmemiş'
             elif days < 0:
@@ -66,18 +68,19 @@ def build_maturity_groups(customers, invoices, transactions, today, purchase=Fal
         opened = [i for i in entries if i['remaining'] > 0]
         dated = [i for i in opened if i['due_date']]
         dated_amount = sum((i['remaining'] for i in dated), ZERO)
-        undated = sum((i['remaining'] for i in opened if not i['due_date']), ZERO)
+        undated = sum((i['remaining'] for i in opened if i['invoice'] is not None and not i['due_date']), ZERO)
+        other = sum((i['remaining'] for i in opened if i['invoice'] is None), ZERO)
         overdue = sum((i['remaining'] for i in dated if i['due_date'] < today), ZERO)
         soon = sum((i['remaining'] for i in dated if today <= i['due_date'] <= today + timedelta(days=7)), ZERO)
         average = sum((i['remaining'] * (i['due_date'] - today).days for i in dated), ZERO) / dated_amount if dated_amount else None
         days = int(average.quantize(Decimal('1'), rounding=ROUND_HALF_UP)) if average is not None else None
-        state = 'paid' if not opened else 'overdue' if overdue else 'due_soon' if soon else 'undated' if undated else 'open'
-        labels = dict(paid='Kapandı', overdue='Gecikme var', due_soon='7 gün içinde vadeli', undated='Vadesiz kayıt var', open='Açık ödeme' if purchase else 'Açık alacak')
+        state = 'paid' if not opened else 'overdue' if overdue else 'due_soon' if soon else 'undated' if undated else 'other' if other and not dated else 'open'
+        labels = dict(paid='Kapandı', overdue='Gecikme var', due_soon='7 gün içinde vadeli', undated='Fatura vadesi eksik', other='Fatura dışı bakiye', open='Açık ödeme' if purchase else 'Açık alacak')
         g.update(entries=entries, entry_count=len(entries), open_count=len(opened),
             amount=sum((i['amount'] for i in entries), ZERO), collected=sum((i['collected'] for i in entries), ZERO),
-            remaining=net, overdue_amount=overdue, due_soon_amount=soon, undated_amount=undated,
+            remaining=net, overdue_amount=overdue, due_soon_amount=soon, undated_amount=undated, other_amount=other,
             average_days=average, average_due_date=today+timedelta(days=days) if days is not None else None,
-            average_label='Vadesi belirtilmemiş' if days is None else f'{-days} gün geçti' if days < 0 else 'Bugün' if days == 0 else f'{days} gün kaldı',
+            average_label=('Vadesi belirtilmemiş' if undated else '—') if days is None else f'{-days} gün geçti' if days < 0 else 'Bugün' if days == 0 else f'{days} gün kaldı',
             oldest_due_date=min((i['due_date'] for i in dated), default=None), state=state, state_label=labels[state])
         assert sum((i['remaining'] for i in entries), ZERO) == net
         result.append(g)
@@ -92,5 +95,6 @@ def filter_groups(groups, state, query, normalize):
         if state == 'overdue' and not g['overdue_amount']: return False
         if state == 'due_soon' and not g['due_soon_amount']: return False
         if state == 'undated' and not g['undated_amount']: return False
+        if state == 'other' and not g['other_amount']: return False
         return not q or q in normalize(g['customer'].name) or q in normalize(g['customer'].code or '') or any(q in normalize(i['reference']) for i in g['entries'])
     return [g for g in groups if matches(g)]
