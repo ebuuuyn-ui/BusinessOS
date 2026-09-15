@@ -1,4 +1,5 @@
 """Read-only exports using the exact collection-tracking screen context."""
+from maturity_labels import tracking_text
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -12,7 +13,7 @@ NOTE = 'Vade, teslim tarihinden itibaren 30 gündür. Tahsilatlar en eski açık
 
 
 def filter_label(context):
-    return f"Durum: {STATES[context['selected_state']]} | Arama: {context['query'] or 'Yok'}"
+    return f"Durum: {tracking_text(STATES[context['selected_state']], context)} | Arama: {context['query'] or 'Yok'}"
 
 
 def rows(context):
@@ -29,28 +30,28 @@ def export_excel(context):
     from openpyxl.utils import get_column_letter
     book = Workbook()
     ws = book.active
-    ws.title = 'Tahsilat Takibi'
+    ws.title = tracking_text('Tahsilat Takibi', context)
     summary = context['summary']
     top = [
-        'Tahsilat Takibi - Sipariş Bazında Tahsilat Vadesi',
+        tracking_text('Tahsilat Takibi - Sipariş Bazında Tahsilat Vadesi', context),
         f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}",
-        NOTE,
+        tracking_text(NOTE, context),
         'Genel Özet (filtrelerden bağımsız)',
     ]
     for text in top:
         ws.append([text])
         ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=8)
-    ws.append(['Geciken Tahsilatlar', float(summary['overdue_amount']), 'Sipariş sayısı', summary['overdue_count']])
+    ws.append([tracking_text('Geciken Tahsilatlar', context), float(summary['overdue_amount']), 'Sipariş sayısı', summary['overdue_count']])
     ws.append(['7 Gün İçinde Vadeli', float(summary['due_soon_amount']), 'Sipariş sayısı', summary['due_soon_count']])
-    ws.append(['Açık Tahsilat Toplamı', float(summary['open_amount'])])
+    ws.append([tracking_text('Açık Tahsilat Toplamı', context), float(summary['open_amount'])])
     ws.append([f"Filtrelenen Liste - {len(context['items'])} sipariş"])
     ws.merge_cells('A8:H8')
-    ws.append(HEADERS)
+    ws.append([tracking_text(h, context) for h in HEADERS])
     for row in rows(context):
         ws.append([float(v) if isinstance(v, Decimal) else v for v in row])
     last_data = ws.max_row
     if not context['items']:
-        ws.append(['Bu filtreye uygun teslim edilmiş satış bulunmuyor.'])
+        ws.append([tracking_text('Bu filtreye uygun teslim edilmiş satış bulunmuyor.', context)])
         ws.merge_cells(start_row=ws.max_row, start_column=1, end_row=ws.max_row, end_column=8)
     ws.append(['Filtrelenen Liste Toplamı', '', '', '', *map(float, totals(context)), ''])
     widths = [44, 23, 18, 18, 22, 22, 22, 26]
@@ -114,12 +115,12 @@ def export_pdf(context):
     money = lambda v: f'{v:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
     width = landscape(A4)[0] - 48
     output = BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=30, title='Tahsilat Takibi')
-    story = [para('Tahsilat Takibi', title), para(f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"), para(NOTE), para('Genel Özet (filtrelerden bağımsız)', heading)]
+    doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=30, title=tracking_text('Tahsilat Takibi', context))
+    story = [para(tracking_text('Tahsilat Takibi', context), title), para(f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"), para(tracking_text(NOTE, context)), para('Genel Özet (filtrelerden bağımsız)', heading)]
     s = context['summary']
     story.append(para(f"Geciken: {money(s['overdue_amount'])} TL ({s['overdue_count']} sipariş) | 7 gün içinde vadeli: {money(s['due_soon_amount'])} TL ({s['due_soon_count']} sipariş) | Açık toplam: {money(s['open_amount'])} TL"))
     story.append(para(f"Filtrelenen Liste - {len(context['items'])} sipariş", heading))
-    data = [[para(h, header) for h in HEADERS]]
+    data = [[para(h, header) for h in [tracking_text(h, context) for h in HEADERS]]]
     for row in rows(context):
         data.append([para(money(value), right) if idx in (4,5,6) else para(value.strftime('%d.%m.%Y') if isinstance(value, date) else value) for idx, value in enumerate(row)])
     data.append([para('Liste Toplamı'), '', '', '', *[para(money(value), right) for value in totals(context)], ''])
@@ -127,11 +128,11 @@ def export_pdf(context):
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#24456A')), ('BACKGROUND',(0,-1),(-1,-1),colors.HexColor('#E9EFF8')), ('VALIGN',(0,0),(-1,-1),'TOP'), ('LINEBELOW',(0,0),(-1,-1),.3,colors.HexColor('#D6DFEA')), ('ROWBACKGROUNDS',(0,1),(-1,-2),[colors.white,colors.HexColor('#F4F7FB')]), ('LEFTPADDING',(0,0),(-1,-1),5), ('RIGHTPADDING',(0,0),(-1,-1),5), ('TOPPADDING',(0,0),(-1,-1),6), ('BOTTOMPADDING',(0,0),(-1,-1),6)]))
     story.append(table)
     if not context['items']:
-        story.extend([Spacer(1,8), para('Bu filtreye uygun teslim edilmiş satış bulunmuyor.')])
+        story.extend([Spacer(1,8), para(tracking_text('Bu filtreye uygun teslim edilmiş satış bulunmuyor.', context))])
     def footer(canvas, doc):
         canvas.saveState()
         canvas.setFont('CollectionFont', 8)
-        canvas.drawString(24, 14, 'Business OS | Tahsilat Takibi | Tutarlar TL')
+        canvas.drawString(24, 14, tracking_text('Business OS | Tahsilat Takibi | Tutarlar TL', context))
         canvas.drawRightString(width+24, 14, f'Sayfa {doc.page}')
         canvas.restoreState()
     doc.build(story, onFirstPage=footer, onLaterPages=footer)

@@ -25,7 +25,7 @@
         <summary><i class="nav-icon">♙</i><span>Cariler</span><b class="nav-chevron">⌄</b></summary>
         <div class="nav-sub">
           <a class="{{ 'active' if request.endpoint in ['customers','customer_detail','customer_account','quick_collection','quick_payment'] }}" href="{{ url_for('customers') }}">Tüm Cariler</a>
-          <a class="{{ 'active' if request.endpoint == 'collection_tracking' }}" href="{{ url_for('collection_tracking') }}">Tahsilat Takibi</a>
+          <a class="{{ 'active' if request.endpoint == 'collection_tracking' }}" href="{{ url_for('collection_tracking') }}">Tahsilat / Ödeme Takibi</a>
           <a class="{{ 'active' if request.endpoint == 'customer_total_movements' }}" href="{{ url_for('customer_total_movements') }}">Cari Toplam Hareket Bakiyeleri</a>
         </div>
       </details>

@@ -15,3 +15,9 @@
 .collection-order-detail table{width:100%;table-layout:fixed;min-width:0!important}
 .collection-order-detail td,.collection-order-detail th{white-space:normal!important;overflow-wrap:anywhere;font-size:12px;padding:8px 6px!important}
 @media(max-width:700px){.collection-customer-table>thead>tr>th,.collection-customer-table>tbody>tr>td{font-size:11px;padding:8px 4px!important}.collection-export-bar{gap:8px}}
+
+.maturity-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 20px;padding:5px;background:#edf2f8;border:1px solid #dce4ee;border-radius:12px;width:fit-content;max-width:100%}
+.maturity-tabs a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:0 20px;border-radius:8px;color:#526074;font-weight:650;text-decoration:none}
+.maturity-tabs a.active{background:#fff;color:#174ea6;box-shadow:0 2px 6px #17203312}
+.maturity-tabs a:focus-visible{outline:2px solid #2684ff;outline-offset:2px}
+@media(max-width:480px){.maturity-tabs{width:100%}.maturity-tabs a{flex:1;padding:0 10px}}

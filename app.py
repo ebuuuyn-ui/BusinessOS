@@ -1087,19 +1087,22 @@ def build_customer_balances_pdf(customers, balances):
 
 
 def delivered_sales_collection_tracking(today=None, delivered_sales=None):
-    """Teslim edilmiş satışları, cari tahsilatları düşerek sipariş bazında izler.
+    return delivered_order_maturity_tracking(today, delivered_sales)
 
-    Tahsilatlar aynı carinin en eski teslim edilmiş satışından başlanarak mahsup
-    edilir. Bu sayede kısmi veya önceden alınmış tahsilatlar, 30 günlük vade
-    listesindeki açık tutarı doğrudan azaltır.
-    """
+
+def delivered_purchase_payment_tracking(today=None):
+    return delivered_order_maturity_tracking(today, purchase=True)
+
+
+def delivered_order_maturity_tracking(today=None, delivered_sales=None, *, purchase=False):
+    """Teslim edilen siparişleri 30 gün vadeyle izler; satış ve alış mahsupları ayrıdır."""
     today = today or date.today()
     if delivered_sales is None:
         delivered_sales = Order.query.options(
             selectinload(Order.items),
             selectinload(Order.history),
             joinedload(Order.customer),
-        ).filter_by(order_type="Satış", status="Teslim Edildi").all()
+        ).filter_by(order_type="Satın Alma" if purchase else "Satış", status="Teslim Edildi").all()
     grouped_orders = {}
     for order in delivered_sales:
         delivered_events = [event for event in order.history if event.status == "Teslim Edildi"]
@@ -1109,7 +1112,7 @@ def delivered_sales_collection_tracking(today=None, delivered_sales=None):
         delivered_at = delivered_at or order.delivery_date or (order.updated_at or order.created_at).date()
         grouped_orders.setdefault(order.customer_id, []).append((delivered_at, order))
 
-    credit_types = {"Tahsilat", "Alacak Dekontu", "Alacak Devir"}
+    credit_types = {"Ödeme", "Borç Dekontu", "Borç Devir"} if purchase else {"Tahsilat", "Alacak Dekontu", "Alacak Devir"}
     customer_ids = list(grouped_orders)
     collections_by_customer = {customer_id: Decimal("0") for customer_id in customer_ids}
     if customer_ids:
@@ -1119,7 +1122,7 @@ def delivered_sales_collection_tracking(today=None, delivered_sales=None):
             AccountTransaction.transaction_date <= today,
         ).all()
         for transaction in transactions:
-            collections_by_customer[transaction.customer_id] += transaction.credit or Decimal("0")
+            collections_by_customer[transaction.customer_id] += (transaction.debit if purchase else transaction.credit) or Decimal("0")
 
     items = []
     for customer_id, dated_orders in grouped_orders.items():
@@ -1133,7 +1136,7 @@ def delivered_sales_collection_tracking(today=None, delivered_sales=None):
             due_date = delivered_at + timedelta(days=30)
             days_to_due = (due_date - today).days
             if remaining <= 0:
-                state, state_label = "paid", "Tahsil edildi"
+                state, state_label = "paid", "Ödendi" if purchase else "Tahsil edildi"
             elif days_to_due < 0:
                 state, state_label = "overdue", f"{abs(days_to_due)} gün gecikti"
             elif days_to_due == 0:
@@ -2128,10 +2131,20 @@ def create_app(test_config=None):
         today = date.today()
         selected_state = request.args.get("state", "open").strip()
         query = request.args.get("q", "").strip()
-        all_items = delivered_sales_collection_tracking(today)
+        tracking_kind = request.args.get("kind", "sales").strip()
+        if tracking_kind not in {"sales", "purchase"}:
+            abort(400)
+        is_purchase = tracking_kind == "purchase"
+        all_items = delivered_purchase_payment_tracking(today) if is_purchase else delivered_sales_collection_tracking(today)
         if selected_state not in {"open", "overdue", "due_soon", "paid", "all"}:
             selected_state = "open"
         all_customers = customer_summaries(all_items, today)
+        if is_purchase:
+            for group in all_customers:
+                if group['state'] == 'paid':
+                    group['state_label'] = 'Ödendi'
+                elif group['state'] == 'open':
+                    group['state_label'] = 'Açık ödeme'
         customers = filter_customers(all_customers, selected_state, query, normalize_search_text)
         items = [item for group in customers for item in group['orders']]
         summary = {
@@ -2143,7 +2156,7 @@ def create_app(test_config=None):
         }
         summary['overdue_customers'] = sum(g['overdue_amount'] > 0 for g in all_customers)
         summary['due_soon_customers'] = sum(g['due_soon_amount'] > 0 for g in all_customers)
-        return dict(items=items, customers=customers, summary=summary, selected_state=selected_state, query=query, today=today)
+        return dict(items=items, customers=customers, summary=summary, selected_state=selected_state, query=query, today=today, tracking_kind=tracking_kind, is_purchase=is_purchase)
 
     @app.get("/tahsilat-takibi")
     def collection_tracking():
@@ -2165,7 +2178,8 @@ def create_app(test_config=None):
         extension = "xlsx" if file_format == "excel" else "pdf"
         mimetype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_format == "excel" else "application/pdf"
         label = 'Cari' if view == 'summary' else 'Siparis-Ayrinti'
-        return send_file(output, as_attachment=True, download_name=f"Tahsilat-Takibi-{label}-{context['today'].isoformat()}.{extension}", mimetype=mimetype)
+        prefix = 'Odeme-Takibi' if context['is_purchase'] else 'Tahsilat-Takibi'
+        return send_file(output, as_attachment=True, download_name=f"{prefix}-{label}-{context['today'].isoformat()}.{extension}", mimetype=mimetype)
 
     @app.get("/yedekler")
     def backups():

@@ -1,4 +1,5 @@
 """Excel/PDF customer summaries from the same context as the tracking screen."""
+from maturity_labels import tracking_text
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
@@ -29,13 +30,13 @@ def export_excel(context):
     from openpyxl.utils import get_column_letter
     book=Workbook()
     ws=book.active
-    ws.title='Cari Tahsilat Özeti'
-    ws.append(['Cari Bazında Tahsilat Takibi'])
+    ws.title=tracking_text('Cari Tahsilat Özeti', context)
+    ws.append([tracking_text('Cari Bazında Tahsilat Takibi', context)])
     ws.append([f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"])
-    ws.append([NOTE])
+    ws.append([tracking_text(NOTE, context)])
     ws.append([f"Filtrelenen liste: {len(context['customers'])} cari"])
     for n in range(1,5): ws.merge_cells(start_row=n,start_column=1,end_row=n,end_column=8)
-    ws.append(HEADERS)
+    ws.append([tracking_text(h, context) for h in HEADERS])
     for row in rows(context): ws.append([float(v) if isinstance(v,Decimal) else v for v in row])
     last_data=ws.max_row
     ws.append([float(v) if isinstance(v,Decimal) else v for v in total_row(context)])
@@ -90,9 +91,9 @@ def export_pdf(context):
     money=lambda v:f'{v:,.2f}'.replace(',','X').replace('.',',').replace('X','.')
     width=landscape(A4)[0]-48
     out=BytesIO()
-    doc=SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=24,rightMargin=24,topMargin=24,bottomMargin=30,title='Cari Bazında Tahsilat Takibi')
-    story=[p('Cari Bazında Tahsilat Takibi',title),p(f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"),Spacer(1,6),p(NOTE),Spacer(1,9),p(f"Filtrelenen liste: {len(context['customers'])} cari"),Spacer(1,6)]
-    data=[[p('Açık\nSipariş' if h=='Açık Sipariş' else h,header) for h in HEADERS]]
+    doc=SimpleDocTemplate(out,pagesize=landscape(A4),leftMargin=24,rightMargin=24,topMargin=24,bottomMargin=30,title=tracking_text('Cari Bazında Tahsilat Takibi', context))
+    story=[p(tracking_text('Cari Bazında Tahsilat Takibi', context),title),p(f"Rapor tarihi: {context['today']:%d.%m.%Y} | {filter_label(context)}"),Spacer(1,6),p(tracking_text(NOTE, context)),Spacer(1,9),p(f"Filtrelenen liste: {len(context['customers'])} cari"),Spacer(1,6)]
+    data=[[p('Açık\nSipariş' if h=='Açık Sipariş' else h,header) for h in [tracking_text(h, context) for h in HEADERS]]]
     for row in rows(context)+[total_row(context)]:
         data.append([p('—' if v is None else money(v) if idx in (2,3) else f'{v:.1f}'.replace('.',',') if idx==5 else v.strftime('%d.%m.%Y') if isinstance(v,date) else v,right if idx in (1,2,3,5) else body) for idx,v in enumerate(row)])
     table=Table(data,colWidths=[width*x/100 for x in (27,7,12,12,11,8,12,11)],repeatRows=1,splitByRow=1,splitInRow=1)
@@ -100,6 +101,6 @@ def export_pdf(context):
     story.append(table)
     if not context['customers']: story.append(p('Bu filtreye uygun cari bulunmuyor.'))
     def footer(canvas,doc):
-        canvas.saveState();canvas.setFont('CollectionSummary',8);canvas.drawString(24,14,'Business OS | Cari Tahsilat Özeti | Tutarlar TL');canvas.drawRightString(width+24,14,f'Sayfa {doc.page}');canvas.restoreState()
+        canvas.saveState();canvas.setFont('CollectionSummary',8);canvas.drawString(24,14,tracking_text('Business OS | Cari Tahsilat Özeti | Tutarlar TL', context));canvas.drawRightString(width+24,14,f'Sayfa {doc.page}');canvas.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer);out.seek(0)
     return out

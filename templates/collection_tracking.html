@@ -1,24 +1,28 @@
 {% extends 'base.html' %}
-{% block title %}Tahsilat Takibi · Business OS{% endblock %}
-{% block heading %}Tahsilat Takibi{% endblock %}
+{% block title %}Tahsilat / Ödeme Takibi · Business OS{% endblock %}
+{% block heading %}Tahsilat / Ödeme Takibi{% endblock %}
 {% block subheading %}Cari bazında kalan borç ve ortalama vade{% endblock %}
-{% block header_action %}<a class="button collection-button" href="{{ url_for('quick_collection') }}">+ Tahsilat Girişi</a>{% endblock %}
+{% block header_action %}<div class="header-actions"><a class="button payment-button" href="{{ url_for('quick_payment') }}">− Ödeme Girişi</a><a class="button collection-button" href="{{ url_for('quick_collection') }}">+ Tahsilat Girişi</a></div>{% endblock %}
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='collection-tracking.css') }}">
+<nav class="maturity-tabs" aria-label="Vade takibi türü">
+  <a class="{{ 'active' if not is_purchase }}" {% if not is_purchase %}aria-current="page"{% endif %} href="{{ url_for('collection_tracking', kind='sales') }}">Satış Vadeleri</a>
+  <a class="{{ 'active' if is_purchase }}" {% if is_purchase %}aria-current="page"{% endif %} href="{{ url_for('collection_tracking', kind='purchase') }}">Satın Alma Vadeleri</a>
+</nav>
 <div class="collection-overview">
-  <a class="collection-overview-card overdue" href="{{ url_for('collection_tracking', state='overdue') }}"><small>Geciken Tahsilatlar</small><strong>₺{{ summary.overdue_amount|money }}</strong><span>{{ summary.overdue_customers }} cari · {{ summary.overdue_count }} sipariş</span></a>
-  <a class="collection-overview-card due-soon" href="{{ url_for('collection_tracking', state='due_soon') }}"><small>7 Gün İçinde Vadeli</small><strong>₺{{ summary.due_soon_amount|money }}</strong><span>{{ summary.due_soon_customers }} cari · {{ summary.due_soon_count }} sipariş</span></a>
-  <a class="collection-overview-card open" href="{{ url_for('collection_tracking') }}"><small>Açık Tahsilat Toplamı</small><strong>₺{{ summary.open_amount|money }}</strong><span>Teslim edilmiş satışlardan kalan</span></a>
+  <a class="collection-overview-card overdue" href="{{ url_for('collection_tracking', kind=tracking_kind, state='overdue') }}"><small>{{ 'Geciken Ödemeler' if is_purchase else 'Geciken Tahsilatlar' }}</small><strong>₺{{ summary.overdue_amount|money }}</strong><span>{{ summary.overdue_customers }} cari · {{ summary.overdue_count }} sipariş</span></a>
+  <a class="collection-overview-card due-soon" href="{{ url_for('collection_tracking', kind=tracking_kind, state='due_soon') }}"><small>7 Gün İçinde Vadeli</small><strong>₺{{ summary.due_soon_amount|money }}</strong><span>{{ summary.due_soon_customers }} cari · {{ summary.due_soon_count }} sipariş</span></a>
+  <a class="collection-overview-card open" href="{{ url_for('collection_tracking', kind=tracking_kind) }}"><small>{{ 'Açık Ödeme Toplamı' if is_purchase else 'Açık Tahsilat Toplamı' }}</small><strong>₺{{ summary.open_amount|money }}</strong><span>{{ 'Teslim alınmış satın almalardan kalan' if is_purchase else 'Teslim edilmiş satışlardan kalan' }}</span></a>
 </div>
 <div class="panel collection-tracking-panel">
-  <div class="panel-head"><div><h2>Cari Bazında Tahsilat Vadesi</h2><p>Tahsilatlar en eski teslim edilmiş siparişten düşülür. Ortalama vade, kalan borç tutarlarına göre hesaplanır; siparişlerin gerçek vadelerini değiştirmez.</p></div></div>
+  <div class="panel-head"><div><h2>{{ 'Tedarikçi Bazında Ödeme Vadesi' if is_purchase else 'Cari Bazında Tahsilat Vadesi' }}</h2><p>{{ 'Ödemeler en eski teslim alınmış satın alma siparişinden düşülür.' if is_purchase else 'Tahsilatlar en eski teslim edilmiş siparişten düşülür.' }} Vade, teslim tarihinden 30 gün sonradır. Ortalama vade, kalan borç tutarlarına göre hesaplanır; siparişlerin gerçek vadelerini değiştirmez.</p></div></div>
   <div class="collection-export-bar">
     {% for view,label in [('summary','Cari Özeti'),('details','Sipariş Ayrıntıları')] %}
     <div><small>{{ label }}</small>{% for format,extension,caption in [('excel','xlsx','Excel'),('pdf','pdf','PDF')] %}
-      <a class="button small" data-native-download data-export-name="Tahsilat-Takibi-{{ 'Cari' if view == 'summary' else 'Siparis-Ayrinti' }}-{{ today.isoformat() }}.{{ extension }}" href="{{ url_for('collection_tracking_export', file_format=format, state=selected_state, q=query, view=view) }}">{{ caption }} İndir</a>
+      <a class="button small" data-native-download data-export-name="{{ 'Odeme-Takibi' if is_purchase else 'Tahsilat-Takibi' }}-{{ 'Cari' if view == 'summary' else 'Siparis-Ayrinti' }}-{{ today.isoformat() }}.{{ extension }}" href="{{ url_for('collection_tracking_export', file_format=format, state=selected_state, q=query, view=view, kind=tracking_kind) }}">{{ caption }} İndir</a>
     {% endfor %}</div>{% endfor %}
   </div>
-  <form method="get" class="filters collection-filters"><input name="q" value="{{ query }}" placeholder="Cari veya sipariş no ara"><select name="state"><option value="open" {{ 'selected' if selected_state == 'open' }}>Açık tahsilatlar</option><option value="overdue" {{ 'selected' if selected_state == 'overdue' }}>Gecikmesi olan cariler</option><option value="due_soon" {{ 'selected' if selected_state == 'due_soon' }}>7 gün içinde vadesi olanlar</option><option value="paid" {{ 'selected' if selected_state == 'paid' }}>Borcu kapanan cariler</option><option value="all" {{ 'selected' if selected_state == 'all' }}>Tümü</option></select><button class="button">Filtrele</button><a class="button" href="{{ url_for('collection_tracking') }}">Temizle</a></form>
+  <form method="get" class="filters collection-filters"><input type="hidden" name="kind" value="{{ tracking_kind }}"><input name="q" value="{{ query }}" placeholder="Cari veya sipariş no ara"><select name="state"><option value="open" {{ 'selected' if selected_state == 'open' }}>{{ 'Açık ödemeler' if is_purchase else 'Açık tahsilatlar' }}</option><option value="overdue" {{ 'selected' if selected_state == 'overdue' }}>Gecikmesi olan cariler</option><option value="due_soon" {{ 'selected' if selected_state == 'due_soon' }}>7 gün içinde vadesi olanlar</option><option value="paid" {{ 'selected' if selected_state == 'paid' }}>Borcu kapanan cariler</option><option value="all" {{ 'selected' if selected_state == 'all' }}>Tümü</option></select><button class="button">Filtrele</button><a class="button" href="{{ url_for('collection_tracking', kind=tracking_kind) }}">Temizle</a></form>
   <p class="collection-list-note">{{ customers|length }} cari. Filtreler cariyi seçer; hesaplamada o carinin tüm teslim edilmiş siparişleri korunur. Ortalama gün yuvarlanarak gösterilir.</p>
   {% if customers %}<div class="table-wrap"><table class="compact-table collection-customer-table"><colgroup><col style="width:26%"><col style="width:7%"><col style="width:13%"><col style="width:13%"><col style="width:14%"><col style="width:12%"><col style="width:15%"></colgroup><thead><tr><th>Cari</th><th>Açık sipariş</th><th class="number-cell">Kalan borç</th><th class="number-cell">Gecikmiş tutar</th><th>Ortalama vade</th><th>En eski açık vade</th><th>Durum / İşlem</th></tr></thead><tbody>
   {% for group in customers %}
@@ -29,11 +33,11 @@
       <td class="number-cell {{ 'debit-text' if group.overdue_amount else '' }}">{{ '₺' + (group.overdue_amount|money) if group.overdue_amount else '—' }}</td>
       <td>{% if group.average_due_date %}<b>{{ group.average_due_date.strftime('%d.%m.%Y') }}</b><small class="block">{{ group.average_label }}</small>{% else %}—{% endif %}</td>
       <td>{{ group.oldest_due_date.strftime('%d.%m.%Y') if group.oldest_due_date else '—' }}</td>
-      <td><span class="collection-state {{ group.state }}">{{ group.state_label }}</span><a class="collection-payment-link" data-workspace-new-tab href="{{ url_for('quick_collection') }}">Tahsilat gir →</a></td>
+      <td><span class="collection-state {{ group.state }}">{{ group.state_label }}</span><a class="collection-payment-link" data-workspace-new-tab href="{{ url_for('quick_payment' if is_purchase else 'quick_collection') }}">{{ 'Ödeme gir' if is_purchase else 'Tahsilat gir' }} →</a></td>
     </tr>
-    <tr id="collection-detail-{{ group.customer.id }}" class="collection-detail-row" hidden><td colspan="7"><div class="collection-order-detail"><p><b>{{ group.customer.name }}</b> · Sipariş toplamı ₺{{ group.amount|money }} · Mahsup edilen tahsilat ₺{{ group.collected|money }}</p><div class="table-wrap"><table class="compact-table"><thead><tr><th>Sipariş no</th><th>Teslim</th><th>Vade</th><th class="number-cell">Tutar</th><th class="number-cell">Tahsil edilen</th><th class="number-cell">Kalan</th><th>Durum</th></tr></thead><tbody>
+    <tr id="collection-detail-{{ group.customer.id }}" class="collection-detail-row" hidden><td colspan="7"><div class="collection-order-detail"><p><b>{{ group.customer.name }}</b> · Sipariş toplamı ₺{{ group.amount|money }} · {{ 'Mahsup edilen ödeme' if is_purchase else 'Mahsup edilen tahsilat' }} ₺{{ group.collected|money }}</p><div class="table-wrap"><table class="compact-table"><thead><tr><th>Sipariş no</th><th>Teslim</th><th>Vade</th><th class="number-cell">Tutar</th><th class="number-cell">{{ 'Ödenen' if is_purchase else 'Tahsil edilen' }}</th><th class="number-cell">Kalan</th><th>Durum</th></tr></thead><tbody>
     {% for item in group.orders %}<tr><td><a data-workspace-new-tab href="{{ url_for('order_detail', order_id=item.order.id) }}">{{ item.order.order_no }}</a></td><td>{{ item.delivered_at.strftime('%d.%m.%Y') }}</td><td>{{ item.due_date.strftime('%d.%m.%Y') }}</td><td class="number-cell">₺{{ item.amount|money }}</td><td class="number-cell credit-text">₺{{ item.collected|money }}</td><td class="number-cell"><b>₺{{ item.remaining|money }}</b></td><td><span class="collection-state {{ item.state }}">{{ item.state_label }}</span></td></tr>{% endfor %}
     </tbody></table></div></div></td></tr>
-  {% endfor %}</tbody></table></div>{% else %}<div class="empty compact"><b>Bu filtreye uygun cari bulunmuyor.</b><br>Teslim edilmiş satışlar üzerinden hesaplanır.</div>{% endif %}
+  {% endfor %}</tbody></table></div>{% else %}<div class="empty compact"><b>Bu filtreye uygun cari bulunmuyor.</b><br>{{ 'Teslim alınmış satın almalar üzerinden hesaplanır.' if is_purchase else 'Teslim edilmiş satışlar üzerinden hesaplanır.' }}</div>{% endif %}
 </div>
 {% endblock %}
