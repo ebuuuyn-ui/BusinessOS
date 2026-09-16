@@ -52,7 +52,8 @@ class DashboardPerformanceTests(unittest.TestCase):
         self.assertEqual(c['delivered_today'],11) # duplicate events count once, cancelled orders included
         self.assertEqual(c['due_today_count'],3)
         self.assertEqual(c['overdue_count'],3)
-        self.assertEqual([o.order_no for o in c['recent_orders']],[f'T-{i}' for i in range(7)])
+        self.assertNotIn('recent_orders',c)
+        self.assertNotIn('Son Siparişler',response.get_data(as_text=True))
         self.assertEqual(c['total_debit_balance'],500)
         self.assertEqual(c['today_sales_count'],6)
         self.assertEqual(c['today_purchase_count'],3)
@@ -74,7 +75,7 @@ class DashboardPerformanceTests(unittest.TestCase):
             event.remove(Session,'loaded_as_persistent',load);event.remove(m.db.engine,'before_cursor_execute',sql)
         self.assertNotIn('OrderHistory',loaded)
         self.assertEqual(loaded.count('Invoice'),1)
-        self.assertTrue(any('LIMIT' in s and 'ORDER BY' in s and 'created_at DESC' in s for s in statements))
+        self.assertFalse(any('LIMIT' in s and 'ORDER BY' in s and 'created_at DESC' in s for s in statements))
         self.assertEqual(before,dump())
 
     def test_pending_balances_argument_matches_default(self):

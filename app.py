@@ -23,7 +23,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import case, event, func, inspect, text
+from sqlalchemy import Numeric, case, cast, event, func, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
@@ -1953,6 +1953,50 @@ def sales_item_costs_for_report(sales, realized_dates):
     return costs
 
 
+def order_status_summary_query():
+    """Exact NUMERIC aggregation for PostgreSQL, including empty orders."""
+    price = func.coalesce(OrderItem.unit_price, 0)
+    discount = func.coalesce(OrderItem.discount_rate, 0)
+    discount = case((discount < 0, 0), (discount > 100, 100), else_=discount)
+    vat = func.coalesce(OrderItem.vat_rate, 0)
+    after_discount = price * OrderItem.quantity * (100 - discount) / 100
+    amount = case((OrderItem.vat_included.is_(True), after_discount),
+                  else_=after_discount * (100 + vat) / 100)
+    return db.session.query(Order.order_type, Order.status,
+        func.count(func.distinct(Order.id)),
+        cast(func.coalesce(func.sum(amount), 0), Numeric(38, 10)),
+    ).outerjoin(OrderItem).group_by(Order.order_type, Order.status)
+
+
+def order_status_summaries():
+    summary = {kind: {status: dict(count=0, total=Decimal("0")) for status in ORDER_STATUSES} for kind in ORDER_TYPES}
+    counts = {}
+    if db.engine.dialect.name == "sqlite":
+        # SQLite SUM uses binary floats. Aggregate equal price/rate groups, then
+        # use Decimal to preserve penny rounding exactly on the desktop app.
+        count_rows = db.session.query(Order.order_type, Order.status, func.count(Order.id)).group_by(Order.order_type, Order.status).all()
+        fields = (Order.order_type, Order.status, OrderItem.unit_price, OrderItem.discount_rate, OrderItem.vat_rate, OrderItem.vat_included)
+        amount_rows = db.session.query(*fields, func.sum(OrderItem.quantity)).join(OrderItem).group_by(*fields).all()
+        for kind, status, count in count_rows:
+            counts[kind, status] = count
+            if kind in summary and status in summary[kind]:
+                summary[kind][status]['count'] = count
+        for kind, status, price, discount, vat, included, quantity in amount_rows:
+            if kind not in summary or status not in summary[kind]:
+                continue
+            discount = max(Decimal('0'), min(discount or Decimal('0'), Decimal('100')))
+            amount = (price or Decimal('0')) * quantity * (Decimal('100') - discount) / Decimal('100')
+            if not included:
+                amount *= (Decimal('100') + (vat or Decimal('0'))) / Decimal('100')
+            summary[kind][status]['total'] += amount
+    else:
+        for kind, status, count, amount in order_status_summary_query().all():
+            counts[kind, status] = count
+            if kind in summary and status in summary[kind]:
+                summary[kind][status].update(count=count, total=amount)
+    return summary, counts
+
+
 def create_app(test_config=None):
     data_directory = os.getenv("BUSINESSOS_DATA_DIR", "").strip()
     flask_options = {"instance_relative_config": True}
@@ -2036,8 +2080,6 @@ def create_app(test_config=None):
         all_orders = Order.query.options(
             selectinload(Order.items), joinedload(Order.customer),
         ).filter(Order.status != "İptal Edildi").all()
-        recent_orders = Order.query.options(selectinload(Order.items), joinedload(Order.customer)).order_by(
-            Order.created_at.desc(), Order.id.asc()).limit(7).all()
         status_totals = db.session.query(Order.order_type, Order.status, func.count(Order.id),
             func.sum(case((Order.delivery_date < today, 1), else_=0)),
             func.sum(case((Order.delivery_date == today, 1), else_=0)),
@@ -2149,7 +2191,6 @@ def create_app(test_config=None):
         return render_template(
             "dashboard.html",
             today=today,
-            recent_orders=recent_orders,
             customer_count=Customer.query.count(),
             product_count=Product.query.filter_by(active=True).count(),
             active_count=active_count,
@@ -4149,17 +4190,7 @@ def create_app(test_config=None):
         active_only = request.args.get("active") == "1"
         delivery_pending = request.args.get("delivery_pending") == "1"
         selected_customer = db.session.get(Customer, customer_id) if customer_id else None
-        status_summary = {
-            kind: {order_status: {"count": 0, "total": Decimal("0")} for order_status in ORDER_STATUSES}
-            for kind in ORDER_TYPES
-        }
-        summary_orders = Order.query.options(selectinload(Order.items)).all()
-        for summary_order in summary_orders:
-            if summary_order.order_type not in status_summary or summary_order.status not in status_summary[summary_order.order_type]:
-                continue
-            bucket = status_summary[summary_order.order_type][summary_order.status]
-            bucket["count"] += 1
-            bucket["total"] += summary_order.total_amount
+        status_summary, summary_counts = order_status_summaries()
         records = Order.query.options(
             selectinload(Order.items),
             joinedload(Order.customer),
@@ -4184,9 +4215,9 @@ def create_app(test_config=None):
             records = records.filter(Order.id.in_(open_ids)) if open_ids else records.filter(db.false())
             counts = {kind: sum(1 for order in all_cashflow_orders if order.order_type == kind and order.id in open_ids) for kind in ORDER_TYPES}
         elif active_only:
-            counts = {kind: sum(order.order_type == kind and order.status not in {"Teslim Edildi", "İptal Edildi"} for order in summary_orders) for kind in ORDER_TYPES}
+            counts = {kind: sum(count for (entry_kind, status), count in summary_counts.items() if entry_kind == kind and status not in {"Teslim Edildi", "İptal Edildi"}) for kind in ORDER_TYPES}
         else:
-            counts = {kind: sum(order.order_type == kind for order in summary_orders) for kind in ORDER_TYPES}
+            counts = {kind: sum(count for (entry_kind, status), count in summary_counts.items() if entry_kind == kind) for kind in ORDER_TYPES}
         page = max(request.args.get("page", 1, type=int), 1)
         if delivery_pending:
             listed_orders = records.order_by(Order.delivery_date.asc().nullslast(), Order.order_date.desc(), Order.id.desc()).all()
