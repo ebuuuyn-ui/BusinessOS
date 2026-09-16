@@ -1897,6 +1897,58 @@ def effective_sales_item_cost(item, sale_date=None):
     return latest_delivered_purchase_cost(item, sale_date)
 
 
+def sales_item_costs_for_report(sales, realized_dates):
+    """Load purchase costs once per report, preserving historical selection rules."""
+    from bisect import bisect_right
+    from collections import defaultdict
+
+    items = [item for order in sales for item in order.items]
+    if not items:
+        return {}
+    product_ids = {item.product_id for item in items if item.product_id}
+    names = {normalize_search_text(item.product_name) for item in items if not item.product_id}
+    query = OrderItem.query.join(Order).options(
+        joinedload(OrderItem.order).selectinload(Order.history),
+    ).filter(Order.order_type == "Satın Alma", Order.status.in_(FINANCIAL_ORDER_STATUSES))
+    # Unlinked legacy rows match by normalized name, including linked purchases.
+    # Normalize in Python so SQLite and PostgreSQL use the same Turkish rules.
+    if names:
+        candidates = query.all()
+    else:
+        candidates = []
+        ids = sorted(product_ids)
+        for offset in range(0, len(ids), 500):
+            candidates.extend(query.filter(OrderItem.product_id.in_(ids[offset:offset + 500])).all())
+    purchase_dates = {}
+    groups = defaultdict(list)
+    for candidate in candidates:
+        if candidate.order_id not in purchase_dates:
+            purchase_dates[candidate.order_id] = order_realization_date(candidate.order)
+        entry = (purchase_dates[candidate.order_id], candidate.order_id, candidate.id, candidate)
+        if candidate.product_id in product_ids:
+            groups[('id', candidate.product_id)].append(entry)
+        name = normalize_search_text(candidate.product_name)
+        if name in names:
+            groups[('name', name)].append(entry)
+    timelines = {}
+    for key, entries in groups.items():
+        entries.sort(key=lambda entry: entry[:3])
+        timelines[key] = ([entry[0] for entry in entries], [entry[3] for entry in entries])
+    cache, costs = {}, {}
+    for order in sales:
+        cutoff = realized_dates[order.id]
+        for item in order.items:
+            key = ('id', item.product_id) if item.product_id else ('name', normalize_search_text(item.product_name))
+            cache_key = (key, cutoff)
+            if cache_key not in cache:
+                dates, purchases = timelines.get(key, ([], []))
+                position = bisect_right(dates, cutoff) - 1
+                latest = purchases[position] if position >= 0 else None
+                cache[cache_key] = latest.net_amount / latest.quantity if latest is not None and latest.quantity else Decimal("0")
+            costs[item.id] = cache[cache_key]
+    return costs
+
+
 def create_app(test_config=None):
     data_directory = os.getenv("BUSINESSOS_DATA_DIR", "").strip()
     flask_options = {"instance_relative_config": True}
@@ -2711,16 +2763,24 @@ def create_app(test_config=None):
             end = date(selected.year, selected.month, calendar.monthrange(selected.year, selected.month)[1])
             title = start.strftime("%m.%Y")
 
-        realized_sales = Order.query.filter(Order.order_type == "Satış", Order.status.in_(FINANCIAL_ORDER_STATUSES)).all()
-        sales = [order for order in realized_sales if start <= order_realization_date(order) <= end]
+        realized_sales = Order.query.options(selectinload(Order.history)).filter(
+            Order.order_type == "Satış", Order.status.in_(FINANCIAL_ORDER_STATUSES)).all()
+        realized_dates = {order.id: order_realization_date(order) for order in realized_sales}
+        sale_ids = [order.id for order in realized_sales if start <= realized_dates[order.id] <= end]
+        sales = []
+        for offset in range(0, len(sale_ids), 500):
+            sales.extend(Order.query.options(selectinload(Order.items), joinedload(Order.customer)).filter(
+                Order.id.in_(sale_ids[offset:offset + 500])).order_by(Order.id).all())
+        item_costs = sales_item_costs_for_report(sales, realized_dates)
+        order_costs = {order.id: sum((item_costs[item.id] * item.quantity for item in order.items), Decimal("0")) for order in sales}
         revenue = sum((order.net_amount for order in sales), Decimal("0"))
-        cost = sum((sum((effective_sales_item_cost(item, order_realization_date(order)) * item.quantity for item in order.items), Decimal("0")) for order in sales), Decimal("0"))
+        cost = sum(order_costs.values(), Decimal("0"))
         gross_profit = revenue - cost
         expenses = Expense.query.filter(Expense.expense_date >= start, Expense.expense_date <= end).all()
         expenses_total = sum((item.amount for item in expenses), Decimal("0"))
         net_profit = gross_profit - expenses_total
         markup = (gross_profit / cost * 100) if cost else None
-        missing_cost_items = sum(1 for order in sales for item in order.items if not effective_sales_item_cost(item, order_realization_date(order)))
+        missing_cost_items = sum(1 for order in sales for item in order.items if not item_costs[item.id])
 
         buckets = {}
         if period == "year":
@@ -2733,10 +2793,10 @@ def create_app(test_config=None):
         else:
             buckets[selected] = {"label": selected.strftime("%d.%m.%Y"), "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
         for order in sales:
-            realized = order_realization_date(order)
+            realized = realized_dates[order.id]
             key = (realized.year, realized.month) if period == "year" else realized
             buckets[key]["revenue"] += order.net_amount
-            buckets[key]["cost"] += sum((effective_sales_item_cost(item, realized) * item.quantity for item in order.items), Decimal("0"))
+            buckets[key]["cost"] += order_costs[order.id]
         for expense in expenses:
             key = (expense.expense_date.year, expense.expense_date.month) if period == "year" else expense.expense_date
             buckets[key]["expense"] += expense.amount
@@ -2746,11 +2806,11 @@ def create_app(test_config=None):
             bucket["net"] = bucket["gross"] - bucket["expense"]
             timeline.append(bucket)
         chart_max = max((max(abs(item["revenue"]), abs(item["cost"]), abs(item["net"])) for item in timeline), default=Decimal("1")) or Decimal("1")
-        sales.sort(key=order_realization_date, reverse=True)
+        sales.sort(key=lambda order: realized_dates[order.id], reverse=True)
         return render_template("profitability.html", period=period, selected=selected, start=start, end=end, title=title,
             revenue=revenue, cost=cost, gross_profit=gross_profit, expenses_total=expenses_total, net_profit=net_profit,
             markup=markup, missing_cost_items=missing_cost_items, sales=sales, timeline=timeline, chart_max=chart_max,
-            order_realization_date=order_realization_date, effective_sales_item_cost=effective_sales_item_cost)
+            realized_dates=realized_dates, order_costs=order_costs)
 
     @app.get("/mali-tablolar")
     def financial_statements():
