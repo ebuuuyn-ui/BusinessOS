@@ -855,17 +855,16 @@ def import_personal_finance_data(app):
 def calculate_treasury(today=None):
     today = today or date.today()
     # Anlık nakit, fiziksel kasa ile banka havalelerinin toplam kullanılabilir bakiyesidir.
-    cash_collections = sum((item.credit or 0 for item in AccountTransaction.query.filter(
-        AccountTransaction.transaction_type == "Tahsilat",
-        AccountTransaction.payment_method.in_(LIQUID_PAYMENT_METHODS),
-    ).all()), Decimal("0"))
-    cash_payments = sum((item.debit or 0 for item in AccountTransaction.query.filter(
-        AccountTransaction.transaction_type == "Ödeme",
-        AccountTransaction.payment_method.in_(LIQUID_PAYMENT_METHODS),
-    ).all()), Decimal("0"))
-    cash_expenses = sum((item.amount or 0 for item in Expense.query.filter_by(payment_method="Nakit").all()), Decimal("0"))
-    manual_in = sum((item.amount or 0 for item in CashMovement.query.filter_by(movement_type="Giriş").all()), Decimal("0"))
-    manual_out = sum((item.amount or 0 for item in CashMovement.query.filter_by(movement_type="Çıkış").all()), Decimal("0"))
+    # Aggregate scalar amounts; keep check rows for existing detail consumers.
+    cash_collections, cash_payments = db.session.query(
+        func.coalesce(func.sum(case((AccountTransaction.transaction_type == "Tahsilat", AccountTransaction.credit), else_=0)), 0),
+        func.coalesce(func.sum(case((AccountTransaction.transaction_type == "Ödeme", AccountTransaction.debit), else_=0)), 0),
+    ).filter(AccountTransaction.payment_method.in_(LIQUID_PAYMENT_METHODS)).one()
+    cash_expenses = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.payment_method == "Nakit").scalar()
+    manual_in, manual_out = db.session.query(
+        func.coalesce(func.sum(case((CashMovement.movement_type == "Giriş", CashMovement.amount), else_=0)), 0),
+        func.coalesce(func.sum(case((CashMovement.movement_type == "Çıkış", CashMovement.amount), else_=0)), 0),
+    ).one()
     open_checks = AccountTransaction.query.filter(AccountTransaction.payment_method == "Çek", AccountTransaction.check_status == "Bekliyor").all()
     incoming_checks = sum((item.credit or 0 for item in open_checks if item.transaction_type == "Tahsilat"), Decimal("0"))
     outgoing_checks = sum((item.debit or 0 for item in open_checks if item.transaction_type == "Ödeme"), Decimal("0"))
@@ -932,18 +931,12 @@ def build_account_statement(customer):
     return entries
 
 
-def calculate_customer_balances(customer_ids=None):
-    customer_query = Customer.query
-    if customer_ids is not None:
-        customer_query = customer_query.filter(Customer.id.in_(customer_ids))
-    ids = [customer.id for customer in customer_query.all()]
-    balances = {customer_id: Decimal("0") for customer_id in ids}
-    if not ids:
-        return balances
-    invoices = Invoice.query.options(selectinload(Invoice.items)).filter(Invoice.customer_id.in_(ids)).all()
+def calculate_customer_balances(customer_ids=None, *, ledger=None):
+    customers, invoices, transactions = ledger if ledger is not None else load_invoice_ledger(customer_ids=customer_ids)
+    balances = {customer.id: Decimal("0") for customer in customers}
     for invoice in invoices:
         balances[invoice.customer_id] += invoice.total_amount if invoice.invoice_type == "Satış" else -invoice.total_amount
-    for transaction in AccountTransaction.query.filter(AccountTransaction.customer_id.in_(ids)).all():
+    for transaction in transactions:
         balances[transaction.customer_id] += (transaction.debit or 0) - (transaction.credit or 0)
     return balances
 
@@ -1997,10 +1990,9 @@ def order_status_summaries():
     return summary, counts
 
 
-def load_invoice_maturity_groups(today, purchase=False, customer_id=None):
+def load_invoice_ledger(customer_id=None, customer_ids=None):
     """Read only the ledger columns and invoice totals needed for allocation."""
     from types import SimpleNamespace
-    from invoice_maturity import build_maturity_groups
     customers = db.session.query(Customer.id, Customer.name, Customer.code)
     headers = (Invoice.id, Invoice.customer_id, Invoice.invoice_no, Invoice.invoice_type, Invoice.invoice_date, Invoice.due_date)
     if db.engine.dialect.name == "sqlite":
@@ -2019,6 +2011,10 @@ def load_invoice_maturity_groups(today, purchase=False, customer_id=None):
         customers = customers.filter(Customer.id == customer_id)
         invoices = invoices.filter(Invoice.customer_id == customer_id)
         transactions = transactions.filter(AccountTransaction.customer_id == customer_id)
+    if customer_ids is not None:
+        customers = customers.filter(Customer.id.in_(customer_ids))
+        invoices = invoices.filter(Invoice.customer_id.in_(customer_ids))
+        transactions = transactions.filter(AccountTransaction.customer_id.in_(customer_ids))
     invoice_rows = {}
     for row in invoices.all():
         invoice = invoice_rows.setdefault(row[0], SimpleNamespace(id=row[0], customer_id=row[1],
@@ -2034,7 +2030,13 @@ def load_invoice_maturity_groups(today, purchase=False, customer_id=None):
             invoice.total_amount += total
         else:
             invoice.total_amount = row[6]
-    return build_maturity_groups(customers.all(), invoice_rows.values(), transactions.all(), today, purchase=purchase)
+    return customers.all(), list(invoice_rows.values()), transactions.all()
+
+
+def load_invoice_maturity_groups(today, purchase=False, customer_id=None, *, ledger=None):
+    from invoice_maturity import build_maturity_groups
+    customers, invoices, transactions = ledger if ledger is not None else load_invoice_ledger(customer_id=customer_id)
+    return build_maturity_groups(customers, invoices, transactions, today, purchase=purchase)
 
 
 def create_app(test_config=None):
@@ -2165,20 +2167,19 @@ def create_app(test_config=None):
             purchase_amount = sum((order.total_amount for order in day_orders if order.order_type == "Satın Alma"), Decimal("0"))
             week_activity.append({"date": activity_date, "label": activity_date.strftime("%d.%m"), "sales": sales_count, "purchases": purchase_count, "total": len(day_orders), "sales_amount": sales_amount, "purchase_amount": purchase_amount})
         week_max = max((max(item["sales_amount"], item["purchase_amount"]) for item in week_activity), default=Decimal("1")) or Decimal("1")
-        customer_balances = calculate_customer_balances()
-        collection_tracking = delivered_sales_collection_tracking(
-            today,
-            [order for order in all_orders if order.order_type == "Satış" and order.status == "Teslim Edildi"],
-            delivered_dates=delivered_dates,
-        )
-        open_collection_tracking = [item for item in collection_tracking if item["remaining"] > 0]
-        overdue_collections = [item for item in open_collection_tracking if item["state"] == "overdue"]
-        due_soon_collections = [item for item in open_collection_tracking if item["state"] in {"due_today", "due_soon"}]
+        ledger = load_invoice_ledger()
+        customer_balances = calculate_customer_balances(ledger=ledger)
+        collection_groups = load_invoice_maturity_groups(today, ledger=ledger)
+        collection_tracking = [entry for group in collection_groups for entry in group['entries']]
+        overdue_collections = [item for item in collection_tracking if item["state"] == "overdue"]
+        due_soon_collections = [item for item in collection_tracking if item["state"] in {"due_today", "due_soon"}]
         total_debit_balance = sum((balance for balance in customer_balances.values() if balance > 0), Decimal("0"))
         total_credit_balance = sum((-balance for balance in customer_balances.values() if balance < 0), Decimal("0"))
         month_start = today.replace(day=1)
-        today_expense = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.expense_date == today).scalar()
-        month_expense = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.expense_date >= month_start, Expense.expense_date <= today).scalar()
+        today_expense, month_expense = db.session.query(
+            func.coalesce(func.sum(case((Expense.expense_date == today, Expense.amount), else_=0)), 0),
+            func.coalesce(func.sum(Expense.amount), 0),
+        ).filter(Expense.expense_date >= month_start, Expense.expense_date <= today).one()
         recurring_expenses = RecurringExpense.query.filter_by(active=True).all()
         recurring_due = sorted(
             ({"expense": item, "due_date": item.due_date_for(today), "recorded": item.is_recorded_for(today)} for item in recurring_expenses),

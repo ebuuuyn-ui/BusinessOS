@@ -16,8 +16,8 @@
 </div>
 <a href="{{ url_for('expenses') }}#aylik-odemeler" class="recurring-dashboard-card"><span><small>Bu Ayın Planlı Ödemeleri</small><b>{{ recurring_pending_count }} bekleyen aylık ödeme</b></span><strong>₺{{ recurring_pending_amount|money }}</strong><em>Ödeme takvimini aç →</em></a>
 <div class="attention-row">
-  <a href="{{ url_for('collection_tracking', state='overdue') }}" class="attention {{ 'danger' if overdue_collection_count }}"><span>Geciken tahsilat</span><b>₺{{ overdue_collection_amount|money }}</b><small>{{ overdue_collection_count }} sipariş</small></a>
-  <a href="{{ url_for('collection_tracking', state='due_soon') }}" class="attention {{ 'warning' if due_soon_collection_count }}"><span>7 gün içinde tahsilat</span><b>₺{{ due_soon_collection_amount|money }}</b><small>{{ due_soon_collection_count }} sipariş</small></a>
+  <a href="{{ url_for('collection_tracking', state='overdue') }}" class="attention {{ 'danger' if overdue_collection_count }}"><span>Geciken tahsilat</span><b>₺{{ overdue_collection_amount|money }}</b><small>{{ overdue_collection_count }} fatura</small></a>
+  <a href="{{ url_for('collection_tracking', state='due_soon') }}" class="attention {{ 'warning' if due_soon_collection_count }}"><span>7 gün içinde tahsilat</span><b>₺{{ due_soon_collection_amount|money }}</b><small>{{ due_soon_collection_count }} fatura</small></a>
   <a href="{{ url_for('orders', active=1) }}" class="attention"><span>Devam eden sipariş</span><b>{{ active_count }}</b></a>
   <a href="{{ url_for('orders') }}" class="attention {{ 'warning' if due_today_count }}"><span>Bugün teslim edilecek</span><b>{{ due_today_count }}</b></a>
   <a href="{{ url_for('orders') }}" class="attention {{ 'danger' if overdue_count }}"><span>Teslim tarihi geçen</span><b>{{ overdue_count }}</b></a>
