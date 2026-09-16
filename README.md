@@ -123,3 +123,24 @@ kapatın veya Vercel erişim korumasına alın; yeni kod eski yayınları deği�
 Gerçek veri aktarımından önce üretim, preview ve eski yayın erişimlerini doğrulayın.
 
 Doğrulama: `python -m unittest test_web_auth -v` canlı veritabanı kullanmaz.
+
+## Web başlangıcı ve veritabanı hazırlığı
+
+Vercel veya PostgreSQL ile çalışan web sürümü başlangıçta tablo oluşturmaz,
+şema kontrolü yapmaz ve eski yerel Ödeme Takibi verilerini aktarmaya çalışmaz.
+Yerel SQLite yedek klasörleri web isteklerinde taranmaz. Mevcut web veritabanı
+olduğu gibi kullanılır; bu değişiklik için canlı veritabanında komut çalıştırmak gerekmez.
+
+Yalnız **yeni, boş bir web veritabanı kurulurken**, bağlantı ortam değişkenleri
+hazırlandıktan sonra şu komut bir kez çalıştırılabilir:
+
+```bash
+python -m flask --app app init-db
+```
+
+Bu komut eksik tabloları oluşturur; mevcut kayıtları silmez veya sıfırlamaz.
+Mevcut tablo sütunlarını değiştiren bir migration aracı değildir. Gelecekteki
+şema değişiklikleri ayrı, incelenmiş bir migration adımıyla uygulanmalıdır.
+Masaüstü SQLite uygulamasının başlangıç yedeği, uyumluluk kontrolleri ve eski
+veri aktarım davranışı korunur. Web PostgreSQL yedekleri barındırma/veritabanı
+sağlayıcısı üzerinden ayrıca yönetilmelidir; yerel SQLite yedeği değildir.

@@ -2060,7 +2060,8 @@ def create_app(test_config=None):
 
     @app.before_request
     def scheduled_database_backup():
-        ensure_scheduled_backups(app)
+        if not app.config.get("WEB_AUTH_ENABLED"):
+            ensure_scheduled_backups(app)
 
     @app.template_filter("money")
     def money(value):
@@ -5275,6 +5276,11 @@ def create_app(test_config=None):
     def init_db_command():
         db.create_all()
         print("Veritabanı hazırlandı.")
+
+    # Hosted workers use an existing schema. Explicit `flask init-db` remains
+    # available for new installations; never inspect/create tables on cold start.
+    if app.config.get("WEB_AUTH_ENABLED"):
+        return app
 
     with app.app_context():
         create_database_backup(app, "startup")
