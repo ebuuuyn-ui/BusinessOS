@@ -1997,6 +1997,46 @@ def order_status_summaries():
     return summary, counts
 
 
+def load_invoice_maturity_groups(today, purchase=False, customer_id=None):
+    """Read only the ledger columns and invoice totals needed for allocation."""
+    from types import SimpleNamespace
+    from invoice_maturity import build_maturity_groups
+    customers = db.session.query(Customer.id, Customer.name, Customer.code)
+    headers = (Invoice.id, Invoice.customer_id, Invoice.invoice_no, Invoice.invoice_type, Invoice.invoice_date, Invoice.due_date)
+    if db.engine.dialect.name == "sqlite":
+        rates = (InvoiceItem.unit_price, InvoiceItem.discount_rate, InvoiceItem.vat_rate, InvoiceItem.vat_included)
+        invoices = db.session.query(*headers, *rates, func.sum(InvoiceItem.quantity)).outerjoin(InvoiceItem).group_by(*headers, *rates)
+    else:
+        discount = func.coalesce(InvoiceItem.discount_rate, 0)
+        discount = case((discount < 0, 0), (discount > 100, 100), else_=discount)
+        discounted = func.coalesce(InvoiceItem.unit_price, 0) * InvoiceItem.quantity * (100 - discount) / 100
+        total = case((InvoiceItem.vat_included.is_(True), discounted), else_=discounted * (100 + func.coalesce(InvoiceItem.vat_rate, 0)) / 100)
+        invoices = db.session.query(*headers, cast(func.coalesce(func.sum(total), 0), Numeric(38, 10))).outerjoin(InvoiceItem).group_by(*headers)
+    transactions = db.session.query(AccountTransaction.id, AccountTransaction.customer_id,
+        AccountTransaction.transaction_date, AccountTransaction.transaction_type,
+        AccountTransaction.reference_no, AccountTransaction.debit, AccountTransaction.credit)
+    if customer_id is not None:
+        customers = customers.filter(Customer.id == customer_id)
+        invoices = invoices.filter(Invoice.customer_id == customer_id)
+        transactions = transactions.filter(AccountTransaction.customer_id == customer_id)
+    invoice_rows = {}
+    for row in invoices.all():
+        invoice = invoice_rows.setdefault(row[0], SimpleNamespace(id=row[0], customer_id=row[1],
+            invoice_no=row[2], invoice_type=row[3], invoice_date=row[4], due_date=row[5], total_amount=Decimal('0')))
+        if db.engine.dialect.name == "sqlite":
+            price, discount, vat, included, quantity = row[6:]
+            if quantity is None:
+                continue
+            discount = max(Decimal('0'), min(discount or Decimal('0'), Decimal('100')))
+            total = (price or Decimal('0')) * quantity * (Decimal('100') - discount) / Decimal('100')
+            if not included:
+                total *= (Decimal('100') + (vat or Decimal('0'))) / Decimal('100')
+            invoice.total_amount += total
+        else:
+            invoice.total_amount = row[6]
+    return build_maturity_groups(customers.all(), invoice_rows.values(), transactions.all(), today, purchase=purchase)
+
+
 def create_app(test_config=None):
     data_directory = os.getenv("BUSINESSOS_DATA_DIR", "").strip()
     flask_options = {"instance_relative_config": True}
@@ -2238,7 +2278,7 @@ def create_app(test_config=None):
         )
 
     def collection_tracking_context():
-        from invoice_maturity import build_maturity_groups, filter_groups
+        from invoice_maturity import filter_groups
         today = date.today()
         tracking_kind = request.args.get('kind', 'sales').strip()
         if tracking_kind not in {'sales', 'purchase'}:
@@ -2248,10 +2288,7 @@ def create_app(test_config=None):
         if state not in {'open', 'overdue', 'due_soon', 'undated', 'other', 'paid', 'all'}:
             state = 'open'
         query = request.args.get('q', '').strip()
-        all_groups = build_maturity_groups(
-            Customer.query.all(),
-            Invoice.query.options(selectinload(Invoice.items)).all(),
-            AccountTransaction.query.all(), today, purchase=is_purchase)
+        all_groups = load_invoice_maturity_groups(today, purchase=is_purchase)
         customers = filter_groups(all_groups, state, query, normalize_search_text)
         summary = {key: sum((g[field] for g in all_groups), Decimal('0')) for key, field in (
             ('open_amount', 'remaining'), ('overdue_amount', 'overdue_amount'),
@@ -2267,6 +2304,19 @@ def create_app(test_config=None):
     @app.get("/tahsilat-takibi")
     def collection_tracking():
         return render_template("collection_tracking.html", **collection_tracking_context())
+
+    @app.get("/tahsilat-takibi/cari/<int:customer_id>/ayrinti")
+    def collection_tracking_detail(customer_id):
+        kind = request.args.get('kind', 'sales')
+        if kind not in {'sales', 'purchase'}:
+            abort(400)
+        groups = load_invoice_maturity_groups(date.today(), purchase=kind == 'purchase', customer_id=customer_id)
+        if not groups:
+            abort(404)
+        response = make_response(render_template('collection_tracking_detail.html', group=groups[0]))
+        response.headers['X-BusinessOS-Fragment'] = 'maturity-detail'
+        response.headers['Cache-Control'] = 'no-store, private'
+        return response
 
     @app.get("/tahsilat-takibi/<file_format>")
     def collection_tracking_export(file_format):

@@ -97,7 +97,7 @@ class InvoiceMaturityTests(unittest.TestCase):
                 item=dict(g['entries'][0],customer=self.customer)
                 self.assertEqual(rows(dict(items=[item]))[0][3],'—')
                 url='/tahsilat-takibi?kind='+('purchase' if purchase else 'sales')
-                html=self.client.get(url).get_data(as_text=True)
+                html=self.client.get('/tahsilat-takibi/cari/'+str(self.customer.id)+'/ayrinti?kind='+('purchase' if purchase else 'sales')).get_data(as_text=True)
                 detail=html.split('Fatura dışı cari hareketleri · Vade uygulanmaz')[1]
                 self.assertNotIn('Vadesi belirtilmemiş',detail)
                 self.assertIn('Fatura dışı bakiye',detail)
@@ -131,9 +131,11 @@ class InvoiceMaturityTests(unittest.TestCase):
         before=snapshot()
         html=self.client.get('/tahsilat-takibi?kind=purchase&q=AL-2').get_data(as_text=True)
         self.assertIn('Vadesi Belirtilmemiş',html)
-        self.assertIn('AL-1',html);self.assertIn('AL-2',html)
+        self.assertNotIn('AL-1',html)
+        detail=self.client.get('/tahsilat-takibi/cari/'+str(self.customer.id)+'/ayrinti?kind=purchase').get_data(as_text=True)
+        self.assertIn('AL-1',detail);self.assertIn('AL-2',detail)
         self.assertNotIn('30 gün',html);self.assertNotIn('Teslim edilmiş',html)
-        self.assertIn('/faturalar/',html)
+        self.assertIn('/faturalar/',detail)
         self.assertIn('Vadesi belirtilmemiş',html)
         for view in ['summary','details']:
             r=self.client.get('/tahsilat-takibi/excel',query_string=dict(kind='purchase',q='AL-2',view=view))
