@@ -23,7 +23,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import event, func, inspect, text
+from sqlalchemy import case, event, func, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
@@ -1086,15 +1086,15 @@ def build_customer_balances_pdf(customers, balances):
     return output
 
 
-def delivered_sales_collection_tracking(today=None, delivered_sales=None):
-    return delivered_order_maturity_tracking(today, delivered_sales)
+def delivered_sales_collection_tracking(today=None, delivered_sales=None, *, delivered_dates=None):
+    return delivered_order_maturity_tracking(today, delivered_sales, delivered_dates=delivered_dates)
 
 
 def delivered_purchase_payment_tracking(today=None):
     return delivered_order_maturity_tracking(today, purchase=True)
 
 
-def delivered_order_maturity_tracking(today=None, delivered_sales=None, *, purchase=False):
+def delivered_order_maturity_tracking(today=None, delivered_sales=None, *, purchase=False, delivered_dates=None):
     """Teslim edilen siparişleri 30 gün vadeyle izler; satış ve alış mahsupları ayrıdır."""
     today = today or date.today()
     if delivered_sales is None:
@@ -1105,8 +1105,11 @@ def delivered_order_maturity_tracking(today=None, delivered_sales=None, *, purch
         ).filter_by(order_type="Satın Alma" if purchase else "Satış", status="Teslim Edildi").all()
     grouped_orders = {}
     for order in delivered_sales:
-        delivered_events = [event for event in order.history if event.status == "Teslim Edildi"]
-        delivered_at = min((event.created_at.date() for event in delivered_events), default=None)
+        if delivered_dates is None:
+            delivered_events = [event for event in order.history if event.status == "Teslim Edildi"]
+            delivered_at = min((event.created_at.date() for event in delivered_events), default=None)
+        else:
+            delivered_at = delivered_dates.get(order.id)
         # Eski siparişlerde geçmiş kaydı olmayabilir. Bu durumda girilmiş teslim
         # tarihi, o da yoksa siparişin son güncellenme tarihi güvenli varsayımdır.
         delivered_at = delivered_at or order.delivery_date or (order.updated_at or order.created_at).date()
@@ -1231,11 +1234,12 @@ def procurement_summary(sales_order, converted_orders=None):
     }
 
 
-def calculate_pending_delivery_amounts(orders=None):
+def calculate_pending_delivery_amounts(orders=None, balances=None):
     """Gelecek siparişler ve açık cari bakiyeler için sipariş bazlı nakit beklentisi."""
     if orders is None:
         orders = Order.query.filter(Order.status != "İptal Edildi").all()
-    balances = calculate_customer_balances({order.customer_id for order in orders})
+    if balances is None:
+        balances = calculate_customer_balances({order.customer_id for order in orders})
     grouped_orders = {}
     for order in orders:
         grouped_orders.setdefault((order.customer_id, order.order_type), []).append(order)
@@ -2028,13 +2032,30 @@ def create_app(test_config=None):
     @app.get("/")
     def dashboard():
         today = date.today()
+        # Historical non-cancelled amounts are still required by cashflow allocation.
         all_orders = Order.query.options(
-            selectinload(Order.items),
-            selectinload(Order.history),
-            joinedload(Order.customer),
-        ).all()
-        recent_orders = sorted(all_orders, key=lambda order: order.created_at, reverse=True)[:7]
-        active_count = sum(order.status not in {"Teslim Edildi", "İptal Edildi"} for order in all_orders)
+            selectinload(Order.items), joinedload(Order.customer),
+        ).filter(Order.status != "İptal Edildi").all()
+        recent_orders = Order.query.options(selectinload(Order.items), joinedload(Order.customer)).order_by(
+            Order.created_at.desc(), Order.id.asc()).limit(7).all()
+        status_totals = db.session.query(Order.order_type, Order.status, func.count(Order.id),
+            func.sum(case((Order.delivery_date < today, 1), else_=0)),
+            func.sum(case((Order.delivery_date == today, 1), else_=0)),
+        ).group_by(Order.order_type, Order.status).all()
+        active_totals = [row for row in status_totals if row[1] not in {"Teslim Edildi", "İptal Edildi"}]
+        active_count = sum(row[2] for row in active_totals)
+        overdue_count = sum(row[3] for row in active_totals)
+        due_today_count = sum(row[4] for row in active_totals)
+        completed_count = sum(row[2] for row in status_totals if row[1] == "Teslim Edildi")
+        status_counts = {(row[0], row[1]): row[2] for row in status_totals}
+        history_summary = db.session.query(OrderHistory.order_id,
+            func.min(OrderHistory.created_at),
+            func.min(case((OrderHistory.status == "Teslim Edildi", OrderHistory.created_at))),
+            func.max(case((db.and_(OrderHistory.status == "Teslim Edildi", func.date(OrderHistory.created_at) == today), 1), else_=0)),
+        ).filter(OrderHistory.status.in_(FINANCIAL_ORDER_STATUSES)).group_by(OrderHistory.order_id).all()
+        exit_dates = {row[0]: row[1].date() for row in history_summary}
+        delivered_dates = {row[0]: row[2].date() for row in history_summary if row[2]}
+        delivered_today = sum(row[3] for row in history_summary)
         today_orders = [order for order in all_orders if order.order_date == today and order.status != "İptal Edildi"]
         today_sales = [order for order in today_orders if order.order_type == "Satış"]
         today_purchases = [order for order in today_orders if order.order_type == "Satın Alma"]
@@ -2042,15 +2063,14 @@ def create_app(test_config=None):
         for order_type in ORDER_TYPES:
             counts = []
             for status in ORDER_STATUSES:
-                count = sum(order.order_type == order_type and order.status == status for order in all_orders)
+                count = status_counts.get((order_type, status), 0)
                 if count:
                     counts.append({"name": status, "count": count})
             status_groups[order_type] = {"items": counts, "max": max((item["count"] for item in counts), default=1), "total": sum(item["count"] for item in counts)}
         exit_orders_by_date = {}
         completed_orders = [order for order in all_orders if order.status in {"Sevk Edildi", "Teslim Edildi"}]
         for order in completed_orders:
-            exit_events = [event for event in order.history if event.status in ["Sevk Edildi", "Teslim Edildi"]]
-            exit_date = min((event.created_at.date() for event in exit_events), default=(order.updated_at or order.created_at).date())
+            exit_date = exit_dates.get(order.id, (order.updated_at or order.created_at).date())
             exit_orders_by_date.setdefault(exit_date, []).append(order)
         week_activity = []
         for days_ago in range(6, -1, -1):
@@ -2062,13 +2082,11 @@ def create_app(test_config=None):
             purchase_amount = sum((order.total_amount for order in day_orders if order.order_type == "Satın Alma"), Decimal("0"))
             week_activity.append({"date": activity_date, "label": activity_date.strftime("%d.%m"), "sales": sales_count, "purchases": purchase_count, "total": len(day_orders), "sales_amount": sales_amount, "purchase_amount": purchase_amount})
         week_max = max((max(item["sales_amount"], item["purchase_amount"]) for item in week_activity), default=Decimal("1")) or Decimal("1")
-        delivered_today = db.session.query(OrderHistory.order_id).filter(OrderHistory.status == "Teslim Edildi", db.func.date(OrderHistory.created_at) == today).distinct().count()
-        overdue_count = Order.query.filter(Order.delivery_date < today, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
-        due_today_count = Order.query.filter(Order.delivery_date == today, ~Order.status.in_(["Teslim Edildi", "İptal Edildi"])).count()
         customer_balances = calculate_customer_balances()
         collection_tracking = delivered_sales_collection_tracking(
             today,
             [order for order in all_orders if order.order_type == "Satış" and order.status == "Teslim Edildi"],
+            delivered_dates=delivered_dates,
         )
         open_collection_tracking = [item for item in collection_tracking if item["remaining"] > 0]
         overdue_collections = [item for item in open_collection_tracking if item["state"] == "overdue"]
@@ -2084,7 +2102,7 @@ def create_app(test_config=None):
             key=lambda item: item["due_date"],
         )
         cashflow_orders = [order for order in all_orders if order.status != "İptal Edildi"]
-        pending_expected = calculate_pending_delivery_amounts(cashflow_orders)
+        pending_expected = calculate_pending_delivery_amounts(cashflow_orders, balances=customer_balances)
         pending_delivery_sales = [order for order in cashflow_orders if order.order_type == "Satış" and pending_expected.get(order.id, 0) > 0]
         pending_delivery_purchases = [order for order in cashflow_orders if order.order_type == "Satın Alma" and pending_expected.get(order.id, 0) > 0]
         treasury = calculate_treasury(today)
@@ -2135,7 +2153,7 @@ def create_app(test_config=None):
             customer_count=Customer.query.count(),
             product_count=Product.query.filter_by(active=True).count(),
             active_count=active_count,
-            completed_count=sum(order.status == "Teslim Edildi" for order in all_orders),
+            completed_count=completed_count,
             today_sales_count=len(today_sales),
             today_sales_amount=sum((order.total_amount for order in today_sales), Decimal("0")),
             today_purchase_count=len(today_purchases),
