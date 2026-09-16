@@ -3118,6 +3118,8 @@ def create_app(test_config=None):
         return render_template("customers.html", customers=customer_records, customer_balances=balances, query=query, balance_filter=balance_filter, view=view, balance_sort=balance_sort, visible_debit_total=visible_debit_total, visible_credit_total=visible_credit_total, total_count=total_count, page=page, total_pages=total_pages)
 
     register_report(app, Customer, Order, AccountTransaction, normalize_search_text)
+    from stock_excel_import import register_stock_excel_import
+    register_stock_excel_import(app, db, Product, StoredFile)
 
     @app.get("/musteriler/bakiyeler/excel")
     def export_customer_balances_xlsx():

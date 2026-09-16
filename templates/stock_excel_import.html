@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Stok Excel Aktarımı · Business OS{% endblock %}
+{% block heading %}Excel ile Stok Kartlarını Güncelle{% endblock %}
+{% block subheading %}Hareket görmüş kartlar korunur; hiçbir kart silinmez.{% endblock %}
+{% block content %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% if result %}
+<div class="panel" style="padding:20px"><h2>Aktarım tamamlandı</h2><p>{% for name,count in result.counts.items() %}{{ name }}: {{ count }} · {% endfor %} Korunan: {{ result.protected|length }} · Eksik fiyat nedeniyle atlanan: {{ result.skipped|length }}</p>
+<a class="button" href="{{ url_for('stock_excel_result',key=key,download='protected') }}">Korunan stokları indir</a>
+<a class="button" href="{{ url_for('stock_excel_result',key=key,download='backup') }}">İşlem öncesi ve sonrası yedeği indir</a>
+<a class="button" href="{{ url_for('products') }}">Stoklara dön</a></div>
+{% elif plan %}
+<div class="panel" style="padding:20px"><h2>Aktarım önizlemesi</h2><p>Excel: {{ source_count }} ürün. {% for name,count in plan.counts.items() %}{{ name }}: {{ count }} · {% endfor %} Korunan: {{ plan.protected|length }} · Atlanan: {{ skipped|length }}</p>
+<p>Yalnız stok adı, ürün kodu, satış fiyatı ve alış fiyatı aktarılır. Excel dışında kalan hareketsiz kartlar, seçtiyseniz pasife alınır. Hareketler ve miktarlar değişmez.</p>
+<form method="post"><input type="hidden" name="action" value="apply"><input type="hidden" name="plan" value="{{ token }}"><button class="button primary">Önizlemedeki değişiklikleri uygula</button></form></div>
+<div class="panel table-wrap"><table id="import-changes"><thead><tr><th>İşlem</th><th>Kod</th><th>Stok Adı</th><th>Satış Fiyatı</th><th>Alış Fiyatı</th></tr></thead><tbody>{% for p in plan.changes %}<tr><td>{{ p.action }}</td><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.unit_price|default('—') }}</td><td>{{ p.purchase_price|default('—') }}</td></tr>{% endfor %}</tbody></table></div>
+{% else %}
+<form method="post" enctype="multipart/form-data" class="panel form-panel"><h2>Excel Dosyası</h2><p>Stok Adı → ürün adı · Ürün Kodu → stok kodu · Liste Fiyatı → satış fiyatı · ABİKA Satış Fiyatı → alış fiyatı.</p>
+<label>Excel dosyası<input type="file" name="file" accept=".xlsx" required></label>
+<label><input type="checkbox" name="deactivate"> Excel'de olmayan hareketsiz kartları pasife al</label>
+<label><input type="checkbox" name="skip_missing"> Eksik fiyatlı ürünleri atla ve mevcut kartlarını koru</label>
+<button class="button primary">Önizle</button></form>
+{% endif %}
+{% set protected = result.protected if result else plan.protected if plan else [] %}
+{% if protected %}<div class="panel table-wrap"><h2>Değiştirilmeyen hareket görmüş stoklar</h2><table id="protected-products"><thead><tr><th>Kod</th><th>Stok Adı</th><th>Koruma Nedeni</th></tr></thead><tbody>{% for p in protected %}<tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.reason }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% set excluded = result.skipped if result else skipped|default([]) %}
+{% if excluded %}<div class="panel table-wrap"><h2>Eksik fiyat nedeniyle atlananlar</h2><table><tbody>{% for p in excluded %}<tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td>{{ p.reason }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% endblock %}

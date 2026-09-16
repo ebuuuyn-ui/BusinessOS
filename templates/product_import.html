@@ -4,6 +4,7 @@
 {% block subheading %}DİA stok ve malzeme listenizi toplu olarak yükleyin{% endblock %}
 {% block header_action %}<a class="button" href="{{ url_for('products') }}">← Ürünlere Dön</a>{% endblock %}
 {% block content %}
+<div class="panel" style="padding:20px"><a class="button primary" href="{{ url_for('stock_excel_update') }}">Stok adları ve fiyatlarını Excel ile güncelle</a><p>Hareket görmüş stokları korur; uygulamadan önce değişiklikleri gösterir.</p></div>
 <div class="import-layout">
   <form method="post" enctype="multipart/form-data" class="panel form-panel">
     <h2>Excel Dosyası Seçin</h2><p class="help-text">DİA'dan düzenlediğiniz <b>.xlsx</b> ürün listesini seçin.</p>
