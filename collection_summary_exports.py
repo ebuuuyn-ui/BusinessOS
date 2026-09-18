@@ -3,7 +3,6 @@ from maturity_labels import tracking_text
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
-from pathlib import Path
 from xml.sax.saxutils import escape
 from collection_exports import filter_label
 
@@ -74,15 +73,9 @@ def export_pdf(context):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    font=Path('/System/Library/Fonts/Supplemental/Arial.ttf')
-    bold=font.with_name('Arial Bold.ttf')
-    if not font.exists():
-        font=Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');bold=font.with_name('DejaVuSans-Bold.ttf')
-    pdfmetrics.registerFont(TTFont('CollectionSummary',str(font)))
-    pdfmetrics.registerFont(TTFont('CollectionSummaryBold',str(bold)))
+    from pdf_fonts import register_pdf_fonts
+    register_pdf_fonts('CollectionSummary', 'CollectionSummaryBold')
     body=ParagraphStyle('csbody',fontName='CollectionSummary',fontSize=8,leading=11,wordWrap='CJK')
     title=ParagraphStyle('cstitle',parent=body,fontName='CollectionSummaryBold',fontSize=16,leading=21,spaceAfter=9)
     header=ParagraphStyle('cshead',parent=body,fontName='CollectionSummaryBold',textColor=colors.white)

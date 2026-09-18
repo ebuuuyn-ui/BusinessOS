@@ -1038,15 +1038,10 @@ def build_customer_balances_pdf(customers, balances):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    regular_font, bold_font = "/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-    font_name, bold_name = "Helvetica", "Helvetica-Bold"
-    if os.path.isfile(regular_font) and os.path.isfile(bold_font):
-        pdfmetrics.registerFont(TTFont("BalanceArial", regular_font)); pdfmetrics.registerFont(TTFont("BalanceArialBold", bold_font))
-        font_name, bold_name = "BalanceArial", "BalanceArialBold"
+    from pdf_fonts import register_pdf_fonts
+    font_name, bold_name = register_pdf_fonts()
     amount = lambda value: f"TL {Decimal(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     debit_total = sum((balances[customer.id] for customer in customers if balances[customer.id] > 0), Decimal("0"))
     credit_total = sum((-balances[customer.id] for customer in customers if balances[customer.id] < 0), Decimal("0"))
@@ -1715,18 +1710,10 @@ def build_personal_ledger_pdf(person):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    regular_font = "/System/Library/Fonts/Supplemental/Arial.ttf"
-    bold_font = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-    font_name, bold_name = "Helvetica", "Helvetica-Bold"
-    if os.path.isfile(regular_font) and os.path.isfile(bold_font):
-        pdfmetrics.registerFont(TTFont("BusinessArial", regular_font))
-        pdfmetrics.registerFont(TTFont("BusinessArial-Bold", bold_font))
-        font_name, bold_name = "BusinessArial", "BusinessArial-Bold"
-
+    from pdf_fonts import register_pdf_fonts
+    font_name, bold_name = register_pdf_fonts()
     stream = BytesIO()
     document = SimpleDocTemplate(stream, pagesize=landscape(A4), leftMargin=15*mm, rightMargin=15*mm,
                                  topMargin=15*mm, bottomMargin=15*mm, title=f"{person.name} Borç-Alacak Ekstresi")
@@ -4890,28 +4877,16 @@ def create_app(test_config=None):
 
     @app.get("/siparisler/<int:order_id>/pdf")
     def export_order_pdf(order_id):
-        import reportlab
         from reportlab.lib import colors
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         order = db.get_or_404(Order, order_id)
-        # Vercel Linux'ta macOS Arial bulunmaz. ReportLab'in Vera yazı tipi
-        # uygulamayla birlikte gelir ve Türkçe karakterleri PDF'e gömer.
-        regular_font = "/System/Library/Fonts/Supplemental/Arial.ttf"
-        bold_font = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
-        if not (os.path.isfile(regular_font) and os.path.isfile(bold_font)):
-            font_directory = os.path.join(os.path.dirname(reportlab.__file__), "fonts")
-            regular_font = os.path.join(font_directory, "Vera.ttf")
-            bold_font = os.path.join(font_directory, "VeraBd.ttf")
-        pdfmetrics.registerFont(TTFont("BusinessOrderPDF", regular_font))
-        pdfmetrics.registerFont(TTFont("BusinessOrderPDF-Bold", bold_font))
-        font_name, bold_name = "BusinessOrderPDF", "BusinessOrderPDF-Bold"
+        from pdf_fonts import register_pdf_fonts
+        font_name, bold_name = register_pdf_fonts()
         output = BytesIO()
         document = SimpleDocTemplate(output, pagesize=landscape(A4), rightMargin=12*mm, leftMargin=12*mm, topMargin=12*mm, bottomMargin=12*mm, title=order.order_no)
         styles = getSampleStyleSheet()

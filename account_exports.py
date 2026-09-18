@@ -2,7 +2,6 @@
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
-from pathlib import Path
 from xml.sax.saxutils import escape
 
 ZERO = Decimal('0')
@@ -138,17 +137,9 @@ def export_pdf(customer, period, start='', end='', detailed=False):
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-    regular = Path('/System/Library/Fonts/Supplemental/Arial.ttf')
-    bold = Path('/System/Library/Fonts/Supplemental/Arial Bold.ttf')
-    if not regular.exists():
-        regular = Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
-        bold = Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
-    # Never silently render Turkish characters with an incompatible fallback.
-    pdfmetrics.registerFont(TTFont('StatementFont', str(regular)))
-    pdfmetrics.registerFont(TTFont('StatementBold', str(bold)))
+    from pdf_fonts import register_pdf_fonts
+    register_pdf_fonts('StatementFont', 'StatementBold')
     style = ParagraphStyle('cell', fontName='StatementFont', fontSize=8, leading=11, wordWrap='CJK')
     title = ParagraphStyle('title', parent=style, fontName='StatementBold', fontSize=16, leading=21, spaceAfter=8)
     heading = ParagraphStyle('heading', parent=style, fontName='StatementBold', fontSize=10, leading=14, spaceBefore=10, spaceAfter=6, keepWithNext=True)
