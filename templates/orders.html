@@ -26,7 +26,7 @@
 
 {% if delivery_pending %}<div class="pending-delivery-banner"><div><b>{{ 'Beklenen Tahsilat' if selected_type == 'Satış' else 'Beklenen Ödeme' if selected_type == 'Satın Alma' else 'Açık Tahsilat ve Ödemeler' }}</b><span>Gelecek siparişler ile sevk/teslim edilmiş açık cari bakiyeler · {{ orders|length }} sipariş</span></div><strong>₺{{ listed_total|money }}</strong></div>{% endif %}
 
-<div class="panel">
+<div class="panel orders-panel">
   <form class="filters" method="get" action="{{ url_for('orders') }}" id="order-filters">
     {% if active_only %}<input type="hidden" name="active" value="1">{% endif %}{% if delivery_pending %}<input type="hidden" name="delivery_pending" value="1">{% endif %}
     <select name="type"><option value="">Tüm sipariş türleri</option>{% for type_name in ['Satış', 'Satın Alma'] %}<option value="{{ type_name }}" {{ 'selected' if selected_type == type_name }}>{{ type_name }} siparişleri</option>{% endfor %}</select>
@@ -52,7 +52,7 @@
   </form>
 
   {% if orders %}
-  <div class="table-wrap">
+  <div class="table-wrap orders-table-scroll">
     <table class="compact-table order-list-table">
       <thead><tr><th>Tür</th><th>Sipariş No</th><th class="procurement-heading" title="Satış siparişinin satın alma durumu">Tedarik</th><th>Fatura</th><th>Müşteri / Tedarikçi</th><th>Sipariş Tarihi</th><th>Toplam Adet</th><th>{{ 'Kalan Tutar' if delivery_pending else 'Tutar' }}</th><th>Durum</th></tr></thead>
       <tbody>

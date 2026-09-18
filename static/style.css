@@ -1269,3 +1269,12 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 /* Stok hareketindeki arama listesi panel dışında da görünür kalmalıdır. */
 .panel.stock-movement-panel{position:relative;z-index:9;overflow:visible}
 .stock-movement-panel .stock-product-combobox .product-results{z-index:100}
+
+/* Orders have one vertical scroller: the page. Keep horizontal table scrolling. */
+.orders-page .content{overflow-x:clip;overflow-y:visible}
+.orders-panel{overflow:clip}
+.orders-table-scroll{overflow-x:auto;overflow-y:hidden;overscroll-behavior:auto}
+/* Invisible tooltips must not extend the table's scroll area below its last row. */
+.orders-table-scroll .procurement-indicator::after{display:none;top:auto;bottom:calc(100% + 8px)}
+.orders-table-scroll .procurement-indicator:hover::after,
+.orders-table-scroll .procurement-indicator:focus::after{display:block}

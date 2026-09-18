@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Business OS{% endblock %}</title>
 {% include '_favicon.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='ios-20260831-5') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='scroll-20260918-1') }}">
 </head>
-<body>
+<body{% if request.endpoint == 'orders' %} class="orders-page"{% endif %}>
   <aside class="sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>
