@@ -45,6 +45,23 @@ class OrderFilterTests(unittest.TestCase):
         self.assertIn("ILIKE", statement)
         self.assertNotIn("normalize_tr", statement)
 
+    def test_orders_page_lists_fifty_records_before_paginating(self):
+        customer = Customer.query.one()
+        for index in range(50):
+            db.session.add(Order(
+                customer=customer,
+                order_no=f"SA-2026-PAGE-{index:02d}",
+                order_type="Satış",
+            ))
+        db.session.commit()
+
+        first_page = self.client.get("/siparisler")
+        second_page = self.client.get("/siparisler?page=2")
+
+        self.assertEqual(first_page.data.count(b'class="order-summary-row"'), 50)
+        self.assertIn("51 kayıt · 1 / 2".encode(), first_page.data)
+        self.assertEqual(second_page.data.count(b'class="order-summary-row"'), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

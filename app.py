@@ -4265,7 +4265,7 @@ def create_app(test_config=None):
             total_count = len(listed_orders)
             total_pages = 1
         else:
-            pagination = records.order_by(Order.order_date.desc(), Order.id.desc()).paginate(page=page, per_page=30, error_out=False)
+            pagination = records.order_by(Order.order_date.desc(), Order.id.desc()).paginate(page=page, per_page=50, error_out=False)
             listed_orders = pagination.items
             total_count = pagination.total
             total_pages = pagination.pages or 1

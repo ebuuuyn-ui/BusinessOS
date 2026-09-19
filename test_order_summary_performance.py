@@ -64,8 +64,8 @@ class OrderSummaryPerformanceTests(unittest.TestCase):
         try:response=m.app.test_client().get('/siparisler')
         finally:event.remove(Session,'loaded_as_persistent',load)
         self.assertEqual(response.status_code,200)
-        self.assertEqual(loaded.count('Order'),30)
-        self.assertLessEqual(loaded.count('OrderItem'),60)
+        self.assertEqual(loaded.count('Order'),50)
+        self.assertLessEqual(loaded.count('OrderItem'),100)
     def test_empty(self):
         self.assertEqual(m.order_status_summaries()[1],{})
         self.assertEqual(m.app.test_client().get('/siparisler').status_code,200)
