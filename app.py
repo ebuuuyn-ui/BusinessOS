@@ -383,7 +383,7 @@ class Invoice(db.Model):
 class InvoiceItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id", ondelete="CASCADE"), nullable=False, index=True)
-    product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("product.id"), nullable=True, index=True)
     product_name = db.Column(db.String(160), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     unit = db.Column(db.String(30), nullable=False, default="Adet")
@@ -2359,7 +2359,8 @@ def create_app(test_config=None):
         if request.method == "GET" and prefill_order_id:
             selected_order = db.session.get(Order, prefill_order_id)
             if selected_order:
-                if any(not item.product or not item.product.active for item in selected_order.items):
+                from invoice_ssh import is_ssh_order_item
+                if any((not item.product or not item.product.active) and not is_ssh_order_item(item) for item in selected_order.items):
                     flash("Siparişte stok kartı eksik veya pasif olan kalem var. Önce bu ürünleri stok kartına bağlayın.", "error")
                     return redirect(url_for("order_detail", order_id=selected_order.id))
                 prefill_order = selected_order
@@ -2394,6 +2395,8 @@ def create_app(test_config=None):
             discount_rates = request.form.getlist("discount_rate[]")
             vat_rates = request.form.getlist("vat_rate[]")
             vat_modes = request.form.getlist("vat_included[]")
+            row_kinds = request.form.getlist("row_kind[]")
+            row_units = request.form.getlist("row_unit[]")
             for index, product_ref in enumerate(refs):
                 product_ref = product_ref.strip()
                 if not product_ref and not (quantities[index].strip() if index < len(quantities) else ""):
@@ -2403,14 +2406,25 @@ def create_app(test_config=None):
                 unit_price = parse_money(prices[index]) if index < len(prices) else Decimal("0")
                 discount_rate = parse_money(discount_rates[index]) if index < len(discount_rates) else Decimal("0")
                 vat_rate = parse_money(vat_rates[index]) if index < len(vat_rates) else Decimal("0")
-                if not product:
+                ssh = index < len(row_kinds) and row_kinds[index] == "ssh"
+                if ssh:
+                    product = None
+                name = product.name if product else product_ref
+                if ssh and (not name or len(name) > 160 or unit_price != 0):
+                    errors.append(f"{index + 1}. SSH satırında ürün adı zorunludur ve birim fiyat 0 TL olmalıdır.")
+                elif not ssh and not product:
                     errors.append(f"{index + 1}. satırdaki ürün stok kartından seçilmelidir.")
                 elif quantity < 1:
-                    errors.append(f"{product.name} için adet en az 1 olmalıdır.")
+                    errors.append(f"{name} için adet en az 1 olmalıdır.")
                 elif unit_price < 0 or discount_rate < 0 or discount_rate > 100 or vat_rate < 0 or vat_rate > 100:
-                    errors.append(f"{product.name} satırındaki fiyat, iskonto veya KDV geçersiz.")
+                    errors.append(f"{name} satırındaki fiyat, iskonto veya KDV geçersiz.")
                 else:
-                    lines.append({"product": product, "quantity": quantity, "unit_price": unit_price, "discount_rate": discount_rate, "vat_rate": vat_rate, "vat_included": index < len(vat_modes) and vat_modes[index] == "1"})
+                    unit = product.unit if product else ((row_units[index] if index < len(row_units) else "Adet") or "Adet")
+                    lines.append({"product": product, "name": name, "unit": unit[:30], "quantity": quantity, "unit_price": unit_price, "discount_rate": discount_rate, "vat_rate": vat_rate, "vat_included": index < len(vat_modes) and vat_modes[index] == "1"})
+            if any(line["product"] is None for line in lines):
+                from invoice_ssh import allows_nonstock_rows
+                if not allows_nonstock_rows(db.session.connection()):
+                    errors.append("SSH fatura desteği için veritabanı uyumluluğu henüz hazırlanmadı. Yönetimden SSH fatura uyumluluğunu tamamlayın.")
             duplicate = Invoice.query.filter_by(invoice_no=invoice_no).first() if invoice_no else None
             existing_order_invoice_count = Invoice.query.filter_by(order_id=linked_order.id).count() if linked_order else 0
             if not invoice_no:
@@ -2441,11 +2455,13 @@ def create_app(test_config=None):
                 db.session.flush()
                 movement_type = "Stok Girişi" if invoice_type == "Satın Alma" else "Stok Çıkışı"
                 for line in lines:
-                    item = InvoiceItem(invoice=invoice, product=line["product"], product_name=line["product"].name,
-                        quantity=line["quantity"], unit=line["product"].unit, unit_price=line["unit_price"], discount_rate=line["discount_rate"],
+                    item = InvoiceItem(invoice=invoice, product=line["product"], product_name=line["name"],
+                        quantity=line["quantity"], unit=line["unit"], unit_price=line["unit_price"], discount_rate=line["discount_rate"],
                         vat_rate=line["vat_rate"], vat_included=line["vat_included"])
                     db.session.add(item)
                     db.session.flush()
+                    if line["product"] is None:
+                        continue  # Non-stock SSH row: visible on invoice, no stock movement.
                     movement = StockMovement(product=line["product"], movement_type=movement_type, quantity=line["quantity"],
                         movement_date=invoice.invoice_date, note=f"{invoice_type} faturası · {invoice.invoice_no}")
                     db.session.add(movement)
@@ -2529,6 +2545,8 @@ def create_app(test_config=None):
             discount_rates = request.form.getlist("discount_rate[]")
             vat_rates = request.form.getlist("vat_rate[]")
             vat_modes = request.form.getlist("vat_included[]")
+            row_kinds = request.form.getlist("row_kind[]")
+            row_units = request.form.getlist("row_unit[]")
             lines = []
             errors = []
             for index, product_ref in enumerate(refs):
@@ -2540,14 +2558,25 @@ def create_app(test_config=None):
                 unit_price = parse_money(prices[index]) if index < len(prices) else Decimal("0")
                 discount_rate = parse_money(discount_rates[index]) if index < len(discount_rates) else Decimal("0")
                 vat_rate = parse_money(vat_rates[index]) if index < len(vat_rates) else Decimal("0")
-                if not product:
+                ssh = index < len(row_kinds) and row_kinds[index] == "ssh"
+                if ssh:
+                    product = None
+                name = product.name if product else product_ref
+                if ssh and (not name or len(name) > 160 or unit_price != 0):
+                    errors.append(f"{index + 1}. SSH satırında ürün adı zorunludur ve birim fiyat 0 TL olmalıdır.")
+                elif not ssh and not product:
                     errors.append(f"{index + 1}. satırdaki ürün stok kartından seçilmelidir.")
                 elif quantity < 1:
-                    errors.append(f"{product.name} için adet en az 1 olmalıdır.")
+                    errors.append(f"{name} için adet en az 1 olmalıdır.")
                 elif unit_price < 0 or discount_rate < 0 or discount_rate > 100 or vat_rate < 0 or vat_rate > 100:
-                    errors.append(f"{product.name} satırındaki fiyat, iskonto veya KDV geçersiz.")
+                    errors.append(f"{name} satırındaki fiyat, iskonto veya KDV geçersiz.")
                 else:
-                    lines.append({"product": product, "quantity": quantity, "unit_price": unit_price, "discount_rate": discount_rate, "vat_rate": vat_rate, "vat_included": index < len(vat_modes) and vat_modes[index] == "1"})
+                    unit = product.unit if product else ((row_units[index] if index < len(row_units) else "Adet") or "Adet")
+                    lines.append({"product": product, "name": name, "unit": unit[:30], "quantity": quantity, "unit_price": unit_price, "discount_rate": discount_rate, "vat_rate": vat_rate, "vat_included": index < len(vat_modes) and vat_modes[index] == "1"})
+            if any(line["product"] is None for line in lines):
+                from invoice_ssh import allows_nonstock_rows
+                if not allows_nonstock_rows(db.session.connection()):
+                    errors.append("SSH fatura desteği için veritabanı uyumluluğu henüz hazırlanmadı. Yönetimden SSH fatura uyumluluğunu tamamlayın.")
             duplicate = Invoice.query.filter(Invoice.invoice_no == invoice_no, Invoice.id != invoice.id).first() if invoice_no else None
             if not invoice_no:
                 errors.append("Fatura numarası zorunludur.")
@@ -2584,11 +2613,13 @@ def create_app(test_config=None):
                 invoice.notes = request.form.get("notes", "").strip() or None
                 movement_type = "Stok Girişi" if invoice_type == "Satın Alma" else "Stok Çıkışı"
                 for line in lines:
-                    item = InvoiceItem(invoice=invoice, product=line["product"], product_name=line["product"].name,
-                        quantity=line["quantity"], unit=line["product"].unit, unit_price=line["unit_price"], discount_rate=line["discount_rate"],
+                    item = InvoiceItem(invoice=invoice, product=line["product"], product_name=line["name"],
+                        quantity=line["quantity"], unit=line["unit"], unit_price=line["unit_price"], discount_rate=line["discount_rate"],
                         vat_rate=line["vat_rate"], vat_included=line["vat_included"])
                     db.session.add(item)
                     db.session.flush()
+                    if line["product"] is None:
+                        continue  # Non-stock SSH row: visible on invoice, no stock movement.
                     movement = StockMovement(product=line["product"], movement_type=movement_type, quantity=line["quantity"],
                         movement_date=invoice.invoice_date, note=f"{invoice_type} faturası · {invoice.invoice_no}")
                     db.session.add(movement)
@@ -5257,6 +5288,21 @@ def create_app(test_config=None):
         filename = f"{safe_export_name(person.name)}-Borc-Alacak-Ekstresi.xlsx"
         return send_file(build_personal_ledger_xlsx(person),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=filename)
+
+    @app.route("/yonetim/ssh-fatura-uyumlulugu", methods=["GET", "POST"])
+    def invoice_ssh_schema():
+        if not app.config.get("WEB_AUTH_ENABLED") or db.engine.dialect.name != "postgresql":
+            abort(404)
+        from invoice_ssh import allows_nonstock_rows, prepare_nonstock_rows
+        if request.method == "POST":
+            if request.form.get("operation") != "enable-ssh-invoice":
+                abort(400)
+            prepare_nonstock_rows(db.engine)
+            flash("SSH fatura satırı desteği hazır. Mevcut kayıtlar değiştirilmedi.", "success")
+            return redirect(url_for("invoice_ssh_schema"))
+        with db.engine.connect() as connection:
+            ready = allows_nonstock_rows(connection)
+        return render_template("invoice_ssh_schema.html", ready=ready)
 
     @app.cli.command("init-db")
     def init_db_command():

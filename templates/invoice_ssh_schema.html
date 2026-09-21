@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block heading %}SSH Fatura Uyumluluğu{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+  {% if ready %}<h2>SSH fatura satırı desteği hazır</h2><p>Stok kartı olmayan SSH kalemleri faturada 0 TL satır olarak saklanabilir. Bu kalemler stok hareketi oluşturmaz.</p>
+  {% else %}<h2>SSH fatura satırlarını etkinleştir</h2><p>Fatura satırlarında stok kartı bağlantısı isteğe bağlı hale getirilir. Mevcut faturalar, tutarlar ve stok hareketleri değiştirilmez.</p>
+  <form method="post"><input type="hidden" name="operation" value="enable-ssh-invoice"><button class="button primary" type="submit">SSH fatura desteğini etkinleştir</button></form>{% endif %}
+  <a class="button" href="{{ url_for('invoices') }}">Faturalara Dön</a>
+</section>
+{% endblock %}
