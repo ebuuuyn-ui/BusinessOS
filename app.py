@@ -1862,12 +1862,17 @@ def latest_delivered_purchase_cost(item, cutoff_date=None):
     )
     if item.product_id:
         query = query.filter(OrderItem.product_id == item.product_id)
-    else:
-        query = query.filter(db.func.normalize_tr(OrderItem.product_name) == normalize_search_text(item.product_name))
     candidates = query.all()
+    if not item.product_id:
+        # Legacy/free-form items match by name. normalize_tr is SQLite-only;
+        # use the same Python normalization as the batched profitability report.
+        name = normalize_search_text(item.product_name)
+        candidates = [candidate for candidate in candidates
+                      if normalize_search_text(candidate.product_name) == name]
     if cutoff_date:
         candidates = [candidate for candidate in candidates if order_realization_date(candidate.order) <= cutoff_date]
     if not candidates:
+        # SSH/free-of-charge shipments may legitimately have no purchase cost.
         return Decimal("0")
     latest = max(candidates, key=lambda candidate: (order_realization_date(candidate.order), candidate.order.id, candidate.id))
     # KDV dahil alış girildiyse ve/veya iskonto uygulanmışsa maliyet hesabı
