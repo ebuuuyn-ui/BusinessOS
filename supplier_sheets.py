@@ -6,7 +6,7 @@ from datetime import datetime
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from flask import abort, flash, g, redirect, render_template, request, url_for
+from flask import abort, flash, g, redirect, render_template, render_template_string, request, url_for
 from sqlalchemy import text
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
@@ -80,6 +80,8 @@ def build_updates(rows, key_rows, sheet_id=SHEET_ID):
                 "rowIndex": existing[row[0]], "columnIndex": 0}, "rows": [values],
                 "fields": "userEnteredValue"}})
         else:
+            for entry in values["values"]:
+                entry["userEnteredFormat"] = {"wrapStrategy": "WRAP", "verticalAlignment": "TOP"}
             added.append(values)
     for key, row_index in existing.items():
         if key.startswith(prefix) and key not in wanted:
@@ -89,7 +91,7 @@ def build_updates(rows, key_rows, sheet_id=SHEET_ID):
                 "rows": [], "fields": "userEnteredValue"}})
     if added:
         requests.append({"appendCells": {"sheetId": sheet_id, "rows": added,
-                                        "fields": "userEnteredValue"}})
+                                        "fields": "userEnteredValue,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment"}})
     return requests
 
 
@@ -199,9 +201,14 @@ def register_supplier_sheets(app, db, Order, OrderHistory):
             header = client.values(target["title"], "A1:X1")
             if header != [HEADERS]:
                 raise SheetExportError("Tedarikçi tablosunun başlıkları beklenen düzenle uyuşmuyor.")
-            return {"ok": True, "message": "Google Sheets bağlantısı ve tablo başlıkları doğrulandı. Sipariş aktarımı yapılmadı."}
+            message, status = "Google Sheets bağlantısı ve tablo başlıkları doğrulandı. Sipariş aktarımı yapılmadı.", 200
         except SheetExportError as exc:
-            return {"ok": False, "message": str(exc)}, 400
+            message, status = str(exc), 400
+        return render_template_string(
+            "{% extends 'base.html' %}{% block heading %}Tedarikçi Tablosu Bağlantısı{% endblock %}"
+            "{% block content %}<section class='panel' style='padding:24px'><p role='status'>{{ message }}</p>"
+            "<a class='button' href='/siparisler'>Siparişlere Dön</a></section>{% endblock %}",
+            message=message), status
 
     @app.route("/siparisler/<int:order_id>/tedarikci-tablosu", methods=["GET", "POST"])
     def supplier_sheet_export(order_id):

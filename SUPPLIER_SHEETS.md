@@ -38,3 +38,8 @@ geri okuyarak doğrular. Başarı OrderHistory ve mevcut audit kaydına yazılı
 
 Owner bağlantı kontrolü: GET /yonetim/tedarikci-tablosu/kontrol. Bu işlem yalnızca
 hedef sekme ve başlıkları okur; sipariş veya tablo verisi değiştirmez.
+
+2026-09-21 canlı doğrulama: SA-2026-00046 (order 89), 2 kalem / 6 adet,
+kullanıcının açık onayıyla aktarıldı. API geri okuma ve Sheets görünümünde doğrulandı.
+Google anahtar oluşturma politikası değiştirilmedi. WIF canlı proje koşulu ve
+servis hesabı subject yetkisi etkinleştirildi; Vercel production config kaydedildi.
