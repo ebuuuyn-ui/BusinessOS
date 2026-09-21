@@ -65,8 +65,8 @@ def authenticate(db, username, password):
 
 
 def password_error(password, confirmation):
-    if not 16 <= len(password) <= 1000:
-        return "Şifre en az 16, en fazla 1000 karakter olmalıdır."
+    if not 4 <= len(password) <= 1000:
+        return "Şifre en az 4, en fazla 1000 karakter olmalıdır."
     if password != confirmation:
         return "Şifreler aynı değil."
     return None

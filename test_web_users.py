@@ -114,7 +114,7 @@ class WebUserTests(unittest.TestCase):
             ("STAFF", STAFF_PASSWORD, STAFF_PASSWORD),
             (ENV["BUSINESSOS_WEB_USERNAME"].upper(), STAFF_PASSWORD, STAFF_PASSWORD),
             ("../bad", STAFF_PASSWORD, STAFF_PASSWORD),
-            ("staff2", "short", "short"),
+            ("staff2", "abc", "abc"),
             ("staff2", STAFF_PASSWORD, "different"),
         ]:
             r = self.post(self.owner, "/kullanicilar", {"username": name,
@@ -150,6 +150,19 @@ class WebUserTests(unittest.TestCase):
         for _ in range(5):
             self.assertEqual(self.login(self.staff, password="wrong").status_code, 401)
         self.assertEqual(self.login(self.staff).status_code, 401)
+
+    def test_four_character_password_create_and_reset(self):
+        response = self.post(self.owner, "/kullanicilar", {"username": "staff",
+            "password": "abcd", "confirmation": "abcd"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.login(self.staff, password="abcd").status_code, 302)
+        with m.db.engine.connect() as c:
+            user_id = c.execute(select(users.c.id)).scalar_one()
+        self.post(self.owner, f"/kullanicilar/{user_id}/sifre",
+                  {"password": "wxyz", "confirmation": "wxyz"})
+        self.assertEqual(self.login(self.staff, password="abcd").status_code, 401)
+        self.assertEqual(self.login(self.staff, password="wxyz").status_code, 302)
+        self.assertEqual(self.get(self.staff, "/sahsi-hesaplar").status_code, 403)
 
     def test_operator_cannot_grant_access_or_change_other_users(self):
         user_id = self.add_user()

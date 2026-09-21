@@ -9,8 +9,8 @@
   {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="{{ url_for('web_users') }}" autocomplete="off" style="max-width:520px;display:grid;gap:16px">
     <label>Kullanıcı adı<input name="username" required minlength="3" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,79}" autocomplete="off" placeholder="Örnek: satis"></label>
-    <label>Şifre<input name="password" type="password" required minlength="16" maxlength="1000" autocomplete="new-password" placeholder="En az 16 karakter"></label>
-    <label>Şifre tekrar<input name="confirmation" type="password" required minlength="16" maxlength="1000" autocomplete="new-password"></label>
+    <label>Şifre<input name="password" type="password" required minlength="4" maxlength="1000" autocomplete="new-password" placeholder="En az 4 karakter"></label>
+    <label>Şifre tekrar<input name="confirmation" type="password" required minlength="4" maxlength="1000" autocomplete="new-password"></label>
     <button class="button primary" type="submit">Kullanıcı Oluştur</button>
   </form>
 </section>
@@ -27,8 +27,8 @@
     </form>
     <details style="margin-top:16px"><summary>Şifreyi değiştir</summary>
       <form method="post" action="{{ url_for('web_user_password', user_id=user.id) }}" style="max-width:520px;display:grid;gap:12px;margin-top:16px">
-        <label>Yeni şifre<input name="password" type="password" required minlength="16" maxlength="1000" autocomplete="new-password"></label>
-        <label>Yeni şifre tekrar<input name="confirmation" type="password" required minlength="16" maxlength="1000" autocomplete="new-password"></label>
+        <label>Yeni şifre<input name="password" type="password" required minlength="4" maxlength="1000" autocomplete="new-password"></label>
+        <label>Yeni şifre tekrar<input name="confirmation" type="password" required minlength="4" maxlength="1000" autocomplete="new-password"></label>
         <button class="button" type="submit">Şifreyi Güncelle</button>
       </form>
     </details>
