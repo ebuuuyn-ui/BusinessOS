@@ -2056,6 +2056,8 @@ def create_app(test_config=None):
     install_web_auth(app, db)
     from audit_log import install_audit
     install_audit(app, db)
+    from supplier_sheets import register_supplier_sheets
+    register_supplier_sheets(app, db, Order, OrderHistory)
 
     @app.before_request
     def scheduled_database_backup():

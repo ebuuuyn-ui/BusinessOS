@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block heading %}Tedarikçi Tablosuna Aktar{% endblock %}
+{% block subheading %}{{ order.order_no }} · ABİKA satın alma siparişi{% endblock %}
+{% block content %}
+<div class="detail-navigation"><a class="button" href="{{ url_for('order_detail', order_id=order.id) }}">← Siparişe Dön</a><a class="button" href="{{ sheet_url }}" target="_blank" rel="noopener">Tedarikçi Tablosunu Aç ↗</a></div>
+<section class="panel" style="padding:24px">
+<h2>Paylaşılacak sipariş bilgileri</h2>
+<p>Ürün, adet, teslim tarihi ve sevkiyat bilgileri aşağıdaki gibi aktarılır. Fiyat ve tutar alanları aktarılmaz. Notlara elle yazılmış bilgileri paylaşmadan önce kontrol edin.</p>
+{% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+<div class="table-wrap"><table class="compact-table"><thead><tr>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for value in row %}<td style="min-width:120px;white-space:pre-wrap">{{ value }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+<form method="post" style="margin-top:20px"><input type="hidden" name="preview" value="{{ token }}">
+{% if connected %}<button class="button primary" type="submit">Tabloya Aktar / Güncelle</button>{% else %}<p>Google Sheets bağlantısının kurulumu bekleniyor.</p>{% endif %}
+</form>
+<p>Aynı sipariş tekrar aktarıldığında mevcut satırlar güncellenir. PDF'yi Google Chat üzerinden mevcut şekilde paylaşabilirsiniz.</p>
+</section>
+{% endblock %}
