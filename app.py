@@ -2045,6 +2045,9 @@ def create_app(test_config=None):
         SECRET_KEY=os.getenv("SECRET_KEY", "development-key-change-in-production"),
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        # Serverless database connections may be closed while pooled/idle.
+        # Replace stale connections before a request starts its transaction.
+        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
         MAX_CONTENT_LENGTH=ORDER_DOCUMENT_MAX_BYTES,
     )
     if test_config:
