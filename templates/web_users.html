@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Kullanıcılar · Business OS{% endblock %}
+{% block heading %}Kullanıcılar{% endblock %}
+{% block subheading %}Web erişimi ve kullanıcı hesapları{% endblock %}
+{% block content %}
+<section class="panel" style="padding:24px;margin-bottom:20px">
+  <h2>Yeni kullanıcı</h2>
+  <p>Yeni kullanıcı diğer iş bölümlerinde kayıt ekleyebilir ve düzenleyebilir. Şahsi Hesaplar, yedekler ve yönetim alanlarına erişemez.</p>
+  {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ url_for('web_users') }}" autocomplete="off" style="max-width:520px;display:grid;gap:16px">
+    <label>Kullanıcı adı<input name="username" required minlength="3" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,79}" autocomplete="off" placeholder="Örnek: satis"></label>
+    <label>Şifre<input name="password" type="password" required minlength="16" maxlength="1000" autocomplete="new-password" placeholder="En az 16 karakter"></label>
+    <label>Şifre tekrar<input name="confirmation" type="password" required minlength="16" maxlength="1000" autocomplete="new-password"></label>
+    <button class="button primary" type="submit">Kullanıcı Oluştur</button>
+  </form>
+</section>
+<section class="panel" style="padding:24px">
+  <h2>Mevcut hesaplar</h2>
+  <p><strong>{{ owner_username }}</strong> · Yönetici · Tüm bölümlere erişebilir.</p>
+  {% for user in users %}
+  <article style="border-top:1px solid #dce3ed;padding:20px 0">
+    <h3>{{ user.username }} · {{ 'Aktif' if user.active else 'Pasif' }}</h3>
+    <p>İş bölümlerinde işlem yapabilir. Şahsi Hesaplar'a erişemez.</p>
+    <form method="post" action="{{ url_for('web_user_status', user_id=user.id) }}">
+      <input type="hidden" name="active" value="{{ '0' if user.active else '1' }}">
+      <button class="button" type="submit">{{ 'Erişimi Kapat' if user.active else 'Erişimi Aç' }}</button>
+    </form>
+    <details style="margin-top:16px"><summary>Şifreyi değiştir</summary>
+      <form method="post" action="{{ url_for('web_user_password', user_id=user.id) }}" style="max-width:520px;display:grid;gap:12px;margin-top:16px">
+        <label>Yeni şifre<input name="password" type="password" required minlength="16" maxlength="1000" autocomplete="new-password"></label>
+        <label>Yeni şifre tekrar<input name="confirmation" type="password" required minlength="16" maxlength="1000" autocomplete="new-password"></label>
+        <button class="button" type="submit">Şifreyi Güncelle</button>
+      </form>
+    </details>
+  </article>
+  {% else %}<p>Henüz ek kullanıcı yok.</p>{% endfor %}
+</section>
+{% endblock %}

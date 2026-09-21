@@ -39,8 +39,11 @@
           <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}">Kasa & Çekler</a>
         </div>
       </details>
+      {% if not config.WEB_AUTH_ENABLED or g.web_is_owner %}
       <a class="{{ 'active' if request.endpoint == 'personal_finance' }}" href="{{ url_for('personal_finance') }}"><i class="nav-icon">◆</i><span>Şahsi Hesaplar</span></a>
       <a class="{{ 'active' if request.endpoint in ['backups','download_current_backup','download_backup'] }}" href="{{ url_for('backups') }}"><i class="nav-icon">↻</i><span>Yedekler</span></a>
+      {% endif %}
+      {% if config.WEB_AUTH_ENABLED and g.web_is_owner %}<a class="{{ 'active' if request.endpoint == 'web_users' }}" href="{{ url_for('web_users') }}"><i class="nav-icon">♙</i><span>Kullanıcılar</span></a>{% endif %}
     </nav>
     {% if config.WEB_AUTH_ENABLED %}<form method="post" action="{{ url_for('web_logout') }}" target="_top" style="padding: 16px"><button type="submit">Çıkış yap</button></form>{% endif %}
     <div class="sidebar-foot">v1.0 · Yerel ve bağımsız</div>

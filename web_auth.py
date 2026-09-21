@@ -1,14 +1,14 @@
-"""Single-owner web login; desktop SQLite starts without authentication."""
+"""Owner and restricted web login; desktop SQLite starts without authentication."""
 import hashlib
 import hmac
 import os
 from datetime import timedelta
 from urllib.parse import urlsplit
 
-from flask import abort, redirect, render_template, request, session, url_for
+from flask import abort, g, redirect, render_template, request, session, url_for
 
 
-def install_web_auth(app):
+def install_web_auth(app, db=None):
     uri = app.config['SQLALCHEMY_DATABASE_URI']
     enabled = bool(os.getenv('VERCEL')) or uri.startswith(('postgresql', 'postgres:'))
     app.config['WEB_AUTH_ENABLED'] = enabled
@@ -47,12 +47,24 @@ def install_web_auth(app):
                 unavailable=True,
                 setup_errors=configuration_errors,
             ), 503
+        g.web_is_owner = False
         if request.endpoint == 'web_login':
             return None
-        if not hmac.compare_digest(str(session.get('web_auth', '')), fingerprint):
+        g.web_is_owner = hmac.compare_digest(str(session.get('web_auth', '')), fingerprint)
+        user = None
+        if not g.web_is_owner and db is not None and session.get('web_user_id'):
+            from web_users import current_user
+            user = current_user(db, session.get('web_user_id'), session.get('web_user_token'))
+        if not g.web_is_owner and user is None:
+            session.clear()
             if request.method not in ('GET', 'HEAD', 'OPTIONS'):
                 abort(401)
             return redirect(url_for('web_login'))
+        g.web_username = username if g.web_is_owner else user["username"]
+        if not g.web_is_owner:
+            from web_users import owner_only_request
+            if owner_only_request():
+                abort(403)
         # Existing forms and fetch requests send Origin in modern browsers.
         # Reject cross-site and origin-less writes before any application handler.
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
@@ -87,10 +99,24 @@ def install_web_auth(app):
                 session.permanent = True
                 session['web_auth'] = fingerprint
                 return redirect(url_for('dashboard'))
-            error = 'Kullanıcı adı veya şifre hatalı.'
+            if db is not None and not user_ok:
+                from web_users import authenticate
+                user = authenticate(db, request.form.get('username', '').strip(),
+                                    request.form.get('password', ''))
+                if user:
+                    session.clear()
+                    session.permanent = True
+                    session['web_user_id'] = user['id']
+                    session['web_user_token'] = user['session_token']
+                    return redirect(url_for('dashboard'))
+            error = 'Kullanıcı adı veya şifre hatalı. Çok sayıda hatalı denemeden sonra 10 dakika bekleyin.'
         return render_template('web_login.html', error=error), 401 if error else 200
 
     @app.post('/cikis')
     def web_logout():
         session.clear()
         return redirect(url_for('web_login'))
+
+    if db is not None:
+        from web_users import install_user_management
+        install_user_management(app, db, username)

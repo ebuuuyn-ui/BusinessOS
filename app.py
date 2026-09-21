@@ -2053,7 +2053,7 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     db.init_app(app)
-    install_web_auth(app)
+    install_web_auth(app, db)
 
     @app.before_request
     def scheduled_database_backup():
