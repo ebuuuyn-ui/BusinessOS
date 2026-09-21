@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block heading %}İşlem kaydı kurulumu{% endblock %}
+{% block content %}
+<section class="panel" style="padding:24px">
+{% if status.enabled %}
+<h2>İşlem kaydı etkin</h2>
+<p>{{ status.covered_tables }} tablodaki yeni değişiklikler kullanıcı ve zaman bilgisiyle saklanıyor.</p>
+{% else %}
+<h2>İşlem kaydını etkinleştir</h2>
+<p>Mevcut kayıtlar değiştirilmez. Bundan sonraki değişiklikler kullanıcı, zaman ve önceki/yeni değerlerle saklanır.</p>
+<form method="post"><input type="hidden" name="operation" value="enable-audit"><button type="submit" class="button primary">İşlem kaydını etkinleştir</button></form>
+{% endif %}
+</section>
+{% endblock %}

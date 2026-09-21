@@ -2054,6 +2054,8 @@ def create_app(test_config=None):
         app.config.update(test_config)
     db.init_app(app)
     install_web_auth(app, db)
+    from audit_log import install_audit
+    install_audit(app, db)
 
     @app.before_request
     def scheduled_database_backup():
