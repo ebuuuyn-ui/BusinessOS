@@ -43,3 +43,5 @@ hedef sekme ve başlıkları okur; sipariş veya tablo verisi değiştirmez.
 kullanıcının açık onayıyla aktarıldı. API geri okuma ve Sheets görünümünde doğrulandı.
 Google anahtar oluşturma politikası değiştirilmedi. WIF canlı proje koşulu ve
 servis hesabı subject yetkisi etkinleştirildi; Vercel production config kaydedildi.
+
+Sipariş Durumu (E) ilk aktarımda uygulamadan gelir; tekrar aktarımda A:D ve F:X güncellenir, E yazılmaz. Tedarikçi satır bazında düzenler; uygulamaya geri senkronizasyon yoktur.

@@ -76,9 +76,13 @@ def build_updates(rows, key_rows, sheet_id=SHEET_ID):
     for row in rows:
         values = {"values": [cell(v) for v in row]}
         if row[0] in existing:
-            requests.append({"updateCells": {"start": {"sheetId": sheet_id,
-                "rowIndex": existing[row[0]], "columnIndex": 0}, "rows": [values],
-                "fields": "userEnteredValue"}})
+            # E is supplier-managed after first export. Never read/write it back:
+            # a supplier can change it while this export is in flight.
+            for start, end in ((0, 4), (5, len(HEADERS))):
+                requests.append({"updateCells": {"start": {"sheetId": sheet_id,
+                    "rowIndex": existing[row[0]], "columnIndex": start},
+                    "rows": [{"values": values["values"][start:end]}],
+                    "fields": "userEnteredValue"}})
         else:
             for entry in values["values"]:
                 entry["userEnteredFormat"] = {"wrapStrategy": "WRAP", "verticalAlignment": "TOP"}
@@ -159,7 +163,8 @@ class SheetsClient:
             raise SheetExportError("Tedarikçi tablosunun başlıkları hazır değil veya değiştirilmiş. Aktarım yapılmadı.")
         keys = self.values(title, f"A2:A{target['gridProperties']['rowCount']}")
         self.api("POST", ":batchUpdate", json={"requests": build_updates(rows, keys)})
-        # A successful API response is not enough: read back exact exported rows.
+        existing_keys = {str(k[0]) for k in keys if k}
+        # Verify all written fields; existing E belongs to the supplier.
         updated_target = self.target()
         new_keys = self.values(title, f"A2:A{updated_target['gridProperties']['rowCount']}")
         locations = {}
@@ -181,7 +186,9 @@ class SheetsClient:
             for expected, value_range in zip(expected_rows, value_ranges):
                 actual = (value_range.get("values") or [[]])[0]
                 actual += [""] * (len(expected) - len(actual))
-                if actual != expected:
+                compared_columns = [i for i in range(len(expected))
+                                    if i != 4 or expected[0] not in existing_keys]
+                if any(actual[i] != expected[i] for i in compared_columns):
                     raise SheetExportError("Aktarım sonucu doğrulanamadı. Tabloyu kontrol edip tekrar deneyin.")
         return len(rows)
 

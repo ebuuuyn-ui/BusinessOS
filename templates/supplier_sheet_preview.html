@@ -11,6 +11,6 @@
 <form method="post" style="margin-top:20px"><input type="hidden" name="preview" value="{{ token }}">
 {% if connected %}<button class="button primary" type="submit">Tabloya Aktar / Güncelle</button>{% else %}<p>Google Sheets bağlantısının kurulumu bekleniyor.</p>{% endif %}
 </form>
-<p>Aynı sipariş tekrar aktarıldığında mevcut satırlar güncellenir. PDF'yi Google Chat üzerinden mevcut şekilde paylaşabilirsiniz.</p>
+<p>İlk aktarımda sipariş durumu uygulamadan alınır. Sonraki aktarımlarda tablodaki Sipariş Durumu seçimleriniz korunur; bu seçimler uygulamadaki durumu değiştirmez. Diğer bilgiler güncellenir. PDF'yi Google Chat üzerinden mevcut şekilde paylaşabilirsiniz.</p>
 </section>
 {% endblock %}

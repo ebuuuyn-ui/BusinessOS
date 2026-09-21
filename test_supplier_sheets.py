@@ -66,12 +66,40 @@ class SupplierSheetsTests(unittest.TestCase):
     def test_removed_line_clears_only_own_values_other_orders_untouched(self):
         rows=order_rows(sample(),'test')
         requests=build_updates(rows,[[rows[0][0]],['bos:order:42:item:2'],['bos:order:43:item:1']])
-        self.assertEqual(len(requests),2)
-        removed=requests[1]['updateCells']
+        self.assertEqual(len(requests),3)
+        removed=requests[2]['updateCells']
         self.assertEqual(removed['range']['startRowIndex'],2)
         self.assertEqual(removed['range']['endColumnIndex'],24)
         self.assertEqual(removed['fields'],'userEnteredValue')
         self.assertEqual(removed['rows'],[])
+
+    def test_repeat_export_never_writes_supplier_status(self):
+        rows = order_rows(sample(), 'test')
+        requests = build_updates(rows, [[rows[0][0]]])
+        written_columns = []
+        for request in requests:
+            update = request['updateCells']
+            start = update['start']['columnIndex']
+            written_columns.extend(range(start, start + len(update['rows'][0]['values'])))
+        self.assertEqual(written_columns, list(range(4)) + list(range(5, 24)))
+        first = build_updates(rows, [])[0]['appendCells']['rows'][0]['values']
+        self.assertEqual(first[4], {**cell('Bekliyor'), 'userEnteredFormat': {'wrapStrategy':'WRAP', 'verticalAlignment':'TOP'}})
+
+    def test_existing_manual_status_does_not_fail_readback(self):
+        rows = order_rows(sample(), 'test')
+        actual = [list(rows[0])]; actual[0][4] = 'Üretimde'
+        client = self.client(rows, actual)
+        client.values.side_effect = [[HEADERS], [[rows[0][0]]], [[rows[0][0]]]]
+        self.assertEqual(client.export(rows), 1)
+        actual[0][18] = 99
+        client = self.client(rows, actual)
+        client.values.side_effect = [[HEADERS], [[rows[0][0]]], [[rows[0][0]]]]
+        with self.assertRaises(SheetExportError): client.export(rows)
+
+    def test_new_status_still_verified(self):
+        rows = order_rows(sample(), 'test')
+        actual = [list(rows[0])]; actual[0][4] = 'Üretimde'
+        with self.assertRaises(SheetExportError): self.client(rows, actual).export(rows)
 
     def test_duplicate_keys_and_empty_orders_blocked(self):
         rows=order_rows(sample(),'test')
