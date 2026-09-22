@@ -57,6 +57,13 @@
       {% block content %}{% endblock %}
     </section>
   </main>
+  <script src="{{ url_for('static', filename='web-exports.js', v='20260922-1') }}"></script>
+  <style>
+    .web-export-dialog{width:min(440px,calc(100vw - 32px));box-sizing:border-box;border:1px solid #dce2ec;border-radius:18px;padding:24px;color:#172033;background:#fff;box-shadow:0 20px 70px #17203333}
+    .web-export-dialog::backdrop{background:#17203366}
+    .web-export-dialog h2{margin:0 0 12px}.web-export-dialog p{line-height:1.5}
+    .web-export-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}.web-export-actions button{min-height:44px}
+  </style>
   <script>
     (function setupWorkspaceTabs(){
       const inWorkspaceFrame=window.top!==window;
