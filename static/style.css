@@ -1272,7 +1272,13 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 
 /* Orders have one vertical scroller: the page. Keep horizontal table scrolling. */
 .orders-page .content{overflow-x:clip;overflow-y:visible}
-.orders-panel{overflow:clip}
+/* Filter popups extend beyond short/empty order lists. */
+.panel.orders-panel{overflow:visible}
+.orders-panel>.orders-table-scroll{border-radius:0 0 12px 12px}
+#order-filters{position:relative;z-index:5}
+#order-filters .status-multiselect-options{max-height:min(360px,60dvh);overflow-y:auto;box-sizing:border-box}
+#order-filters .status-multiselect-options label{min-height:40px;box-sizing:border-box}
+#order-filters .status-multiselect-options input[type="checkbox"]{flex:0 0 18px!important;width:18px!important;height:18px;min-height:18px;max-width:18px!important;padding:0;margin:0;appearance:auto}
 .orders-table-scroll{overflow-x:auto;overflow-y:hidden;overscroll-behavior:auto}
 /* Invisible tooltips must not extend the table's scroll area below its last row. */
 .orders-table-scroll .procurement-indicator::after{display:none;top:auto;bottom:calc(100% + 8px)}
