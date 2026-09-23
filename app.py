@@ -19,6 +19,7 @@ import urllib.request
 from xml.sax.saxutils import escape as xml_escape
 from io import BytesIO, StringIO
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
 from flask import Flask, abort, flash, make_response, redirect, render_template, request, send_file, url_for
@@ -2500,9 +2501,13 @@ def create_app(test_config=None):
             normalized_query = normalize_search_text(query)
             listed_invoices = [invoice for invoice in listed_invoices if normalized_query in normalize_search_text(" ".join([invoice.invoice_no, invoice.customer.name, invoice.notes or ""]))]
         prefill_discount_rates = [str(item.discount_rate or 0) for item in prefill_order.items] if prefill_order else []
+        invoice_today = datetime.now(ZoneInfo("Europe/Istanbul")).date()
+        next_month = invoice_today.month % 12 + 1
+        next_year = invoice_today.year + (invoice_today.month == 12)
+        default_due_date = date(next_year, next_month, min(invoice_today.day, calendar.monthrange(next_year, next_month)[1]))
         return render_template("invoices.html", invoices=listed_invoices, customers=customers, products=products, orders=orders, prefill_order=prefill_order, prefill_discount_rates=prefill_discount_rates, entry_mode=request.args.get("entry") == "1", saved=request.args.get("saved") == "1",
             selected_type=invoice_type, selected_customer_id=selected_customer_id, query=query,
-            start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""), today=date.today().isoformat())
+            start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""), today=invoice_today.isoformat(), default_due_date=default_due_date.isoformat())
 
     @app.get("/siparisler/<int:order_id>/faturaya-aktar")
     def order_to_invoice(order_id):
