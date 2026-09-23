@@ -4,6 +4,14 @@
 {% block subheading %}Satış ve satın alma siparişlerini takip edin{% endblock %}
 {% block header_action %}<a class="button primary" href="{{ url_for('new_order') }}">+ Yeni Sipariş</a>{% endblock %}
 {% block content %}
+<style>
+.order-inline-detail-head{flex-wrap:wrap}
+.order-inline-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.order-inline-actions .button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:8px 12px;line-height:1.2;white-space:nowrap;text-decoration:none}
+.order-inline-actions .order-full-detail-link{color:#0878df;background:#eef5ff;border-color:#d7e6fb}
+.order-inline-actions .order-full-detail-link span{display:inline;color:inherit;font-size:inherit;font-weight:inherit;letter-spacing:normal;line-height:1}
+@media(max-width:640px){.order-inline-actions{width:100%;margin-left:0}.order-inline-actions .button{flex:1;min-height:40px}}
+</style>
 <div class="order-tabs">
   <a class="{{ 'active' if not selected_type }}" href="{{ url_for('orders', delivery_pending=1) if delivery_pending else url_for('orders', active=1) if active_only else url_for('orders') }}">{{ 'Açık Tahsilat / Ödemeler' if delivery_pending else 'Devam Edenler' if active_only else 'Tüm Siparişler' }} <b>{{ type_counts.values()|sum }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satış' }}" href="{{ url_for('orders', type='Satış', delivery_pending=1) if delivery_pending else url_for('orders', type='Satış', active=1) if active_only else url_for('orders', type='Satış') }}">Satış Siparişleri <b>{{ type_counts['Satış'] }}</b></a>
@@ -80,7 +88,7 @@
             <section class="order-inline-detail-card" aria-label="{{ order.order_no }} sipariş ayrıntıları">
               <div class="order-inline-detail-head">
                 <div><span>Sipariş ayrıntıları</span><strong>{{ order.order_no }} · {{ order.customer.name }}{% if source_order %} · Satış: {{ source_order.order_no }}{% endif %}</strong></div>
-                <div class="order-inline-actions" style="display:flex;align-items:center;gap:10px;white-space:nowrap"><a href="{{ url_for('edit_order', order_id=order.id) }}" class="button small">Düzenle</a><a href="{{ url_for('order_detail', order_id=order.id) }}" class="order-full-detail-link">Tam siparişi aç <span aria-hidden="true">↗</span></a></div>
+                <div class="order-inline-actions"><a href="{{ url_for('edit_order', order_id=order.id) }}" class="button small">Düzenle</a><a href="{{ url_for('order_detail', order_id=order.id) }}" class="button small order-full-detail-link">Tam siparişi aç <span aria-hidden="true">↗</span></a></div>
               </div>
               <div class="order-inline-items" role="list">
                 {% for item in order.items %}
