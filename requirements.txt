@@ -4,3 +4,6 @@ psycopg[binary]
 openpyxl==3.1.5
 reportlab==4.4.3
 google-auth[requests]>=2.38,<3
+
+cryptography>=44,<47
+google-api-python-client>=2.160,<3

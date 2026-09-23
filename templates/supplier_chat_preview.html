@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block heading %}Google Chat'e PDF Gönder{% endblock %}
+{% block subheading %}{{ order.order_no }} · {{ order.customer.name }}{% endblock %}
+{% block content %}
+<div class="detail-navigation"><a class="button" href="{{ url_for('order_detail',order_id=order.id) }}">← Siparişe Dön</a><a class="button" href="{{ space_url }}" target="_blank" rel="noopener">Sohbeti Aç ↗</a></div>
+<section class="panel form-panel"><h2>{{ space_title }}</h2>
+{% if not ready %}<p>Google Chat bağlantısının kurulumu bekleniyor.</p>{% if g.web_is_owner %}<a class="button primary" href="{{ url_for('supplier_chat_settings') }}">Google Hesabını Bağla</a>{% endif %}
+{% else %}
+<p><b>{{ delivery.filename }}</b> dosyası bekir@abikamobilya.com hesabından bu sohbete gönderilecek.</p>
+<p>Mevcut sipariş PDF'si kullanılır: ürünler, adetler, teslim ve sevkiyat bilgileriyle birlikte fiyatlar, KDV ve tutarlar da bulunur.</p>
+<a class="button" href="{{ url_for('supplier_chat_pdf',order_id=order.id,key=delivery.key) }}" data-native-download data-export-name="{{ delivery.filename }}">Gönderilecek PDF'yi Aç / İndir</a>
+{% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+{% if delivery.message_name %}<p class="flash success">Bu sipariş içeriği Google Chat'e gönderildi. Gönderen: {{ delivery.sent_by }}.</p>
+{% else %}
+<form method="post" style="margin-top:24px"><input type="hidden" name="confirm" value="{{ token }}"><label style="display:flex;align-items:center;gap:10px"><input type="checkbox" name="ack" value="yes" required style="width:20px;height:20px;flex:0 0 20px">PDF'nin yukarıdaki sohbete gönderilmesini onaylıyorum.</label><button class="button primary" type="submit">PDF'yi Google Chat'e Gönder</button></form>
+{% endif %}
+<p>Bu sayfayı açmak mesaj göndermez. Aynı sipariş içeriği ikinci kez gönderilmez; siparişi değiştirirseniz yeni bir PDF hazırlayabilirsiniz.</p>
+{% endif %}</section>{% endblock %}

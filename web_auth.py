@@ -50,6 +50,10 @@ def install_web_auth(app, db=None):
         g.web_is_owner = False
         if request.endpoint == 'web_login':
             return None
+        # OAuth GET only displays a same-origin continuation form; it cannot exchange tokens.
+        # Keep the main session cookie Strict. The authenticated POST completes the flow.
+        if request.endpoint == 'supplier_chat_callback' and request.method == 'GET':
+            return None
         g.web_is_owner = hmac.compare_digest(str(session.get('web_auth', '')), fingerprint)
         user = None
         if not g.web_is_owner and db is not None and session.get('web_user_id'):

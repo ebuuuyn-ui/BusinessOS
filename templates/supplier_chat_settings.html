@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block heading %}Google Chat Bağlantısı{% endblock %}
+{% block subheading %}ABİKA satın alma siparişlerini PDF olarak paylaşın{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+<h2>{{ space_title }}</h2>
+<p>Gönderimler yalnızca bu sohbete yapılır. Google hesabı: <b>{{ account }}</b>.</p>
+{% if connected %}<p class="flash success">Google hesabı bağlı. Siparişin içindeki “Google Chat'e PDF Gönder” düğmesini kullanabilirsiniz.</p>{% elif configured %}<form method="post" action="{{ url_for('supplier_chat_connect') }}"><button class="button primary" type="submit">Google Hesabını Bağla</button></form>{% endif %}
+<details {% if not configured %}open{% endif %}><summary>Bağlantı ayarları</summary>
+<p>Google Cloud'da oluşturulan web istemcisinin bilgilerini girin. Mevcut ayarları değiştirmek hesabın yeniden bağlanmasını gerektirir.</p>
+<p>Yönlendirme adresi: <code style="overflow-wrap:anywhere">{{ callback }}</code></p>
+<form method="post" autocomplete="off"><label>Google istemci kimliği<input name="client_id" required autocomplete="off"></label><label>Google istemci anahtarı<input name="client_secret" type="password" required autocomplete="new-password"></label><button class="button" type="submit">Bağlantı Ayarlarını Kaydet</button></form>
+</details></section>
+{% endblock %}
