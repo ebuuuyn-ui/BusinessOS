@@ -67,7 +67,7 @@
       {% for order in orders %}{% set procurement = procurement_summaries.get(order.id) %}{% set invoice_count = invoice_counts.get(order.id, 0) %}{% set source_order = source_orders_by_id.get(order.source_order_id) %}
         <tr class="order-summary-row" data-order-row="{{ order.id }}" data-order-detail-target="order-detail-{{ order.id }}" tabindex="0" role="button" aria-expanded="false" aria-controls="order-detail-{{ order.id }}">
           <td><span class="type-badge {{ 'purchase' if order.order_type == 'Satın Alma' }}">{{ order.order_type }}</span></td>
-          <td class="order-number-cell"><b>{{ order.order_no }}</b><button type="button" class="order-expand-button" data-order-detail-toggle aria-label="{{ order.order_no }} ayrıntılarını göster" aria-expanded="false" aria-controls="order-detail-{{ order.id }}"><span aria-hidden="true">⌄</span></button></td>
+          <td class="order-number-cell"><a href="{{ url_for('order_detail', order_id=order.id) }}" data-workspace-new-tab class="order-number-link"><b>{{ order.order_no }}</b></a><button type="button" class="order-expand-button" data-order-detail-toggle aria-label="{{ order.order_no }} ayrıntılarını göster" aria-expanded="false" aria-controls="order-detail-{{ order.id }}"><span aria-hidden="true">⌄</span></button></td>
           <td class="procurement-cell">{% if procurement %}<span class="procurement-indicator {{ procurement.code }}" tabindex="0" title="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet · {{ procurement.active_orders|length }} satın alma siparişi" data-tooltip="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet">{% if procurement.code == 'complete' %}✓{% elif procurement.code == 'partial' %}◐{% elif procurement.code == 'linked' %}↗{% else %}!{% endif %}</span>{% else %}<span class="procurement-na">—</span>{% endif %}</td>
           <td class="invoice-status-cell">{% if invoice_count %}<span class="invoice-status invoiced" title="{{ invoice_count }} bağlı fatura">✓ Faturalandı{% if invoice_count > 1 %} · {{ invoice_count }}{% endif %}</span>{% else %}<span class="invoice-status pending">Fatura bekliyor</span>{% endif %}</td>
           <td class="order-customer-cell">{{ order.customer.name }}</td>
@@ -88,7 +88,7 @@
             <section class="order-inline-detail-card" aria-label="{{ order.order_no }} sipariş ayrıntıları">
               <div class="order-inline-detail-head">
                 <div><span>Sipariş ayrıntıları</span><strong>{{ order.order_no }} · {{ order.customer.name }}{% if source_order %} · Satış: {{ source_order.order_no }}{% endif %}</strong></div>
-                <div class="order-inline-actions"><a href="{{ url_for('edit_order', order_id=order.id) }}" class="button small">Düzenle</a><a href="{{ url_for('order_detail', order_id=order.id) }}" class="button small order-full-detail-link">Tam siparişi aç <span aria-hidden="true">↗</span></a></div>
+                <div class="order-inline-actions"><a href="{{ url_for('edit_order', order_id=order.id) }}" class="button small">Düzenle</a><a href="{{ url_for('order_detail', order_id=order.id) }}" class="button small order-full-detail-link" data-workspace-new-tab>Tam siparişi aç <span aria-hidden="true">↗</span></a></div>
               </div>
               <div class="order-inline-items" role="list">
                 {% for item in order.items %}
@@ -158,7 +158,7 @@
         toggle(row);
       });
       row.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.target !== row || (event.key !== 'Enter' && event.key !== ' ')) return;
         event.preventDefault(); toggle(row);
       });
       row.querySelector('[data-order-detail-toggle]').addEventListener('click', (event) => {

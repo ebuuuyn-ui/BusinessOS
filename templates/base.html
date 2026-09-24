@@ -59,6 +59,10 @@
   </main>
   <script src="{{ url_for('static', filename='web-exports.js', v='20260922-1') }}"></script>
   <style>
+    .workspace-web-shell > main > .topbar{display:none}
+    .workspace-web-shell .workspace-stage{height:calc(100vh - 43px)}
+    body.workspace-web-frame .topbar{display:flex!important}
+    body.workspace-web-frame .topbar .menu{display:none}
     .web-export-dialog{width:min(440px,calc(100vw - 32px));box-sizing:border-box;border:1px solid #dce2ec;border-radius:18px;padding:24px;color:#172033;background:#fff;box-shadow:0 20px 70px #17203333}
     .web-export-dialog::backdrop{background:#17203366}
     .web-export-dialog h2{margin:0 0 12px}.web-export-dialog p{line-height:1.5}
@@ -67,6 +71,7 @@
   <script>
     (function setupWorkspaceTabs(){
       const inWorkspaceFrame=window.top!==window;
+      const isWebApp={{ 'true' if config.WEB_AUTH_ENABLED else 'false' }};
       const workspaceParam='_workspace_tab';
       const isInternalPageLink=link=>{
         if(!link || link.target || link.hasAttribute('download') || link.dataset.nativeDownload!==undefined || link.dataset.nativeShare!==undefined || link.dataset.nativeWhatsapp!==undefined) return false;
@@ -82,6 +87,7 @@
       };
       if(inWorkspaceFrame){
         document.body.classList.add('workspace-embedded');
+        if(isWebApp) document.body.classList.add('workspace-web-frame');
         const pendingNativeActions=new Map();
         window.addEventListener('message',event=>{
           if(event.origin!==window.location.origin || event.data?.type!=='businessos-workspace-native-result') return;
@@ -94,7 +100,7 @@
         });
         document.addEventListener('click',event=>{
           const link=event.target.closest('a[data-native-whatsapp],a[data-native-share],a[data-native-download]');
-          if(!link) return;
+          if(!link || isWebApp) return;
           const kind=link.dataset.nativeWhatsapp!==undefined?'whatsapp':link.dataset.nativeShare!==undefined?'share':'download';
           const requestId=`native-${Date.now()}-${Math.random()}`;
           event.preventDefault(); event.stopImmediatePropagation();
@@ -123,7 +129,7 @@
             return;
           }
           const link=event.target.closest('a');
-          if(!isInternalPageLink(link)) return;
+          if(event.defaultPrevented || event.button!==0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !isInternalPageLink(link)) return;
           event.preventDefault();
           const isOrdersReturn=link.textContent.includes('Siparişlere Dön')&&link.pathname==='/siparisler';
           window.parent.postMessage({type:link.dataset.workspaceNewTab!==undefined?'businessos-workspace-open':'businessos-workspace-navigate',url:isOrdersReturn?'/siparisler':cleanUrl(link.href),title:link.textContent.trim()},window.location.origin);
@@ -134,11 +140,12 @@
       const tabs=document.querySelector('#workspace-tabs');
       const stage=document.querySelector('#workspace-stage');
       if(!source || !tabs || !stage) return;
-      const useDirectNavigation={{ 'true' if config.WEB_AUTH_ENABLED else 'false' }} || window.matchMedia('(max-width: 900px)').matches;
+      const useDirectNavigation=window.matchMedia('(max-width: 900px)').matches;
       if(useDirectNavigation){
         document.body.classList.add('workspace-mobile-direct');
         return;
       }
+      if(isWebApp) document.body.classList.add('workspace-web-shell');
       const pages=new Map(); let activeId=''; let nextId=0;
       const pageTitle=()=>document.querySelector('.topbar b')?.textContent.trim()||'Business OS';
       const frameUrl=url=>{
@@ -167,7 +174,7 @@
         const label=document.createElement('span'); label.textContent=title||'Yeni sekme';
         const closeButton=document.createElement('span'); closeButton.className='workspace-tab-close'; closeButton.textContent='×'; closeButton.title='Sekmeyi kapat'; closeButton.setAttribute('aria-label','Sekmeyi kapat');
         tab.append(label,closeButton); tabs.append(tab);
-        const frame=document.createElement('iframe'); frame.className='workspace-frame'; frame.title=title||'Business OS'; frame.src=frameUrl(url); frame.hidden=true; stage.append(frame);
+        const frame=document.createElement('iframe'); frame.className='workspace-frame'; frame.title=title||'Business OS'; frame.allow='web-share'; frame.src=frameUrl(url); frame.hidden=true; stage.append(frame);
         const page={id,url,tab,frame,label}; pages.set(id,page);
         tab.addEventListener('click',event=>{if(event.target===closeButton) close(id); else activate(id);});
         frame.addEventListener('load',()=>{try{const heading=frame.contentDocument.querySelector('.topbar b')?.textContent.trim(); if(heading){label.textContent=heading; frame.title=heading;}}catch(_error){}});
@@ -222,7 +229,7 @@
           return;
         }
         const link=event.target.closest('a');
-        if(!isInternalPageLink(link)) return;
+        if(event.defaultPrevented || event.button!==0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || !isInternalPageLink(link)) return;
         event.preventDefault(); open(link.textContent.includes('Siparişlere Dön')&&link.pathname==='/siparisler'?'/siparisler':link.href,link.textContent.trim());
       },true);
       tabs.hidden=false; stage.hidden=false; source.hidden=true;
