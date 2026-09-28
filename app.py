@@ -4733,6 +4733,39 @@ def create_app(test_config=None):
                 return redirect(url_for("order_detail", order_id=order.id))
         return render_template("order_form.html", customers=customers_list, products=products_list, order_types=ORDER_TYPES, order_payment_methods=ORDER_PAYMENT_METHODS, selected_type=request.args.get("type", "Satış"), today=date.today().isoformat())
 
+    @app.route("/siparisler/<int:order_id>/sil", methods=["GET", "POST"])
+    def delete_order(order_id):
+        from itsdangerous import URLSafeTimedSerializer, BadSignature
+        order = db.get_or_404(Order, order_id)
+        signer = URLSafeTimedSerializer(app.secret_key, salt="order-delete-v1")
+        identity = [order.id, order.order_no, str(order.updated_at)]
+        if request.method == "POST":
+            try:
+                confirmed = signer.loads(request.form.get("confirmation", ""), max_age=1800)
+            except BadSignature:
+                abort(400)
+            if confirmed != identity or request.form.get("ack") != "yes":
+                abort(400)
+        blockers = []
+        if Invoice.query.filter_by(order_id=order.id).first():
+            blockers.append("Bu siparişe bağlı fatura var. Önce fatura bağlantısını düzenleyin.")
+        item_ids = [item.id for item in order.items]
+        if (Order.query.filter_by(source_order_id=order.id).first() or
+                (item_ids and OrderItem.query.filter(OrderItem.source_order_item_id.in_(item_ids)).first())):
+            blockers.append("Bu siparişten oluşturulmuş satın alma siparişi var. Önce satın alma bağlantısını düzenleyin.")
+        if request.method == "POST" and not blockers:
+            number, kind = order.order_no, order.order_type
+            create_database_backup(app, "before_order_delete")
+            for model in (TelegramIncomingDocument, EArchiveIncomingDocument):
+                for document in model.query.filter_by(suggested_order_id=order.id).all():
+                    document.suggested_order_id = None
+            db.session.delete(order)
+            db.session.commit()
+            flash(f"{number} numaralı sipariş silindi.", "success")
+            return redirect(url_for("orders", type=kind))
+        return render_template("order_delete.html", order=order, blockers=blockers,
+                               confirmation=signer.dumps(identity)), (409 if request.method == "POST" else 200)
+
     @app.get("/siparisler/<int:order_id>")
     def order_detail(order_id):
         order = db.get_or_404(Order, order_id)

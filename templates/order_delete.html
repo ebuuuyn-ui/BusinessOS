@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block heading %}Siparişi Sil{% endblock %}
+{% block subheading %}{{ order.order_no }} · {{ order.customer.name }}{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+  <h2>{{ order.order_no }} numaralı sipariş</h2>
+  {% for message in blockers %}<p class="flash error" role="alert">{{ message }}</p>{% endfor %}
+  {% if not blockers %}
+  <p>Bu sipariş, {{ order.items|length }} ürün kalemi, sipariş geçmişi ve siparişe eklenen belge bağlantıları silinecek. Bu işlem geri alınamaz.</p>
+  <p>Google Chat'e gönderilmiş mesajlar ve tedarikçi tablosundaki kayıtlar bu işlemle kaldırılmaz.</p>
+  <form method="post">
+    <input type="hidden" name="confirmation" value="{{ confirmation }}">
+    <label><input type="checkbox" name="ack" value="yes" required> {{ order.order_no }} numaralı siparişin silinmesini onaylıyorum.</label>
+    <div class="header-actions">
+      <a class="button" href="{{ url_for('order_detail', order_id=order.id) }}">Vazgeç</a>
+      <button type="submit" class="button danger">Evet, Siparişi Sil</button>
+    </div>
+  </form>
+  {% else %}
+  <a class="button" href="{{ url_for('order_detail', order_id=order.id) }}">Siparişe Dön</a>
+  {% endif %}
+</section>
+{% endblock %}
