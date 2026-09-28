@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block heading %}Müşteri İadesi{% endblock %}
+{% block subheading %}{{ invoice.invoice_no }} · {{ invoice.customer.name }}{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+<h2>{{ invoice.invoice_no }} faturasına iade gir</h2>
+<p>Yalnızca iade alınan ürünlerin adetlerini girin. Birim fiyat, iskonto ve KDV asıl faturadan alınır.</p>
+{% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+<form method="post">
+<input type="hidden" name="confirmation" value="{{ confirmation }}">
+<div class="form-grid three">
+<label>İade belge numarası<input name="invoice_no" value="{{ number }}" maxlength="80" required></label>
+<label>İade tarihi<input type="date" name="invoice_date" value="{{ request.form.get('invoice_date', today) }}" min="{{ invoice.invoice_date.isoformat() }}" required></label>
+</div>
+<div class="table-wrap"><table class="compact-table"><thead><tr><th>Ürün</th><th>Fatura adedi</th><th>İade alınan</th><th>İade edilebilir</th><th>Şimdi alınan iade</th><th>Birim fiyat</th></tr></thead><tbody>
+{% for item in invoice.items %}{% set remaining = item.quantity - returned.get(item.id, 0) %}
+<tr><td>{{ item.product_name }}</td><td>{{ item.quantity }}</td><td>{{ returned.get(item.id, 0) }}</td><td>{{ remaining }}</td><td><input aria-label="{{ item.product_name }} iade adedi" style="width:100px;max-width:100%;margin:0" name="quantity_{{ item.id }}" type="number" min="0" max="{{ remaining }}" step="1" value="{{ request.form.get('quantity_' ~ item.id, '0') }}" required></td><td>₺{{ item.unit_price|money }}<small class="block">KDV {{ 'dâhil' if item.vat_included else 'hariç' }} · İskonto %{{ item.discount_rate|money }}</small></td></tr>
+{% endfor %}</tbody></table></div>
+<label>İade nedeni / açıklama<textarea name="notes" rows="3">{{ request.form.get('notes', '') }}</textarea></label>
+<p>Kaydedildiğinde ürünler stoğa eklenir ve iade tutarı cari hesaba alacak olarak işlenir. Bu kayıt e-fatura göndermez.</p>
+<div class="header-actions"><a class="button" href="{{ url_for('invoice_detail', invoice_id=invoice.id) }}">Vazgeç</a><button class="button primary" type="submit">İadeyi Kaydet</button></div>
+</form></section>
+{% endblock %}

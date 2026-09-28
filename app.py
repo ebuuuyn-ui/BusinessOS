@@ -2061,6 +2061,8 @@ def create_app(test_config=None):
     register_supplier_sheets(app, db, Order, OrderHistory)
     from supplier_chat import register_supplier_chat
     register_supplier_chat(app, db, Order, OrderHistory)
+    from invoice_returns import register_invoice_returns
+    register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
 
     @app.before_request
     def scheduled_database_backup():
@@ -2488,7 +2490,7 @@ def create_app(test_config=None):
         start_date = parse_date(request.args.get("start_date"))
         end_date = parse_date(request.args.get("end_date"))
         records = Invoice.query
-        if invoice_type in {"Satış", "Satın Alma"}:
+        if invoice_type in {"Satış", "Satın Alma", "Satış İadesi"}:
             records = records.filter_by(invoice_type=invoice_type)
         else:
             invoice_type = ""
@@ -2519,11 +2521,17 @@ def create_app(test_config=None):
     @app.get("/faturalar/<int:invoice_id>")
     def invoice_detail(invoice_id):
         invoice = db.get_or_404(Invoice, invoice_id)
-        return render_template("invoice_detail.html", invoice=invoice)
+        returns, source_invoice = app.extensions["invoice_returns"]["related"](invoice)
+        return render_template("invoice_detail.html", invoice=invoice, returns=returns, source_invoice=source_invoice)
 
     @app.route("/faturalar/<int:invoice_id>/duzenle", methods=["GET", "POST"])
     def edit_invoice(invoice_id):
         invoice = db.get_or_404(Invoice, invoice_id)
+        if request.method == "POST":
+            invoice = Invoice.query.filter_by(id=invoice_id).with_for_update().populate_existing().one()
+        if invoice.invoice_type == "Satış İadesi" or app.extensions["invoice_returns"]["has_returns"](invoice):
+            flash("İadeye bağlı faturalar düzenlenemez. Önce ilgili iadeyi kaldırın.", "error")
+            return redirect(url_for("invoice_detail", invoice_id=invoice.id))
         products = Product.query.filter_by(active=True).order_by(Product.name).all()
         customers = Customer.query.order_by(Customer.name).all()
         orders = Order.query.order_by(Order.order_date.desc(), Order.id.desc()).limit(500).all()
@@ -2644,6 +2652,11 @@ def create_app(test_config=None):
     @app.post("/faturalar/<int:invoice_id>/sil")
     def delete_invoice(invoice_id):
         invoice = db.get_or_404(Invoice, invoice_id)
+        invoice = Invoice.query.filter_by(id=invoice_id).with_for_update().populate_existing().one()
+        if app.extensions["invoice_returns"]["has_returns"](invoice):
+            flash("Bu faturaya bağlı iade var. Önce ilgili iadeyi kaldırın.", "error")
+            return redirect(url_for("invoice_detail", invoice_id=invoice.id))
+        app.extensions["invoice_returns"]["remove_links"](invoice)
         invoice_no = invoice.invoice_no
         customer_id = invoice.customer_id
         movement_ids = [item.stock_movement_id for item in invoice.items if item.stock_movement_id]
