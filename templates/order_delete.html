@@ -2,16 +2,16 @@
 {% block heading %}Siparişi Sil{% endblock %}
 {% block subheading %}{{ order.order_no }} · {{ order.customer.name }}{% endblock %}
 {% block content %}
-<section class="panel form-panel">
-  <h2>{{ order.order_no }} numaralı sipariş</h2>
+<section class="panel form-panel order-delete-panel">
+  <div class="order-delete-heading"><span class="order-delete-icon" aria-hidden="true">!</span><div><h2>{{ order.order_no }}</h2><p>Bu siparişi silmek istediğinizden emin misiniz?</p></div></div>
   {% for message in blockers %}<p class="flash error" role="alert">{{ message }}</p>{% endfor %}
   {% if not blockers %}
-  <p>Bu sipariş, {{ order.items|length }} ürün kalemi, sipariş geçmişi ve siparişe eklenen belge bağlantıları silinecek. Bu işlem geri alınamaz.</p>
-  <p>Google Chat'e gönderilmiş mesajlar ve tedarikçi tablosundaki kayıtlar bu işlemle kaldırılmaz.</p>
+  <p class="order-delete-description">Bu sipariş, {{ order.items|length }} ürün kalemi, sipariş geçmişi ve siparişe eklenen belge bağlantıları silinecek. Bu işlem geri alınamaz.</p>
+  <p class="order-delete-note">Google Chat'e gönderilmiş mesajlar ve tedarikçi tablosundaki kayıtlar bu işlemle kaldırılmaz.</p>
   <form method="post">
     <input type="hidden" name="confirmation" value="{{ confirmation }}">
-    <label><input type="checkbox" name="ack" value="yes" required> {{ order.order_no }} numaralı siparişin silinmesini onaylıyorum.</label>
-    <div class="header-actions">
+    <label class="order-delete-confirm"><input type="checkbox" name="ack" value="yes" required><span><strong>{{ order.order_no }}</strong> numaralı siparişin silinmesini onaylıyorum.</span></label>
+    <div class="order-delete-actions">
       <a class="button" href="{{ url_for('order_detail', order_id=order.id) }}">Vazgeç</a>
       <button type="submit" class="button danger">Evet, Siparişi Sil</button>
     </div>

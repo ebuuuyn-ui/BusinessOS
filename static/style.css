@@ -1284,3 +1284,19 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 .orders-table-scroll .procurement-indicator::after{display:none;top:auto;bottom:calc(100% + 8px)}
 .orders-table-scroll .procurement-indicator:hover::after,
 .orders-table-scroll .procurement-indicator:focus::after{display:block}
+
+/* Keep the destructive confirmation compact and independent of general form inputs. */
+.order-delete-panel{width:100%;max-width:720px;box-sizing:border-box;margin:0 auto;padding:28px}
+.order-delete-heading{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.order-delete-panel .order-delete-heading h2{margin:0 0 5px;font-size:22px;overflow-wrap:anywhere}
+.order-delete-heading p{margin:0;color:var(--muted);line-height:1.5}
+.order-delete-icon{display:flex;align-items:center;justify-content:center;flex:0 0 44px;height:44px;border-radius:14px;background:#fff1ef;color:#b42318;font-size:24px;font-weight:800}
+.order-delete-description{margin:0 0 14px;line-height:1.7}
+.order-delete-note{margin:0 0 22px;padding:12px 14px;border-radius:10px;background:#f6f8fc;color:var(--muted);font-size:13px;line-height:1.6}
+.order-delete-panel .order-delete-confirm{display:flex;align-items:flex-start;gap:12px;padding:15px;margin:0;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;font-size:14px;font-weight:500;line-height:1.6}
+.order-delete-panel .order-delete-confirm input[type="checkbox"]{appearance:auto;flex:0 0 20px!important;width:20px!important;max-width:20px!important;height:20px!important;min-height:20px!important;padding:0!important;margin:2px 0 0!important;box-shadow:none;border-radius:4px;accent-color:#b42318}
+.order-delete-confirm input:focus-visible{outline:2px solid #b42318;outline-offset:3px}
+.order-delete-confirm span{min-width:0;overflow-wrap:anywhere}
+.order-delete-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+.order-delete-actions .button{min-height:44px;justify-content:center;margin:0}
+@media(max-width:600px){.order-delete-panel{padding:20px}.order-delete-panel .order-delete-heading h2{font-size:19px}.order-delete-actions .button{flex:1 1 140px}.order-delete-heading{align-items:flex-start}}
