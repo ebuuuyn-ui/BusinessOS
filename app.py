@@ -4754,7 +4754,7 @@ def create_app(test_config=None):
                 (item_ids and OrderItem.query.filter(OrderItem.source_order_item_id.in_(item_ids)).first())):
             blockers.append("Bu siparişten oluşturulmuş satın alma siparişi var. Önce satın alma bağlantısını düzenleyin.")
         if request.method == "POST" and not blockers:
-            number, kind = order.order_no, order.order_type
+            number = order.order_no
             create_database_backup(app, "before_order_delete")
             for model in (TelegramIncomingDocument, EArchiveIncomingDocument):
                 for document in model.query.filter_by(suggested_order_id=order.id).all():
@@ -4762,7 +4762,7 @@ def create_app(test_config=None):
             db.session.delete(order)
             db.session.commit()
             flash(f"{number} numaralı sipariş silindi.", "success")
-            return redirect(url_for("orders", type=kind))
+            return redirect(url_for("orders"))
         return render_template("order_delete.html", order=order, blockers=blockers,
                                confirmation=signer.dumps(identity)), (409 if request.method == "POST" else 200)
 
