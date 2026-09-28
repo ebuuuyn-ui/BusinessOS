@@ -83,6 +83,21 @@ def normalize_search_text(value):
     return "".join(character for character in unicodedata.normalize("NFD", text_value) if unicodedata.category(character) != "Mn")
 
 
+def apply_customer_text_filter(records, query, dialect_name=None):
+    """Normalize Turkish letters on both sides, before database case folding."""
+    if not query:
+        return records
+    dialect_name = dialect_name or db.engine.dialect.name
+    pattern = "%" + normalize_search_text(query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    columns = (Customer.name, Customer.code, Customer.contact_name, Customer.phone,
+               Customer.mobile, Customer.email, Customer.city)
+    def normalized(column):
+        if dialect_name == "sqlite":
+            return func.normalize_tr(column)
+        return func.lower(func.translate(column, "IİıÇçĞğÖöŞşÜü", "iiiccggoossuu"))
+    return records.filter(db.or_(*(normalized(column).like(pattern, escape="\\") for column in columns)))
+
+
 def selected_order_statuses(args):
     """Geçerli, tekrarsız sipariş durumlarını çoklu filtre olarak döndürür."""
     return list(dict.fromkeys(
@@ -945,25 +960,7 @@ def calculate_customer_balances(customer_ids=None, *, ledger=None):
 def customer_balance_view(query="", balance_filter="", balance_sort="amount_desc"):
     """Return the same filtered customer balances used by the balances screen."""
     records = Customer.query
-    if query:
-        if db.engine.dialect.name == "sqlite":
-            pattern = f"%{normalize_search_text(query)}%"
-            records = records.filter(db.or_(
-                db.func.normalize_tr(Customer.name).like(pattern),
-                db.func.normalize_tr(Customer.code).like(pattern),
-                db.func.normalize_tr(Customer.contact_name).like(pattern),
-                db.func.normalize_tr(Customer.phone).like(pattern),
-                db.func.normalize_tr(Customer.mobile).like(pattern),
-                db.func.normalize_tr(Customer.email).like(pattern),
-                db.func.normalize_tr(Customer.city).like(pattern),
-            ))
-        else:
-            pattern = f"%{query}%"
-            records = records.filter(db.or_(
-                Customer.name.ilike(pattern), Customer.code.ilike(pattern), Customer.contact_name.ilike(pattern),
-                Customer.phone.ilike(pattern), Customer.mobile.ilike(pattern), Customer.email.ilike(pattern),
-                Customer.city.ilike(pattern),
-            ))
+    records = apply_customer_text_filter(records, query)
     customers = records.order_by(Customer.name).all()
     balances = calculate_customer_balances([customer.id for customer in customers])
     customers = [customer for customer in customers if balances.get(customer.id, Decimal("0")) != 0]
@@ -3143,18 +3140,7 @@ def create_app(test_config=None):
             page = total_pages = 1
         else:
             records = Customer.query
-            if query:
-                if db.engine.dialect.name == "sqlite":
-                    pattern = f"%{normalize_search_text(query)}%"
-                    records = records.filter(db.or_(
-                        db.func.normalize_tr(Customer.name).like(pattern), db.func.normalize_tr(Customer.code).like(pattern),
-                        db.func.normalize_tr(Customer.contact_name).like(pattern), db.func.normalize_tr(Customer.phone).like(pattern),
-                        db.func.normalize_tr(Customer.mobile).like(pattern), db.func.normalize_tr(Customer.email).like(pattern),
-                        db.func.normalize_tr(Customer.city).like(pattern),
-                    ))
-                else:
-                    pattern = f"%{query}%"
-                    records = records.filter(db.or_(Customer.name.ilike(pattern), Customer.code.ilike(pattern), Customer.contact_name.ilike(pattern), Customer.phone.ilike(pattern), Customer.mobile.ilike(pattern), Customer.email.ilike(pattern), Customer.city.ilike(pattern)))
+            records = apply_customer_text_filter(records, query)
             page_size = 50
             total_count = records.count()
             total_pages = max(1, math.ceil(total_count / page_size))
