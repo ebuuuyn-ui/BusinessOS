@@ -136,6 +136,8 @@
         },true);
         return;
       }
+      if(isWebApp) document.title='Business OS';
+      const initialWorkspaceUrl=cleanUrl(window.location.href);
       const source=document.querySelector('#workspace-source');
       const tabs=document.querySelector('#workspace-tabs');
       const stage=document.querySelector('#workspace-stage');
@@ -233,7 +235,14 @@
         event.preventDefault(); open(link.textContent.includes('Siparişlere Dön')&&link.pathname==='/siparisler'?'/siparisler':link.href,link.textContent.trim());
       },true);
       tabs.hidden=false; stage.hidden=false; source.hidden=true;
-      open(window.location.href,pageTitle());
+      if(isWebApp){
+        // Keep the browser's launch address at home; deep links open as work tabs.
+        open('/','Ana Sayfa');
+        if(initialWorkspaceUrl!=='/') open(initialWorkspaceUrl,pageTitle());
+        window.history.replaceState(window.history.state,'','/');
+      }else{
+        open(window.location.href,pageTitle());
+      }
     })();
 
     (function addCustomerAccountAction(){
