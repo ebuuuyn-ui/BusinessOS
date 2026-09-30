@@ -21,11 +21,45 @@ deliveries = Table('businessos_trello_delivery', meta,
     Column('key', String(100), primary_key=True), Column('card_id', Text),
     Column('card_url', Text), Column('actor', Text), Column('created_at', Text))
 
+extras = Table('businessos_trello_card_extras', meta,
+    Column('key', String(100), primary_key=True), Column('card_id', Text))
+
 class TrelloError(Exception): pass
+
+def order_form_pdf(rows):
+    from io import BytesIO
+    from xml.sax.saxutils import escape
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from pdf_fonts import register_pdf_fonts
+    font, bold = register_pdf_fonts()
+    normal = ParagraphStyle('body', fontName=font, fontSize=9, leading=13)
+    heading = ParagraphStyle('heading', fontName=bold, fontSize=16, leading=22)
+    para = lambda value: Paragraph(escape(str(value or '')).replace('\n','<br/>'), normal)
+    out = BytesIO()
+    story = [Paragraph('ABİKA · SİPARİŞ FORMU', heading), Spacer(1,12)]
+    if rows:
+        r=rows[0]
+        for label, value in [('Sipariş',r[1]),('Sipariş tarihi',r[2]),('Teslim tarihi',r[3]),('Teslim ili',r[7])]:
+            if value: story.append(para(f'{label}: {value}'))
+        story.append(Spacer(1,12))
+        data=[[para('Ürün / Ayrıntılar'),para('Adet')]]
+        for r in rows:
+            details=[str(r[13])]+[f'{label}: {r[i]}' for i,label in [(12,'Kod'),(14,'Açıklama'),(15,'Ayrıntı 1'),(16,'Ayrıntı 2'),(17,'Ayrıntı 3'),(20,'Not')] if r[i]]
+            data.append([para('\n'.join(details)),para(f'{r[18]} {r[19]}')])
+        table=Table(data,colWidths=[425,90],repeatRows=1,hAlign='LEFT')
+        table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eaf1fa')),('VALIGN',(0,0),(-1,-1),'TOP'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#ccd5e0')),('TOPPADDING',(0,0),(-1,-1),8),('BOTTOMPADDING',(0,0),(-1,-1),8)]))
+        story.append(table)
+        if rows[0][21]: story.extend([Spacer(1,12),para('Sipariş notu: '+str(rows[0][21]))])
+    SimpleDocTemplate(out,pagesize=A4,leftMargin=40,rightMargin=40,topMargin=35,bottomMargin=35).build(story)
+    return out.getvalue()
+
 
 def payload(row):
     # Explicit non-financial fields only; one stable marker per order line.
-    labels = [(12,'Ürün kodu'),(14,'Açıklama'),(15,'Ayrıntı 1'),(16,'Ayrıntı 2'),
+    labels = [(7,'Teslim ili'),(12,'Ürün kodu'),(14,'Açıklama'),(15,'Ayrıntı 1'),(16,'Ayrıntı 2'),
               (17,'Ayrıntı 3'),(20,'Kalem notu'),(21,'Sipariş notu')]
     desc = [f'Sipariş: {row[1]}',f'Ürün: {row[13]}',f'Adet: {row[18]} {row[19]}',
             f'İstenen teslim tarihi: {row[3] or "Belirtilmedi"}']
@@ -37,16 +71,23 @@ def payload(row):
 
 class Client:
     def __init__(self, config): self.config=config
-    def call(self, method, path, **values):
+    def call(self, method, path, files=None, **values):
         # Credentials in headers, never URLs or error text.
         headers={'Authorization': 'OAuth oauth_consumer_key="'+self.config['key']+'", oauth_token="'+self.config['token']+'"'}
         try:
             r=requests.request(method,'https://api.trello.com/1/'+path,headers=headers,
-                params=values if method=='GET' else None,json=values if method!='GET' else None,timeout=12)
+                params=values if method=='GET' else None,json=values if method!='GET' and not files else None,
+                data=values if files else None,files=files,timeout=12)
             if not r.ok: raise TrelloError('Trello işlemi tamamlanamadı. Bağlantı ve izinleri kontrol edin.')
             return r.json()
         except (requests.RequestException, ValueError):
             raise TrelloError('Trello yanıtı alınamadı. Tekrar kart oluşturulmadı; sonucu kontrol edin.') from None
+    def attach_form(self, card, filename, pdf):
+        existing=self.call('GET',f'cards/{card}/attachments',fields='name')
+        if not any(x.get('name')==filename for x in existing):
+            self.call('POST',f'cards/{card}/attachments',name=filename,
+                      files={'file':(filename,pdf,'application/pdf')})
+
     def lists(self): return self.call('GET',f'boards/{BOARD}/lists',filter='open',fields='name,closed')
     def cards(self): return self.call('GET',f'boards/{BOARD}/cards',filter='all',fields='id,desc,url')
 
@@ -108,37 +149,55 @@ def register_supplier_trello(app, db, Order):
                 if not cfg: raise TrelloError('Önce yönetici Trello bağlantısını kurmalı.')
                 client=Client(cfg)
                 if not any(x['id']==cfg['list_id'] for x in client.lists()): raise TrelloError('Hedef liste kapalı veya bulunamadı.')
+                meta.create_all(db.engine)
                 cards=client.cards()
+                pdf=order_form_pdf(rows)
+                filename=f'{order.order_no}-Siparis-Formu.pdf'
                 sent=0
                 for row in rows:
                     with db.engine.connect() as c: previous=c.execute(select(deliveries).where(deliveries.c.key==row[0])).mappings().first()
-                    if previous and previous['card_id']: continue
+                    with db.engine.connect() as c: done=c.execute(select(extras.c.card_id).where(extras.c.key==row[0])).scalar()
+                    if previous and previous['card_id'] and done==previous['card_id']: continue
+                    if sent>=3: break
+                    card=None
+                    if previous and previous['card_id']:
+                        card=next((x for x in cards if x['id']==previous['card_id']),None)
+                        if card is None: raise TrelloError('Aktarılan kart panoda bulunamadı; kartın konumunu kontrol edin.')
                     matches=[x for x in cards if f'BOS kayıt: {row[0]}' in x.get('desc','').split('\n\n')]
                     if len(matches)>1: raise TrelloError('Bu kalem için birden fazla kart bulundu. Yönetici kontrol etmeli.')
-                    if matches:
+                    if matches and not card:
                         card=matches[0]
                         with db.engine.begin() as c:
                             if not previous: c.execute(insert(deliveries).values(key=row[0],actor=g.web_username))
                             c.execute(update(deliveries).where(deliveries.c.key==row[0]).values(card_id=card['id'],card_url=card['url']))
-                        continue
-                    if previous: raise TrelloError('Önceki aktarımın sonucu belirsiz. Mükerrer kartı önlemek için durduruldu; yönetici kontrol etmeli.')
-                    if sent>=3: break # Bounded serverless request; continue remaining lines explicitly.
-                    try:
-                        with db.engine.begin() as c: c.execute(insert(deliveries).values(key=row[0],actor=g.web_username,created_at=datetime.now(timezone.utc).isoformat()))
-                    except IntegrityError: raise TrelloError('Bu kalem başka bir işlemde aktarılıyor. Sayfayı yenileyin.') from None
-                    data=payload(row)
-                    if order.delivery_date: data['due']=order.delivery_date.isoformat()+'T09:00:00+03:00'
-                    card=client.call('POST','cards',idList=cfg['list_id'],**data)
-                    with db.engine.begin() as c: c.execute(update(deliveries).where(deliveries.c.key==row[0]).values(card_id=card['id'],card_url=card['url']))
+                    if previous and not card: raise TrelloError('Önceki aktarımın sonucu belirsiz. Mükerrer kartı önlemek için durduruldu; yönetici kontrol etmeli.')
+                    if not card:
+                        try:
+                            with db.engine.begin() as c: c.execute(insert(deliveries).values(key=row[0],actor=g.web_username,created_at=datetime.now(timezone.utc).isoformat()))
+                        except IntegrityError: raise TrelloError('Bu kalem başka bir işlemde aktarılıyor. Sayfayı yenileyin.') from None
+                        data=payload(row)
+                        if order.delivery_date: data['due']=order.delivery_date.isoformat()+'T09:00:00+03:00'
+                        card=client.call('POST','cards',idList=cfg['list_id'],**data)
+                        card['desc']=data['desc']
+                        with db.engine.begin() as c: c.execute(update(deliveries).where(deliveries.c.key==row[0]).values(card_id=card['id'],card_url=card['url']))
+                    if row[7] and f'Teslim ili: {row[7]}' not in card.get('desc','').split('\n\n'):
+                        client.call('PUT',f'cards/{card["id"]}',desc=card.get('desc','')+'\n\nTeslim ili: '+str(row[7]))
+                    client.attach_form(card['id'],filename,pdf)
+                    with db.engine.begin() as c:
+                        if done: c.execute(update(extras).where(extras.c.key==row[0]).values(card_id=card['id']))
+                        else: c.execute(insert(extras).values(key=row[0],card_id=card['id']))
                     sent+=1
                 if not batch_request:
-                    flash(f'{sent} yeni ürün kartı oluşturuldu. Kalan kalemler varsa devam edebilirsiniz.','success')
+                    flash(f'{sent} ürün kartının aktarımı tamamlandı. Kalan kalemler varsa devam edebilirsiniz.','success')
                     return redirect(url_for('trello_export',order_id=order.id))
         except TrelloError as exc: error=str(exc)
         states={}
         if ready():
             with db.engine.connect() as c: states={x['key']:dict(x) for x in c.execute(select(deliveries).where(deliveries.c.key.in_([r[0] for r in rows]))).mappings()}
-        remaining = sum(not states.get(r[0],{}).get('card_id') for r in rows)
+        completed={}
+        if inspect(db.engine).has_table(extras.name):
+            with db.engine.connect() as c: completed=dict(c.execute(select(extras.c.key,extras.c.card_id).where(extras.c.key.in_([r[0] for r in rows]))).all())
+        remaining = sum(not states.get(r[0],{}).get('card_id') or completed.get(r[0])!=states[r[0]]['card_id'] for r in rows)
         if batch_request:
             return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error), (409 if error else 200)
         return render_template('trello_export.html',order=order,rows=rows,states=states,connected=bool(cfg),error=error,

@@ -58,3 +58,30 @@ class TrelloTests(SupplierRouteTests):
         self.mock.call.side_effect=[{'id':'first','url':'https://trello.com/c/first'},t.TrelloError('Bağlantı kesildi')]
         r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':self.token()})
         self.assertEqual(r.status_code,409);self.assertEqual(r.json['completed'],1);self.assertEqual(r.json['remaining'],1)
+    def test_pdf_and_city_and_retry_without_duplicate_card(self):
+        order=m.db.session.get(m.Order,self.order_id);order.delivery_city='İstanbul';m.db.session.commit()
+        self.mock.attach_form.side_effect=[t.TrelloError('upload timeout'),None]
+        token=self.token()
+        r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(r.status_code,409);self.assertEqual(r.json['completed'],0)
+        desc=self.mock.call.call_args.kwargs['desc'];self.assertIn('Teslim ili: İstanbul',desc)
+        self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':desc}]
+        r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(r.json['completed'],1);self.mock.call.assert_called_once()
+        self.assertTrue(self.mock.attach_form.call_args.args[2].startswith(b'%PDF-'))
+
+    def test_legacy_card_enriched_without_overwriting_notes(self):
+        from sqlalchemy import insert
+        order=m.db.session.get(m.Order,self.order_id);order.delivery_city='Edirne';m.db.session.commit()
+        row=t.order_rows(order,'test')[0]
+        with m.db.engine.begin() as c: c.execute(insert(t.deliveries).values(key=row[0],card_id='old',card_url='https://trello.com/c/old'))
+        self.mock.cards.return_value=[{'id':'old','url':'https://trello.com/c/old','desc':'Merve üretim notu'}]
+        self.post({'confirm':self.token()})
+        self.mock.call.assert_called_once_with('PUT','cards/old',desc='Merve üretim notu\n\nTeslim ili: Edirne')
+        self.mock.attach_form.assert_called_once()
+
+    def test_upload_reconciles_existing_attachment(self):
+        client=self.p.temp_original({'key':'x','token':'y'})
+        with patch.object(client,'call',return_value=[{'name':'form.pdf'}]) as call:
+            client.attach_form('card','form.pdf',b'%PDF-test')
+            call.assert_called_once_with('GET','cards/card/attachments',fields='name')
