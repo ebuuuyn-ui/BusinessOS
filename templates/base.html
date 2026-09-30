@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Business OS{% endblock %}</title>
 {% include '_favicon.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='order-delete-layout-20260928-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='sidebar-toggle-20260930-1') }}">
 </head>
 <body{% if request.endpoint == 'orders' %} class="orders-page"{% endif %}>
-  <aside class="sidebar">
+  <aside class="sidebar" id="main-sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>
       <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}"><i class="nav-icon">⌂</i><span>Ana Sayfa</span></a>
@@ -48,6 +48,7 @@
     {% if config.WEB_AUTH_ENABLED %}<form method="post" action="{{ url_for('web_logout') }}" target="_top" style="padding: 16px"><button type="submit">Çıkış yap</button></form>{% endif %}
     <div class="sidebar-foot">v1.0 · Yerel ve bağımsız</div>
   </aside>
+  <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="main-sidebar" aria-expanded="true" aria-label="Menüyü kapat" title="Menüyü kapat">☰</button>
   <main>
     <header class="topbar"><button class="menu" onclick="document.body.classList.toggle('nav-open')">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div>{% block header_action %}{% endblock %}</header>
     <div class="workspace-tabs" id="workspace-tabs" aria-label="Açık çalışma sekmeleri" hidden></div>
@@ -57,7 +58,32 @@
       {% block content %}{% endblock %}
     </section>
   </main>
-  <script src="{{ url_for('static', filename='web-exports.js', v='20260922-1') }}"></script>
+  <script>
+    (function(){
+      if(window.top!==window) return;
+      const button=document.getElementById('sidebar-toggle');
+      const sidebar=document.getElementById('main-sidebar');
+      const desktop=window.matchMedia('(min-width:901px)');
+      let collapsed=false;
+      try{collapsed=localStorage.getItem('bos-sidebar-collapsed')==='1';}catch(_error){}
+      function apply(){
+        const hidden=desktop.matches&&collapsed;
+        document.body.classList.toggle('sidebar-collapsed',hidden);
+        sidebar.inert=hidden;
+        button.setAttribute('aria-expanded',String(!hidden));
+        button.setAttribute('aria-label',hidden?'Menüyü aç':'Menüyü kapat');
+        button.title=hidden?'Menüyü aç':'Menüyü kapat';
+      }
+      button.addEventListener('click',()=>{
+        collapsed=!collapsed;
+        try{localStorage.setItem('bos-sidebar-collapsed',collapsed?'1':'0');}catch(_error){}
+        apply();
+      });
+      desktop.addEventListener('change',apply);
+      apply();
+    })();
+  </script>
+  <script src="{{ url_for('static', filename='web-exports.js' , v='20260922-1') }}"></script>
   <style>
     .workspace-web-shell > main > .topbar{display:none}
     .workspace-web-shell .workspace-stage{height:calc(100vh - 43px)}

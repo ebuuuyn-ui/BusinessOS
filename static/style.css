@@ -1300,3 +1300,16 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 .order-delete-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
 .order-delete-actions .button{min-height:44px;justify-content:center;margin:0}
 @media(max-width:600px){.order-delete-panel{padding:20px}.order-delete-panel .order-delete-heading h2{font-size:19px}.order-delete-actions .button{flex:1 1 140px}.order-delete-heading{align-items:flex-start}}
+
+/* Desktop navigation toggle stays reachable while the sidebar is hidden. */
+.sidebar-toggle{display:none}
+@media(min-width:901px){
+  body:not(.workspace-embedded)>.sidebar-toggle{display:grid;place-items:center;position:fixed;top:5px;left:260px;z-index:12;width:34px;height:34px;min-height:34px;padding:0;border:1px solid #dce3ed;border-radius:9px;background:#fff;color:#2864bc;font-size:19px;line-height:1;box-shadow:0 2px 7px #1720330d}
+  body.sidebar-collapsed>.sidebar{transform:translateX(-100%);visibility:hidden}
+  body.sidebar-collapsed>main{margin-left:0}
+  body.sidebar-collapsed>.sidebar-toggle{left:8px}
+  body:not(.workspace-embedded) .workspace-tabs{padding-left:50px}
+  body:not(.workspace-web-shell):not(.workspace-embedded)>main>.topbar{padding-left:50px}
+  .sidebar-toggle:focus-visible{outline:3px solid #8ebcff;outline-offset:2px}
+}
+@media print{.sidebar-toggle{display:none!important}}
