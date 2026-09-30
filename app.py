@@ -3580,7 +3580,7 @@ def create_app(test_config=None):
                         flash("Ürün kartı oluşturuldu.", "success")
                         return redirect(url_for("products"))
         query = request.args.get("q", "").strip()
-        records = Product.query
+        records = Product.query.filter_by(active=True)
         if query:
             if db.engine.dialect.name == "sqlite":
                 pattern = f"%{normalize_search_text(query)}%"

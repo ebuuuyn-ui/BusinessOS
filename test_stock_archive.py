@@ -40,6 +40,14 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(self.client.post('/yonetim/stok-arsivle',data={'codes':codes}).status_code,400)
         self.assertTrue(self.old.active)
         self.assertEqual(self.client.post('/yonetim/stok-arsivle',data={'action':'apply','plan':'invalid'}).status_code,400)
+    def test_stock_list_hides_inactive_but_history_still_accessible(self):
+        r=self.client.get("/urunler")
+        self.assertNotIn(b"Inactive",r.data)
+        token=self.preview();self.client.post("/yonetim/stok-arsivle",data={"action":"apply","plan":token})
+        r=self.client.get("/urunler?stock_product_id="+str(self.old.id))
+        self.assertEqual(r.status_code,200)
+        self.assertEqual(m.StockMovement.query.filter_by(product_id=self.old.id).count(),1)
+
     def test_owner_only(self):
         m.app.config['WEB_AUTH_ENABLED']=True
         try:self.assertEqual(self.client.get('/yonetim/stok-arsivle').status_code,403)
