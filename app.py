@@ -2058,6 +2058,8 @@ def create_app(test_config=None):
     register_supplier_sheets(app, db, Order, OrderHistory)
     from supplier_chat import register_supplier_chat
     register_supplier_chat(app, db, Order, OrderHistory)
+    from supplier_trello import register_supplier_trello
+    register_supplier_trello(app, db, Order)
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
 

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block heading %}Trello Bağlantısı{% endblock %}{% block content %}
+<section class="panel form-panel"><h2>BusinessOS → Sipariş Takip Panosu</h2><p>Hedef: <a href="{{ board_url }}" target="_blank" rel="noopener">Sipariş Takip Panosu</a> · Sipariş listesi</p>
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+{% if connected %}<p class="flash success">Bağlantı kaydedildi. ABİKA satın alma siparişindeki Trello'ya Aktar düğmesini kullanabilirsiniz.</p>{% endif %}
+<details {% if not connected %}open{% endif %}><summary>Bağlantı bilgileri</summary><p>Kaydederken yalnızca pano erişimi kontrol edilir. Kart oluşturulmaz. Bilgiler şifrelenerek saklanır.</p><form method="post" autocomplete="off"><label>API anahtarı<input type="password" name="key" required autocomplete="new-password"></label><label>Belirteç (Token)<input type="password" name="token" required autocomplete="new-password"></label><button class="button primary" type="submit">Bağlantıyı Doğrula ve Kaydet</button></form></details></section>{% endblock %}
