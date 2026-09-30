@@ -6,7 +6,7 @@ import base64
 from datetime import datetime, timezone
 import requests
 from cryptography.fernet import Fernet
-from flask import abort, g, request, render_template, redirect, url_for, flash
+from flask import abort, g, request, render_template, redirect, url_for, flash, jsonify
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String, select, insert, update, inspect
 from sqlalchemy.exc import IntegrityError
@@ -98,6 +98,7 @@ def register_supplier_trello(app, db, Order):
         signer=URLSafeTimedSerializer(app.secret_key,salt='trello-export')
         identity={'order':order.id,'hash':fingerprint(rows),'actor':g.web_username}
         error=None; cfg={}
+        batch_request = request.method == 'POST' and request.headers.get('Accept') == 'application/json'
         try:
             cfg=config()
             if request.method=='POST':
@@ -130,12 +131,16 @@ def register_supplier_trello(app, db, Order):
                     card=client.call('POST','cards',idList=cfg['list_id'],**data)
                     with db.engine.begin() as c: c.execute(update(deliveries).where(deliveries.c.key==row[0]).values(card_id=card['id'],card_url=card['url']))
                     sent+=1
-                flash(f'{sent} yeni ürün kartı oluşturuldu. Kalan kalemler varsa devam edebilirsiniz.','success')
-                return redirect(url_for('trello_export',order_id=order.id))
+                if not batch_request:
+                    flash(f'{sent} yeni ürün kartı oluşturuldu. Kalan kalemler varsa devam edebilirsiniz.','success')
+                    return redirect(url_for('trello_export',order_id=order.id))
         except TrelloError as exc: error=str(exc)
         states={}
         if ready():
             with db.engine.connect() as c: states={x['key']:dict(x) for x in c.execute(select(deliveries).where(deliveries.c.key.in_([r[0] for r in rows]))).mappings()}
+        remaining = sum(not states.get(r[0],{}).get('card_id') for r in rows)
+        if batch_request:
+            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error), (409 if error else 200)
         return render_template('trello_export.html',order=order,rows=rows,states=states,connected=bool(cfg),error=error,
             confirm=signer.dumps(identity),board_url=BOARD_URL,payload=payload,
-            remaining=sum(not states.get(r[0],{}).get('card_id') for r in rows))
+            remaining=remaining)

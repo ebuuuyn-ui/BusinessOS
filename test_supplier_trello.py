@@ -40,3 +40,21 @@ class TrelloTests(SupplierRouteTests):
         self.mock.cards.return_value=[{'id':'remote','url':'https://trello.com/c/remote','desc':t.payload(row)['desc']}]
         self.post({'confirm':token});self.mock.call.assert_called_once()
         self.assertIn('https://trello.com/c/remote',self.client.get(self.path,base_url=BASE).text)
+    def test_ten_lines_complete_in_four_batches_without_duplicates(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        for i in range(9): order.items.append(m.OrderItem(product_name=f'Ürün {i}',quantity=1,unit_price=12345))
+        m.db.session.commit()
+        self.mock.call.side_effect=[{'id':f'c{i}','url':f'https://trello.com/c/c{i}'} for i in range(10)]
+        token=self.token(); counts=[]
+        for _ in range(4):
+            r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+            self.assertEqual(r.status_code,200);counts.append(r.json['completed'])
+        self.assertEqual(counts,[3,6,9,10]);self.assertEqual(r.json['remaining'],0)
+        self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(self.mock.call.call_count,10)
+    def test_batch_error_returns_partial_progress(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        order.items.append(m.OrderItem(product_name='Second',quantity=1,unit_price=99));m.db.session.commit()
+        self.mock.call.side_effect=[{'id':'first','url':'https://trello.com/c/first'},t.TrelloError('Bağlantı kesildi')]
+        r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':self.token()})
+        self.assertEqual(r.status_code,409);self.assertEqual(r.json['completed'],1);self.assertEqual(r.json['remaining'],1)
