@@ -1,5 +1,6 @@
 """Explicit price-free ABIKA line export to a fixed Trello board."""
 import json
+import re
 import hashlib
 import base64
 from datetime import datetime, timezone
@@ -30,7 +31,9 @@ def payload(row):
             f'İstenen teslim tarihi: {row[3] or "Belirtilmedi"}']
     desc += [f'{label}: {row[i]}' for i,label in labels if row[i]]
     desc += [f'BOS kayıt: {row[0]}']
-    return {'name':f'{row[1]} · {row[13]} · {row[18]} {row[19]}', 'desc':'\n\n'.join(desc)}
+    match = re.fullmatch(r'SA-\d{4}-(\d+)', str(row[1]))
+    number = str(int(match.group(1))) if match else row[1]
+    return {'name':f'{number} · {row[13]} · {row[18]} {row[19]}', 'desc':'\n\n'.join(desc)}
 
 class Client:
     def __init__(self, config): self.config=config
