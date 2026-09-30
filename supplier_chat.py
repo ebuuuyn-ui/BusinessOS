@@ -19,7 +19,19 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from sqlalchemy import (MetaData, Table, Column, Integer, String, Text, LargeBinary,
                         DateTime, select, insert, update, inspect, text)
-from supplier_sheets import allowed_order
+from supplier_sheets import allowed_order, order_rows, SheetsClient, SheetExportError
+
+TRACKER_URL = 'https://www.appsheet.com/start/408f66de-4d62-4f86-9465-ad905b4a6dcc'
+
+
+def tracker_link(order, created_at):
+    """Open the source line; importing into production tracking remains explicit."""
+    first = min(order.items, key=lambda item: item.id)
+    stamp = created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None else created_at
+    return TRACKER_URL + '#' + urlencode({
+        'view': 'Sayfa1_Detail', 'row': f'bos:order:{order.id}:item:{first.id}',
+        'at': int(stamp.timestamp()),
+    })
 
 SPACE = 'spaces/AAQArMh8YcU'
 SPACE_TITLE = 'Abika Mobilya Toptan Satış'
@@ -45,12 +57,16 @@ class ChatError(Exception):
 
 def order_fingerprint(order):
     fields = ('id','order_no','order_type','customer_id','order_date','delivery_date','status',
-              'delivery_city','shipment_contact','shipment_phone','shipment_address','shipment_note','notes','payment_method')
+              'delivery_city','shipment_contact','shipment_phone','shipment_address','shipment_note','notes','payment_method','customer_company')
     item_fields = ('id','product_id','product_name','variant','detail_2','detail_3','quantity','unit',
-                   'unit_price','discount_rate','vat_rate','vat_included','note')
+                   'unit_price','discount_rate','vat_rate','vat_included','note','description')
     data = {'order':{k:str(getattr(order,k,None)) for k in fields},
             'customer':order.customer.name,
             'items':[{k:str(getattr(i,k,None)) for k in item_fields} for i in sorted(order.items,key=lambda i:i.id)]}
+    # Version the delivery identity: old PDF-only messages must not be retried
+    # with a different body under the same Google request ID.
+    data['format'] = 'pdf-with-tracker-v1'
+    data['tracker_rows'] = [row[:-2] for row in order_rows(order, '')]
     return hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 
@@ -199,6 +215,11 @@ def register_supplier_chat(app, db, Order, OrderHistory):
                     delivery=conn.execute(select(delivery_table).where(delivery_table.c.key==key)).mappings().first()
                     if not delivery: raise ChatError('Önizlemeyi yeniden açın.')
                     if not delivery['message_name']:
+                        # Publish only the existing price-free whitelist before
+                        # sending a link. Use the same lock as manual sheet export.
+                        if db.engine.dialect.name=='postgresql':
+                            conn.execute(text('SELECT pg_advisory_xact_lock(72109342)'))
+                        SheetsClient().export(order_rows(order, g.web_username, delivery['created_at']))
                         service=chat_service(config)
                         attachment=json.loads(delivery['attachment']) if delivery['attachment'] else None
                         if not attachment:
@@ -214,13 +235,16 @@ def register_supplier_chat(app, db, Order, OrderHistory):
                     if not delivery['message_name']:
                         service=chat_service(config)
                         attachment=json.loads(delivery['attachment'])
-                        result=service.spaces().messages().create(parent=SPACE,requestId=delivery['request_id'],messageId='client-bos-'+key[:48],body={'text':order.order_no+' · Satın alma siparişi','attachment':[attachment]}).execute()
+                        message = order.order_no + ' · Satın alma siparişi\nTakip Panosuna Al: ' + tracker_link(order, delivery['created_at'])
+                        result=service.spaces().messages().create(parent=SPACE,requestId=delivery['request_id'],messageId='client-bos-'+key[:48],body={'text':message,'attachment':[attachment]}).execute()
                         name=result.get('name','')
                         if not name.startswith(SPACE+'/messages/'): raise ChatError('Gönderim sonucu doğrulanamadı.')
                         conn.execute(update(delivery_table).where(delivery_table.c.key==key).values(message_name=name,sent_by=g.web_username,sent_at=datetime.now(timezone.utc)))
                 # Delivery table is the authoritative durable audit; business data is unchanged.
                 flash('PDF Google Chat sohbetine gönderildi. Aynı sipariş içeriği yeniden gönderilmez.','success')
                 return redirect(url_for('supplier_chat_preview',order_id=order.id))
+            except SheetExportError:
+                error='Sipariş takip tablosuna aktarım doğrulanamadı; Chat mesajı gönderilmedi. Tedarikçi tablosu bağlantısını kontrol edip tekrar deneyin.'
             except ChatError as exc: error=str(exc)
             except Exception: error='Gönderim tamamlanamadı veya sonucu alınamadı. Yeniden denemede aynı gönderim kimliği kullanılır.'
         with db.engine.begin() as conn:

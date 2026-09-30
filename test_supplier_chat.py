@@ -19,6 +19,9 @@ class ChatTests(SupplierRouteTests):
         self.service=MagicMock()
         self.service.media().upload().execute.return_value={'attachmentDataRef':{'resourceName':'test-attachment'}}
         self.service.spaces().messages().create().execute.return_value={'name':c.SPACE+'/messages/test'}
+        sheet_patch = patch('supplier_chat.SheetsClient')
+        self.sheets = sheet_patch.start()
+        self.addCleanup(sheet_patch.stop)
 
     # Override inherited tests which are specific to Sheets.
     def test_preview_renders_without_financial_values_or_google_calls(self):
@@ -29,6 +32,7 @@ class ChatTests(SupplierRouteTests):
         self.assertIn('fiyatlar, KDV ve tutarlar',r.text)
         self.assertNotIn('secret-test',r.text)
         service.assert_not_called()
+        self.sheets.assert_not_called()
         with m.db.engine.connect() as conn:
             row=conn.execute(select(c.delivery_table)).mappings().one()
             self.assertTrue(row['pdf'].startswith(b'%PDF-'))
@@ -61,9 +65,28 @@ class ChatTests(SupplierRouteTests):
         create=self.service.spaces().messages().create
         create.assert_called_once()
         self.assertEqual(create.call_args.kwargs['parent'],c.SPACE)
+        self.assertIn(c.TRACKER_URL, create.call_args.kwargs['body']['text'])
+        self.sheets.return_value.export.assert_called_once()
         with m.db.engine.connect() as conn:
             row=conn.execute(select(c.delivery_table)).mappings().one()
             self.assertTrue(row['message_name']);self.assertTrue(row['sent_by'])
+
+    def test_sheet_failure_prevents_pdf_upload_and_message(self):
+        token = self.token()
+        self.sheets.return_value.export.side_effect = c.SheetExportError('test')
+        with patch('supplier_chat.chat_service') as service:
+            result = self.post({'confirm': token, 'ack': 'yes'})
+        self.assertIn('Chat mesajı gönderilmedi', result.text)
+        service.assert_not_called()
+
+    def test_tracking_description_change_invalidates_preview(self):
+        token = self.token()
+        order = m.db.session.get(m.Order, self.order_id)
+        order.items[0].description = 'Yeni özel istek'
+        m.db.session.commit()
+        result = self.post({'confirm': token, 'ack': 'yes'})
+        self.assertIn('Sipariş değişmiş', result.text)
+        self.sheets.assert_not_called()
 
     def test_retry_keeps_same_uploaded_attachment_and_request(self):
         token=self.token()
