@@ -102,6 +102,8 @@ def make_plan(products,reasons,records,source_codes,deactivate):
 
 
 def register_stock_excel_import(app,db,Product,StoredFile):
+    from stock_archive import register_stock_archive
+    register_stock_archive(app, db, Product, StoredFile)
     signer=URLSafeTimedSerializer(app.secret_key,salt='stock-excel-v1')
 
     @app.route('/urunler/excel-guncelle',methods=['GET','POST'])

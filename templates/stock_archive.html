@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Stok Kartlarını Pasife Al · Business OS{% endblock %}
+{% block heading %}Stok Kartlarını Pasife Al{% endblock %}
+{% block subheading %}Faturalar, siparişler ve stok hareketleri korunur.{% endblock %}
+{% block content %}
+<div class="panel" style="padding:24px">
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+{% if result %}
+<h2>İşlem tamamlandı</h2><p><strong>{{ result.changes|length }} stok kartı pasife alındı.</strong></p>
+<p>Yalnızca aktiflik durumu değiştirildi. Ürün adları, kodları, fiyatları ve geçmiş kayıtları korunur.</p>
+<a class="button" href="{{ url_for('stock_archive_result',key=key,download='backup') }}">İşlem yedeğini indir</a>
+<a class="button" href="{{ url_for('products') }}">Stoklara dön</a>
+{% elif plan %}
+<h2>İşlem önizlemesi</h2><p>{{ code_count }} kod korunacak. <strong>{{ plan.changes|length }} aktif stok kartı pasife alınacak.</strong></p>
+<p>Bu kartlar yeni ürün seçimlerinde ve aktif stok listesinde görünmez. Eski siparişler, faturalar ve stok hareketleri silinmez. Fiyatlar değişmez. İşlem öncesi ve sonrası stok kartları yedeklenir.</p>
+<form method="post"><input type="hidden" name="action" value="apply"><input type="hidden" name="plan" value="{{ token }}"><button class="button primary">Listelenen kartları pasife al</button></form>
+{% else %}
+<h2>Korunacak stok kodları</h2><form method="post"><label>Her satıra bir stok kodu<textarea name="codes" rows="12" required style="display:block;width:100%;max-width:650px"></textarea></label><p>Yazdığınız kodlar dışındaki aktif kartlar listelenecek. Önizleme kayıtları değiştirmez.</p><button class="button primary">Önizle</button></form>
+{% endif %}
+</div>
+{% set changes=result.changes if result else plan.changes if plan else [] %}
+{% if changes %}<div class="panel table-wrap"><table><thead><tr><th>Stok Kodu</th><th>Stok Adı</th></tr></thead><tbody>{% for p in changes %}<tr><td>{{ p.code or 'Kodsuz' }}</td><td>{{ p.name }}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
+{% endblock %}
