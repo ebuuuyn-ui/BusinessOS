@@ -42,6 +42,10 @@ invoiceCustomerSearch.addEventListener('keydown',event=>{if(event.key==='Enter')
 document.addEventListener('click',event=>{if(!invoiceCustomerBox.contains(event.target))closeInvoiceCustomerResults()});
 document.getElementById('invoice-form').addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.tagName!=='TEXTAREA')event.preventDefault()});
 </script>
-{% if saved %}<script>if(window.top!==window)window.parent.postMessage({type:'businessos-workspace-invoice-saved'},window.location.origin)</script>{% endif %}
+{% if saved %}<script>
+window.addEventListener('DOMContentLoaded',()=>{
+  if(window.top!==window) window.parent.postMessage({type:'businessos-workspace-invoice-saved'},window.location.origin);
+},{once:true});
+</script>{% endif %}
 <script src="{{ url_for('static', filename='invoice-dates.js', v='20260923-1') }}"></script>
 {% endblock %}

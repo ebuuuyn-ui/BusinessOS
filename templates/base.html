@@ -2,6 +2,17 @@
 <html lang="tr">
 <head>
   <meta charset="utf-8">
+  <script>
+    // Redirects inside a work tab must never paint a second application shell.
+    if(window.top!==window) document.documentElement.classList.add('workspace-frame-document');
+  </script>
+  <style>
+    html.workspace-frame-document body>.sidebar,
+    html.workspace-frame-document body>.sidebar-toggle,
+    html.workspace-frame-document #workspace-tabs,
+    html.workspace-frame-document #workspace-stage{display:none!important}
+    html.workspace-frame-document body>main{margin-left:0!important;min-height:0}
+  </style>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Business OS{% endblock %}</title>
 {% include '_favicon.html' %}
