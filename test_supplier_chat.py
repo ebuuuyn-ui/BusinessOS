@@ -65,7 +65,9 @@ class ChatTests(SupplierRouteTests):
         create=self.service.spaces().messages().create
         create.assert_called_once()
         self.assertEqual(create.call_args.kwargs['parent'],c.SPACE)
-        self.assertIn(c.TRACKER_URL, create.call_args.kwargs['body']['text'])
+        self.assertNotIn(c.TRACKER_URL, create.call_args.kwargs['body']['text'])
+        self.assertNotIn('Takip Panosuna Al', create.call_args.kwargs['body']['text'])
+        self.assertEqual(len(create.call_args.kwargs['body']['attachment']),1)
         self.sheets.return_value.export.assert_called_once()
         with m.db.engine.connect() as conn:
             row=conn.execute(select(c.delivery_table)).mappings().one()

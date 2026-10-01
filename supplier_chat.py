@@ -235,7 +235,8 @@ def register_supplier_chat(app, db, Order, OrderHistory):
                     if not delivery['message_name']:
                         service=chat_service(config)
                         attachment=json.loads(delivery['attachment'])
-                        message = order.order_no + ' · Satın alma siparişi\nTakip Panosuna Al: ' + tracker_link(order, delivery['created_at'])
+                        # AppSheet sharing is paused until the tracking app is ready.
+                        message = order.order_no + ' · Satın alma siparişi'
                         result=service.spaces().messages().create(parent=SPACE,requestId=delivery['request_id'],messageId='client-bos-'+key[:48],body={'text':message,'attachment':[attachment]}).execute()
                         name=result.get('name','')
                         if not name.startswith(SPACE+'/messages/'): raise ChatError('Gönderim sonucu doğrulanamadı.')

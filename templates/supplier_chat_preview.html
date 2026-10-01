@@ -8,7 +8,7 @@
 {% else %}
 <p><b>{{ delivery.filename }}</b> dosyası bekir@abikamobilya.com hesabından bu sohbete gönderilecek.</p>
 <p>Mevcut sipariş PDF'si kullanılır: ürünler, adetler, teslim ve sevkiyat bilgileriyle birlikte fiyatlar, KDV ve tutarlar da bulunur.</p>
-<p>Siparişin fiyat içermeyen ürün, adet, ayrıntı, teslim ve sevkiyat bilgileri tedarikçi tablosunda güncellenir. Mesaja AppSheet'te açılan “Takip Panosuna Al” bağlantısı eklenir. Üretim panosuna alma işlemini Merve ayrıca yapar.</p>
+<p>Siparişin fiyat içermeyen ürün, adet, ayrıntı, teslim ve sevkiyat bilgileri tedarikçi tablosunda güncellenir. Mesaja yalnızca sipariş başlığı ve PDF formu eklenir. AppSheet bağlantısı şimdilik gönderilmez.</p>
 <a class="button" href="{{ url_for('supplier_chat_pdf',order_id=order.id,key=delivery.key) }}" data-native-download data-export-name="{{ delivery.filename }}">Gönderilecek PDF'yi Aç / İndir</a>
 {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
 {% if delivery.message_name %}<p class="flash success">Bu sipariş içeriği Google Chat'e gönderildi. Gönderen: {{ delivery.sent_by }}.</p>
