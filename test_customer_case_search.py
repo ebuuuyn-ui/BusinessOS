@@ -7,6 +7,25 @@ class CustomerCaseSearchTests(unittest.TestCase):
     setUp=SupplierRouteTests.setUp
     tearDown=SupplierRouteTests.tearDown
 
+    def test_new_customer_tax_fields_persist_and_display(self):
+        page=self.client.get('/musteriler',base_url=BASE)
+        self.assertIn('name="tax_office"',page.text)
+        self.assertIn('name="tax_number"',page.text)
+        result=self.client.post('/musteriler',base_url=BASE,headers={'Origin':BASE},
+            data={'name':'Vergi Alanı Testi','tax_office':'  Ümraniye  ','tax_number':'012 345 6789'})
+        self.assertEqual(result.status_code,302)
+        customer=m.Customer.query.filter_by(name='Vergi Alanı Testi').one()
+        self.assertEqual(customer.tax_office,'Ümraniye')
+        self.assertEqual(customer.tax_number,'0123456789')
+        for path in (f'/musteriler/{customer.id}',f'/musteriler/{customer.id}/duzenle'):
+            page=self.client.get(path,base_url=BASE)
+            self.assertEqual(page.status_code,200)
+            self.assertIn('0123456789',page.text)
+            self.assertIn('Ümraniye',page.text)
+        result=self.client.post('/musteriler',base_url=BASE,headers={'Origin':BASE},data={'name':'Vergisiz Test'})
+        self.assertEqual(result.status_code,302)
+        self.assertFalse(m.Customer.query.filter_by(name='Vergisiz Test').one().tax_number)
+
     def test_turkish_names_in_both_database_expressions(self):
         names=['YANILMAZ MOBİLYA', 'İŞIK ÇÖZÜM', 'ÖZGÜR ŞEN', 'Firma %50']
         for name in names: m.db.session.add(m.Customer(name=name))

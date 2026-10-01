@@ -3128,7 +3128,7 @@ def create_app(test_config=None):
             if not name:
                 flash("Müşteri adı zorunludur.", "error")
             else:
-                db.session.add(Customer(name=name, code=request.form.get("code", "").strip() or None, contact_name=request.form.get("contact_name"), phone=request.form.get("phone"), mobile=request.form.get("mobile"), email=request.form.get("email"), city=request.form.get("city"), address=request.form.get("address"), notes=request.form.get("notes")))
+                db.session.add(Customer(name=name, code=request.form.get("code", "").strip() or None, contact_name=request.form.get("contact_name"), phone=request.form.get("phone"), mobile=request.form.get("mobile"), email=request.form.get("email"), city=request.form.get("city"), address=request.form.get("address"), notes=request.form.get("notes"), tax_office=request.form.get("tax_office", "").strip()[:120], tax_number=re.sub(r"\D", "", request.form.get("tax_number", ""))[:20]))
                 db.session.commit()
                 flash("Müşteri kartı oluşturuldu.", "success")
                 return redirect(url_for("customers"))
