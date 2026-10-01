@@ -33,7 +33,7 @@ class CustomerCaseSearchTests(unittest.TestCase):
         connection=m.db.session.connection().connection.driver_connection
         connection.create_function('translate',3,lambda value,a,b: value.translate(str.maketrans(a,b)) if value is not None else None)
         cases={'yanılmaz':'YANILMAZ MOBİLYA','yanilmaz':'YANILMAZ MOBİLYA','YANILMAZ':'YANILMAZ MOBİLYA',
-               'ışık çözüm':'İŞIK ÇÖZÜM','isik cozum':'İŞIK ÇÖZÜM','özgür şen':'ÖZGÜR ŞEN','ozgur sen':'ÖZGÜR ŞEN','%50':'Firma %50'}
+               'ışık çözüm':'İŞIK ÇÖZÜM','isik cozum':'İŞIK ÇÖZÜM','özgür şen':'ÖZGÜR ŞEN','ozgur sen':'ÖZGÜR ŞEN','%50':'Firma %50','yan mob':'YANILMAZ MOBİLYA','  YAN   mob  ':'YANILMAZ MOBİLYA','YANI':'YANILMAZ MOBİLYA'}
         for dialect in ['sqlite','postgresql']:
             for query,expected in cases.items():
                 with self.subTest(dialect=dialect,query=query):

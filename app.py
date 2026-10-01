@@ -88,14 +88,17 @@ def apply_customer_text_filter(records, query, dialect_name=None):
     if not query:
         return records
     dialect_name = dialect_name or db.engine.dialect.name
-    pattern = "%" + normalize_search_text(query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    terms = normalize_search_text(query).split()
     columns = (Customer.name, Customer.code, Customer.contact_name, Customer.phone,
                Customer.mobile, Customer.email, Customer.city)
     def normalized(column):
         if dialect_name == "sqlite":
             return func.normalize_tr(column)
         return func.lower(func.translate(column, "IİıÇçĞğÖöŞşÜü", "iiiccggoossuu"))
-    return records.filter(db.or_(*(normalized(column).like(pattern, escape="\\") for column in columns)))
+    for term in terms:
+        pattern = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        records = records.filter(db.or_(*(normalized(column).like(pattern, escape="\\") for column in columns)))
+    return records
 
 
 def selected_order_statuses(args):
