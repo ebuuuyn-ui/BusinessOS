@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% block heading %}Trello Hesabım{% endblock %}{% block content %}
+<section class="panel form-panel">
+<h2>{{ g.web_username }} için Trello bağlantısı</h2>
+<p>Yeni sipariş kartları burada bağladığınız Trello hesabı adına oluşturulur. Diğer BOS kullanıcılarının bağlantısı değişmez.</p>
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+{% if connected %}<p class="flash success">Bağlı hesap: {% if member_name %}{{ member_name }} (@{{ member_username }}){% else %}Mevcut yönetici bağlantısı{% endif %}</p>{% endif %}
+<p>Kendi adınıza gönderim yapmak için Trello’da kendi e-posta adresinizle kullandığınız hesap açık olmalı. Bu hesap <a href="{{ board_url }}" target="_blank" rel="noopener">sipariş takip panosunda</a> kart ekleme yetkisine sahip olmalı.</p>
+{% if authorize_url %}
+<ol><li>Aşağıdaki düğmeyle Trello’yu açın. İzin ekranında doğru hesabın göründüğünü kontrol edip bağlantıya izin verin.</li><li>Trello’nun verdiği belirteci kopyalayıp aşağıdaki alana yapıştırın. Sohbete göndermeyin.</li><li>Kaydettikten sonra yukarıda görünen hesap adını kontrol edin.</li></ol>
+<a class="button" href="{{ authorize_url }}" target="_blank" rel="noopener noreferrer">Kendi Trello Hesabımla Yetkilendir</a>
+<p>Trello’nun izin ekranındaki okuma/yazma yetkisi hesabınızın erişebildiği panoları kapsar. BOS sipariş aktarımı yalnızca belirlenmiş sipariş panosunu kullanır.</p>
+<form method="post" autocomplete="off"><label>Trello belirteci<input type="password" name="token" required maxlength="1024" autocomplete="new-password"></label><button type="submit" class="button primary">Hesabımı Doğrula ve Bağla</button></form>
+<p>Belirteç şifrelenerek saklanır. Bağlantı kontrolünde kart veya mesaj oluşturulmaz.</p>
+{% else %}<p>Yönetici önce Trello uygulama bağlantısını kurmalı.</p>{% endif %}
+</section>{% endblock %}

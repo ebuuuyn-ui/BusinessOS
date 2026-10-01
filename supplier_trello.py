@@ -3,10 +3,11 @@ import json
 import re
 import hashlib
 import base64
+from urllib.parse import urlencode
 from datetime import datetime, timezone
 import requests
 from cryptography.fernet import Fernet
-from flask import abort, g, request, render_template, redirect, url_for, flash, jsonify
+from flask import abort, g, request, render_template, redirect, url_for, flash, jsonify, session
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String, select, insert, update, inspect
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,8 @@ BOARD_URL = 'https://trello.com/b/zGa5gdZO'
 meta = MetaData()
 connection = Table('businessos_trello_connection', meta,
     Column('id', Integer, primary_key=True), Column('config', Text, nullable=False))
+personal_connections = Table('businessos_trello_personal_connection', meta,
+    Column('user_id', Integer, primary_key=True), Column('config', Text, nullable=False))
 deliveries = Table('businessos_trello_delivery', meta,
     Column('key', String(100), primary_key=True), Column('card_id', Text),
     Column('card_url', Text), Column('actor', Text), Column('created_at', Text))
@@ -101,6 +104,61 @@ def register_supplier_trello(app, db, Order):
         if not value: return {}
         try: return json.loads(cipher().decrypt(value.encode()))
         except Exception: raise TrelloError('Trello ayarları okunamadı; yönetici yeniden bağlamalı.') from None
+    def personal_id():
+        if getattr(g, 'web_is_owner', False): return 0
+        uid=session.get('web_user_id')
+        if not isinstance(uid,int) or uid<1: abort(403)
+        return uid
+    def personal_config():
+        uid=personal_id()
+        if inspect(db.engine).has_table(personal_connections.name):
+            with db.engine.connect() as c:
+                value=c.execute(select(personal_connections.c.config).where(personal_connections.c.user_id==uid)).scalar()
+            if value:
+                try: return json.loads(cipher().decrypt(value.encode()))
+                except Exception: raise TrelloError('Kişisel Trello bağlantınızı yeniden kurun.') from None
+        # Only the owner may retain the original owner connection.
+        return config() if uid==0 else {}
+
+    @app.route('/hesabim/trello',methods=['GET','POST'])
+    def trello_personal_settings():
+        if not app.config.get('WEB_AUTH_ENABLED'): abort(404)
+        uid=personal_id(); error=None; cfg={}; authorize_url=None
+        try:
+            shared=config()
+            cfg=personal_config()
+            if shared.get('key'):
+                authorize_url='https://trello.com/1/authorize?'+urlencode({
+                    'key':shared['key'],'name':'BusinessOS Kişisel Sipariş Aktarımı',
+                    'response_type':'token','scope':'read,write','expiration':'never'})
+            if request.method=='POST':
+                if not shared.get('key'): raise TrelloError('Yönetici önce Trello uygulama bağlantısını kurmalı.')
+                token=request.form.get('token','').strip()
+                if not token or len(token)>1024 or any(x in token for x in ('"','\r','\n')):
+                    raise TrelloError('Geçerli bir Trello belirteci girin.')
+                candidate={'key':shared['key'],'token':token}
+                client=Client(candidate)
+                member=client.call('GET','members/me',fields='id,username,fullName')
+                if not isinstance(member,dict) or not member.get('id') or not member.get('username'):
+                    raise TrelloError('Trello hesabı doğrulanamadı.')
+                lists=client.lists()
+                target=[x for x in lists if x['name'].strip() in ('Sipariş','🧾 Sipariş')]
+                if len(target)!=1: raise TrelloError('Hesabınız hedef panoya erişebilmeli ve panoda tek bir Sipariş listesi bulunmalı.')
+                candidate.update(list_id=target[0]['id'],list_name=target[0]['name'],
+                    member_id=member['id'],member_name=member.get('fullName') or member['username'],member_username=member['username'])
+                meta.create_all(db.engine)
+                encrypted=cipher().encrypt(json.dumps(candidate).encode()).decode()
+                with db.engine.begin() as c:
+                    if c.execute(select(personal_connections.c.user_id).where(personal_connections.c.user_id==uid)).scalar() is not None:
+                        c.execute(update(personal_connections).where(personal_connections.c.user_id==uid).values(config=encrypted))
+                    else: c.execute(insert(personal_connections).values(user_id=uid,config=encrypted))
+                flash('Kendi Trello bağlantınız kaydedildi. Yeni kartlar bu hesapla oluşturulacak.','success')
+                return redirect(url_for('trello_personal_settings'))
+        except TrelloError as exc: error=str(exc)
+        return render_template('trello_personal_settings.html',connected=bool(cfg),
+            member_name=cfg.get('member_name'),member_username=cfg.get('member_username'),
+            authorize_url=authorize_url,error=error,board_url=BOARD_URL)
+
     def owner():
         if not app.config.get('WEB_AUTH_ENABLED'): abort(404)
         if not getattr(g,'web_is_owner',False): abort(403)
@@ -144,12 +202,12 @@ def register_supplier_trello(app, db, Order):
         error=None; cfg={}
         batch_request = request.method == 'POST' and request.headers.get('Accept') == 'application/json'
         try:
-            cfg=config()
+            cfg=personal_config()
             if request.method=='POST':
                 try: signed=signer.loads(request.form.get('confirm',''),max_age=1800)
                 except BadSignature: raise TrelloError('Önizleme süresi doldu. Sayfayı yenileyin.') from None
                 if signed!=identity: raise TrelloError('Sipariş değişti; önizlemeyi yenileyin.')
-                if not cfg: raise TrelloError('Önce yönetici Trello bağlantısını kurmalı.')
+                if not cfg: raise TrelloError('Önce kendi Trello hesabınızı bağlayın.')
                 client=Client(cfg)
                 if not any(x['id']==cfg['list_id'] for x in client.lists()): raise TrelloError('Hedef liste kapalı veya bulunamadı.')
                 meta.create_all(db.engine)
@@ -211,4 +269,4 @@ def register_supplier_trello(app, db, Order):
             return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error, chat_done=chat_done), (409 if error else 200)
         return render_template('trello_export.html',order=order,rows=rows,states=states,connected=bool(cfg),error=error,
             confirm=signer.dumps(identity),board_url=BOARD_URL,payload=payload,
-            remaining=remaining,chat_done=chat_done)
+            remaining=remaining,chat_done=chat_done,trello_member_name=cfg.get("member_name"))

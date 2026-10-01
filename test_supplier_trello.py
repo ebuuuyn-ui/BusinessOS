@@ -25,6 +25,56 @@ class TrelloTests(SupplierRouteTests):
         self.p=patch('supplier_trello.Client',return_value=self.mock);self.p.start();self.addCleanup(self.p.stop)
         r=self.client.post('/yonetim/trello',base_url=BASE,headers={'Origin':BASE},data={'key':'testkey','token':'testtoken'})
         self.assertEqual(r.status_code,302);self.mock.reset_mock()
+    def staff_client(self, name):
+        password='test-password-1234'
+        r=self.client.post('/kullanicilar',base_url=BASE,headers={'Origin':BASE},
+            data={'username':name,'password':password,'confirmation':password})
+        self.assertEqual(r.status_code,302)
+        client=self.app.test_client()
+        r=client.post('/giris',base_url=BASE,headers={'Origin':BASE},data={'username':name,'password':password})
+        self.assertEqual(r.status_code,302)
+        return client
+
+    def test_unconnected_staff_never_uses_owner_token(self):
+        staff=self.staff_client('ahmet')
+        page=staff.get(self.path,base_url=BASE)
+        self.assertIn('Kendi Trello Hesabımı Bağla',page.text)
+        token=t.URLSafeTimedSerializer(self.app.secret_key,salt='trello-export').dumps({'order':self.order_id,'hash':t.fingerprint(t.order_rows(m.db.session.get(m.Order,self.order_id),'ahmet')),'actor':'ahmet'})
+        self.mock.reset_mock()
+        result=staff.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(result.status_code,409)
+        self.mock.call.assert_not_called()
+        self.mock.attach_form.assert_not_called()
+
+    def test_personal_connection_is_private_and_used_for_export(self):
+        staff=self.staff_client('ahmet')
+        other=self.staff_client('ayse')
+        self.mock.call.return_value={'id':'ahmet-id','username':'ahmet','fullName':'Ahmet Test'}
+        r=staff.post('/hesabim/trello',base_url=BASE,headers={'Origin':BASE},data={'token':'ahmet-secret','user_id':'0'})
+        self.assertEqual(r.status_code,302)
+        with m.db.engine.connect() as c:
+            stored=c.execute(select(t.personal_connections.c.config)).scalar_one()
+        self.assertNotIn('ahmet-secret',stored)
+        page=staff.get('/hesabim/trello',base_url=BASE).text
+        self.assertIn('Ahmet Test',page);self.assertNotIn('ahmet-secret',page)
+        self.assertNotIn('Ahmet Test',other.get('/hesabim/trello',base_url=BASE).text)
+        self.assertIn('Kendi Trello Hesabımı Bağla',other.get(self.path,base_url=BASE).text)
+        token=re.search(r'name="confirm" value="([^"]+)"',staff.get(self.path,base_url=BASE).text)[1]
+        self.mock.call.return_value={'id':'new-card','url':'https://trello.com/c/new-card'}
+        with patch('supplier_trello.Client',return_value=self.mock) as factory:
+            result=staff.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+            self.assertEqual(result.status_code,200)
+            self.assertEqual(factory.call_args.args[0]['token'],'ahmet-secret')
+        self.assertEqual(other.get('/yonetim/trello',base_url=BASE).status_code,403)
+
+    def test_invalid_personal_token_not_saved(self):
+        staff=self.staff_client('ahmet')
+        self.mock.call.side_effect=t.TrelloError('Geçersiz bağlantı')
+        r=staff.post('/hesabim/trello',base_url=BASE,headers={'Origin':BASE},data={'token':'bad-secret'})
+        self.assertIn('Geçersiz bağlantı',r.text)
+        with m.db.engine.connect() as c: self.assertEqual(c.execute(select(t.personal_connections)).all(),[])
+        self.assertEqual(self.app.test_client().get('/hesabim/trello',base_url=BASE).status_code,302)
+
     def token(self):
         return re.search(r'name="confirm" value="([^"]+)"',self.client.get(self.path,base_url=BASE).text)[1]
     def test_preview_renders_without_financial_values_or_google_calls(self):
