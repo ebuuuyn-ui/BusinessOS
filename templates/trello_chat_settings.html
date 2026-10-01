@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% block heading %}Trello → Google Chat{% endblock %}{% block content %}
+<section class="panel form-panel"><h2>Sipariş ve yorum bildirimleri</h2>
+<p>Trello aktarımı tamamlanınca sipariş formu mevcut ABİKA Google Chat sohbetine sipariş başına bir kez gönderilir.</p>
+<p>Yorum bildirimleri açıldığında, BOS’tan aktarılmış ürün kartlarına yazılan yeni yorumlar; yazan kişi, sipariş ve kart bağlantısıyla aynı sohbete gönderilir. Eski yorumlar gönderilmez.</p>
+{% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+{% if enabled %}<p class="flash success">Trello yorum bildirimleri etkin.</p>{% else %}<form method="post"><button class="button primary">Yorum Bildirimlerini Etkinleştir</button></form>{% endif %}
+{% if pending %}<p>{{ pending }} bildirim gönderim bekliyor.</p><form method="post"><input type="hidden" name="retry" value="yes"><button class="button">Bekleyen Bildirimleri Yeniden Dene</button></form>{% endif %}
+</section>{% endblock %}

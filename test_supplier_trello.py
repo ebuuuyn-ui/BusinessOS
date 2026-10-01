@@ -8,7 +8,17 @@ from sqlalchemy import select
 
 class TrelloTests(SupplierRouteTests):
     def setUp(self):
-        super().setUp(); self.path=f'/siparisler/{self.order_id}/trello'
+        super().setUp()
+        import supplier_chat as chat
+        chat.meta.create_all(m.db.engine)
+        with m.db.engine.begin() as c:
+            chat.write_config(self.app,c,{'refresh_token':'test','client_id':'test','client_secret':'test'})
+        self.chat_service=MagicMock()
+        self.chat_service.media().upload().execute.return_value={'attachmentDataRef':{'resourceName':'test-file'}}
+        self.chat_service.spaces().messages().create().execute.return_value={'name':chat.SPACE+'/messages/test'}
+        chat_patch=patch('supplier_chat.chat_service',return_value=self.chat_service)
+        chat_patch.start();self.addCleanup(chat_patch.stop)
+        self.path=f'/siparisler/{self.order_id}/trello'
         self.mock=MagicMock();self.mock.lists.return_value=[{'id':'list1','name':'🧾 Sipariş'}]
         self.mock.cards.return_value=[]
         self.mock.call.return_value={'id':'card1','url':'https://trello.com/c/example'}
@@ -85,3 +95,33 @@ class TrelloTests(SupplierRouteTests):
         with patch.object(client,'call',return_value=[{'name':'form.pdf'}]) as call:
             client.attach_form('card','form.pdf',b'%PDF-test')
             call.assert_called_once_with('GET','cards/card/attachments',fields='name')
+
+    def test_chat_only_after_all_cards_and_once(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        for i in range(3): order.items.append(m.OrderItem(product_name=f'Kalem {i}',quantity=1,unit_price=1))
+        m.db.session.commit()
+        self.mock.call.side_effect=[{'id':f'c{i}','url':f'https://trello.com/c/c{i}'} for i in range(4)]
+        self.chat_service.reset_mock()
+        token=self.token()
+        def send(): return self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(send().json['remaining'],1)
+        self.chat_service.spaces().messages().create.assert_not_called()
+        self.assertTrue(send().json['chat_done'])
+        self.assertTrue(send().json['chat_done'])
+        self.chat_service.spaces().messages().create.assert_called_once()
+        attachment_bytes=self.mock.attach_form.call_args.args[2]
+        upload=self.chat_service.media().upload.call_args.kwargs['media_body']
+        self.assertEqual(upload.getbytes(0,upload.size()),attachment_bytes)
+
+    def test_chat_failure_resumes_without_new_cards(self):
+        self.chat_service.spaces().messages().create().execute.side_effect=[TimeoutError(),{'name':'spaces/AAQArMh8YcU/messages/test'}]
+        self.chat_service.reset_mock()
+        token=self.token()
+        def send(): return self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        a=send();b=send()
+        self.assertEqual(a.status_code,409);self.assertEqual(a.json['remaining'],0)
+        self.assertEqual(b.status_code,200);self.assertTrue(b.json['chat_done'])
+        self.mock.call.assert_called_once()
+        self.chat_service.media().upload.assert_called_once()
+        calls=self.chat_service.spaces().messages().create.call_args_list
+        self.assertEqual(calls[0],calls[1])

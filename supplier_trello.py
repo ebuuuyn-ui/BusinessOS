@@ -106,6 +106,9 @@ def register_supplier_trello(app, db, Order):
         if not getattr(g,'web_is_owner',False): abort(403)
     app.jinja_env.globals['trello_allowed']=lambda o: app.config.get('WEB_AUTH_ENABLED') and allowed_order(o)
 
+    from trello_chat_bridge import register, send_order, order_sent, form_pdf
+    register(app, db, Order, config)
+
     @app.route('/yonetim/trello',methods=['GET','POST'])
     def trello_settings():
         owner()
@@ -151,7 +154,7 @@ def register_supplier_trello(app, db, Order):
                 if not any(x['id']==cfg['list_id'] for x in client.lists()): raise TrelloError('Hedef liste kapalı veya bulunamadı.')
                 meta.create_all(db.engine)
                 cards=client.cards()
-                pdf=order_form_pdf(rows)
+                pdf=form_pdf(db,order,rows)
                 filename=f'{order.order_no}-Siparis-Formu.pdf'
                 sent=0
                 for row in rows:
@@ -187,9 +190,6 @@ def register_supplier_trello(app, db, Order):
                         if done: c.execute(update(extras).where(extras.c.key==row[0]).values(card_id=card['id']))
                         else: c.execute(insert(extras).values(key=row[0],card_id=card['id']))
                     sent+=1
-                if not batch_request:
-                    flash(f'{sent} ürün kartının aktarımı tamamlandı. Kalan kalemler varsa devam edebilirsiniz.','success')
-                    return redirect(url_for('trello_export',order_id=order.id))
         except TrelloError as exc: error=str(exc)
         states={}
         if ready():
@@ -198,8 +198,17 @@ def register_supplier_trello(app, db, Order):
         if inspect(db.engine).has_table(extras.name):
             with db.engine.connect() as c: completed=dict(c.execute(select(extras.c.key,extras.c.card_id).where(extras.c.key.in_([r[0] for r in rows]))).all())
         remaining = sum(not states.get(r[0],{}).get('card_id') or completed.get(r[0])!=states[r[0]]['card_id'] for r in rows)
+        chat_done=order_sent(db,order)
+        if request.method=='POST' and not error and not remaining and not chat_done:
+            try:
+                send_order(app,db,order,rows)
+                chat_done=True
+            except Exception:
+                error='Trello kartları hazır, ancak Google Chat gönderimi tamamlanamadı. Tekrar deneyin; kartlar çoğaltılmaz.'
+        if request.method=='POST' and not batch_request and not error:
+            return redirect(url_for('trello_export',order_id=order.id))
         if batch_request:
-            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error), (409 if error else 200)
+            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error, chat_done=chat_done), (409 if error else 200)
         return render_template('trello_export.html',order=order,rows=rows,states=states,connected=bool(cfg),error=error,
             confirm=signer.dumps(identity),board_url=BOARD_URL,payload=payload,
-            remaining=remaining)
+            remaining=remaining,chat_done=chat_done)

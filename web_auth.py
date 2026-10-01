@@ -48,6 +48,9 @@ def install_web_auth(app, db=None):
                 setup_errors=configuration_errors,
             ), 503
         g.web_is_owner = False
+        # This route authenticates its secret callback and fetches canonical Trello events.
+        if request.endpoint == 'trello_chat_webhook' and request.method in ('HEAD','POST'):
+            return None
         if request.endpoint == 'web_login':
             return None
         # OAuth GET only displays a same-origin continuation form; it cannot exchange tokens.

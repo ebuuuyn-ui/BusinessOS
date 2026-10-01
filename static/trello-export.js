@@ -17,7 +17,8 @@
     const total = Number(form.dataset.total);
     window.addEventListener('beforeunload', warn);
     try {
-      while (completed < total) {
+      let chatDone = false;
+      while (completed < total || !chatDone) {
         status.textContent = `${completed} / ${total} kalem aktarıldı. Aktarım sürüyor; bu sekmeyi açık tutun.`;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 90000);
@@ -34,13 +35,14 @@
         const result = await response.json();
         progress.value = result.completed;
         if (!response.ok || result.error) throw new Error(result.error || 'Aktarım durduruldu. Sayfayı yenileyin.');
-        if (result.total !== total || result.completed <= completed) {
+        if (result.total !== total || (result.completed <= completed && !result.chat_done)) {
           throw new Error('Aktarım ilerlemedi. Sayfayı yenileyerek kalemleri kontrol edin.');
         }
+        chatDone = result.chat_done === true;
         completed = result.completed;
         form.dataset.completed = String(completed);
       }
-      status.textContent = `${total} / ${total} kalem aktarıldı. Tüm kartlar hazır.`;
+      status.textContent = `${total} / ${total} kalem aktarıldı. Tüm kartlar hazır; PDF Google Chat’e gönderildi.`;
       button.textContent = 'Aktarım tamamlandı';
       window.removeEventListener('beforeunload', warn);
       location.reload();
