@@ -111,3 +111,54 @@ class SoapTests(unittest.TestCase):
         with patch.object(c,'call',return_value=result):self.assertEqual(c.status('ABC'),'Draft')
 
 if __name__=='__main__':unittest.main()
+
+class OrderDraftTests(UyumTests):
+    def make_order(self):
+        o=m.db.session.get(m.Order,self.order_id);o.order_type='Satış';o.order_no='SS-TEST'
+        o.customer.tax_number='0123456789';o.customer.tax_office='Test';o.customer.city='İstanbul';o.customer.address='Test adres'
+        m.db.session.commit();self.path=f'/siparisler/{o.id}/uyumsoft';return o
+    def test_order_entry_offline_preview_no_bookkeeping(self):
+        from uyumsoft import month_after
+        o=self.make_order();self.assertEqual(month_after(date(2026,1,31)),date(2026,2,28))
+        r=self.client.get(f'/siparisler/{o.id}/faturaya-aktar',base_url=BASE)
+        self.assertTrue(r.location.endswith(self.path))
+        before=(m.Invoice.query.count(),m.StockMovement.query.count(),m.AccountTransaction.query.count())
+        with patch('uyumsoft.Client') as c:
+            page=self.client.get(self.path,base_url=BASE)
+            self.assertIn('Uyumsoft tarafından verilecek',page.text)
+            self.assertNotIn('name="invoice_no"',page.text)
+            r=self.post(self.path,{'action':'preview','district':'Ümraniye','invoice_date':'2026-10-02','due_date':'2026-11-02'})
+            self.assertIn('Aktarılacak taslağı kontrol edin',r.text);self.assertIn('disabled',r.text);c.assert_not_called()
+        self.assertEqual(before,(m.Invoice.query.count(),m.StockMovement.query.count(),m.AccountTransaction.query.count()))
+    def test_order_export_immutable_snapshot_and_no_invoice_number(self):
+        from uyumsoft import order_attempts
+        o=self.make_order();self.connect()
+        form={'action':'preview','district':'Ümraniye','invoice_date':'2026-10-02','due_date':'2026-11-02','buyer_address':'Düzeltilen adres','notes':'Özel fatura notu'}
+        r=self.post(self.path,form);token=re.search('name="preview" type="hidden" value="([^"]+)"',r.text)[1]
+        with patch('uyumsoft.Client') as client:
+            client.return_value.is_einvoice.return_value=False
+            client.return_value.save_draft.return_value={'number':'TEST2026000000010','scenario':'eArchive'}
+            form.update(action='send',preview=token,confirm='yes')
+            self.assertEqual(self.post(self.path,form).status_code,302)
+            self.post(self.path,form);self.assertEqual(client.return_value.save_draft.call_count,1)
+            sent=client.return_value.save_draft.call_args.args[0]
+            self.assertEqual(sent['reference'],'SS-TEST');self.assertEqual(sent['buyer']['address'],'Düzeltilen adres')
+        self.assertEqual(m.Invoice.query.count(),0);self.assertEqual(m.StockMovement.query.count(),0);self.assertEqual(m.AccountTransaction.query.count(),0)
+        self.assertEqual(o.customer.address,'Test adres')
+        with m.db.engine.connect() as c:self.assertEqual(c.execute(order_attempts.select()).mappings().one()['state'],'Draft')
+        page=self.client.get(self.path,base_url=BASE)
+        self.assertEqual(page.status_code,200);self.assertIn('TEST2026000000010',page.text)
+    def test_order_stale_preview_and_edit_preserve_values(self):
+        o=self.make_order();self.connect()
+        form={'action':'preview','district':'Ümraniye','invoice_date':'2026-10-02','due_date':'2026-11-02','notes':'Kalsın'}
+        r=self.post(self.path,form);token=re.search('name="preview" type="hidden" value="([^"]+)"',r.text)[1]
+        edited=self.post(self.path,dict(form,action='send',edit='yes',preview=token))
+        self.assertIn('Kalsın',edited.text);self.assertNotIn('name="preview"',edited.text)
+        o.items[0].quantity+=1;m.db.session.commit()
+        with patch('uyumsoft.Client') as c:
+            r=self.post(self.path,dict(form,action='send',preview=token,confirm='yes'));self.assertIn('değişti',r.text);c.assert_not_called()
+    def test_order_with_existing_invoice_blocked_and_purchase_forbidden(self):
+        o=self.make_order();i=self.make_invoice();i.order_id=o.id;m.db.session.commit();self.path=f'/siparisler/{o.id}/uyumsoft'
+        r=self.post(self.path,{'action':'preview','district':'Ümraniye'});self.assertIn('bağlı BOS faturası var',r.text)
+        o.order_type='Satın Alma';m.db.session.commit()
+        self.assertEqual(self.client.get(self.path,base_url=BASE).status_code,403)

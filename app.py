@@ -2064,7 +2064,7 @@ def create_app(test_config=None):
     from supplier_trello import register_supplier_trello
     register_supplier_trello(app, db, Order)
     from uyumsoft import register_uyumsoft
-    register_uyumsoft(app, db, Invoice)
+    register_uyumsoft(app, db, Invoice, Order)
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
 
@@ -2530,6 +2530,8 @@ def create_app(test_config=None):
     @app.get("/siparisler/<int:order_id>/faturaya-aktar")
     def order_to_invoice(order_id):
         order = db.get_or_404(Order, order_id)
+        if app.config.get('WEB_AUTH_ENABLED') and order.order_type == 'Satış':
+            return redirect(url_for('uyumsoft_order_preview', order_id=order.id))
         return redirect(url_for("invoices", entry=1, order_id=order.id))
 
     @app.get("/faturalar/<int:invoice_id>")

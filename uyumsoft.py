@@ -4,7 +4,10 @@ import hashlib
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
+from zoneinfo import ZoneInfo
+from calendar import monthrange
+from types import SimpleNamespace
 from flask import abort, g, request, render_template, redirect, url_for, flash
 from cryptography.fernet import Fernet, InvalidToken
 from itsdangerous import URLSafeTimedSerializer, BadSignature
@@ -18,6 +21,15 @@ attempts=Table('businessos_uyumsoft_draft',meta,Column('invoice_id',Integer,prim
     Column('uuid',String(36),unique=True,nullable=False),Column('state',String(40),nullable=False),
     Column('number',Text),Column('snapshot',Text,nullable=False),Column('account',String(64),nullable=False),
     Column('actor',Text),Column('created_at',Text),Column('message',Text))
+order_attempts=Table('businessos_uyumsoft_order_draft',meta,Column('order_id',Integer,primary_key=True),
+    Column('uuid',String(36),unique=True,nullable=False),Column('state',String(40),nullable=False),
+    Column('number',Text),Column('snapshot',Text,nullable=False),Column('account',String(64),nullable=False),
+    Column('actor',Text),Column('created_at',Text),Column('message',Text))
+
+def month_after(value):
+    year=value.year + (value.month==12);month=value.month % 12 + 1
+    return date(year,month,min(value.day,monthrange(year,month)[1]))
+
 DEFAULT_SELLER={'name':'Abika Mobilya-Ebubekir Uyan','tax_number':'8970492798','tax_office':'Ümraniye',
  'address':'ATATÜRK MAH. ÇAVUŞBAŞI CAD. ELÇİNGÜL AKTAR NO: 17 A İÇ KAPI NO: 1','district':'Ümraniye','city':'İstanbul'}
 STATUS={'sending':'Sonuç bekleniyor','unknown':'Sonuç belirsiz — yeniden gönderilmedi','Draft':'Uyumsoft’ta taslak',
@@ -54,7 +66,7 @@ def validate(data):
             raise UyumError('İlk sürüm %1, %10 ve %20 KDV’li normal satışlar içindir; istisna ve tevkifat desteklenmiyor.')
 
 
-def register_uyumsoft(app,db,Invoice):
+def register_uyumsoft(app,db,Invoice,Order):
     cipher=Fernet(base64.urlsafe_b64encode(hashlib.sha256(('bos-uyumsoft-v1:'+app.secret_key).encode()).digest()))
     signer=URLSafeTimedSerializer(app.secret_key,salt='uyumsoft-preview-v1')
     def config():
@@ -63,16 +75,18 @@ def register_uyumsoft(app,db,Invoice):
         if not value:return {}
         try:return json.loads(cipher.decrypt(value.encode()))
         except (InvalidToken,ValueError):raise UyumError('Uyumsoft bağlantı ayarları okunamadı; yönetici bağlantıyı yenilemeli.') from None
-    def record(invoice_id):
-        if not inspect(db.engine).has_table(attempts.name):return None
-        with db.engine.connect() as conn:return conn.execute(select(attempts).where(attempts.c.invoice_id==invoice_id)).mappings().first()
+    def record(source_id,table=attempts):
+        if not inspect(db.engine).has_table(table.name):return None
+        key=table.c.invoice_id if table is attempts else table.c.order_id
+        with db.engine.connect() as conn:return conn.execute(select(table).where(key==source_id)).mappings().first()
     def access():
         if not app.config.get('WEB_AUTH_ENABLED'):abort(404)
     def owner():
         access()
         if not getattr(g,'web_is_owner',False):abort(403)
-    def update_record(invoice_id,**values):
-        with db.engine.begin() as conn:conn.execute(update(attempts).where(attempts.c.invoice_id==invoice_id).values(**values))
+    def update_record(source_id,table=attempts,**values):
+        key=table.c.invoice_id if table is attempts else table.c.order_id
+        with db.engine.begin() as conn:conn.execute(update(table).where(key==source_id).values(**values))
 
     @app.before_request
     def protect_exported_invoice():
@@ -112,47 +126,84 @@ def register_uyumsoft(app,db,Invoice):
     def uyumsoft_preview(invoice_id):
         access();invoice=db.get_or_404(Invoice,invoice_id)
         if invoice.invoice_type!='Satış':abort(403)
-        cfg={};error=None;data=None;token='';current=record(invoice_id)
+        if invoice.order_id and record(invoice.order_id,order_attempts):
+            return redirect(url_for('uyumsoft_order_preview',order_id=invoice.order_id))
+        return draft_page(invoice)
+
+    @app.route('/siparisler/<int:order_id>/uyumsoft',methods=['GET','POST'])
+    def uyumsoft_order_preview(order_id):
+        access();order=db.get_or_404(Order,order_id)
+        if order.order_type!='Satış':abort(403)
+        return draft_page(order,True)
+
+    def draft_page(source,order_mode=False):
+        source_id=source.id;table=order_attempts if order_mode else attempts
+        endpoint='uyumsoft_order_preview' if order_mode else 'uyumsoft_preview'
+        route_args={'order_id' if order_mode else 'invoice_id':source_id}
+        cfg={};error=None;data=None;token='';current=record(source_id,table)
+        today=datetime.now(ZoneInfo('Europe/Istanbul')).date()
+        invoice=source
+        if order_mode:
+            invoice=SimpleNamespace(id=source.id,invoice_no=source.order_no,customer=source.customer,
+                invoice_date=today,due_date=month_after(today),notes=source.notes,items=source.items,
+                net_amount=source.net_amount,vat_amount=source.vat_amount)
         try:
             cfg=config()
             data=snapshot(invoice,cfg.get('seller',DEFAULT_SELLER),request.form.get('district',''))
             data['alias']=request.form.get('alias','').strip()[:300]
+            if order_mode:
+                data['order_id']=data.pop('invoice_id')
+                if request.method=='POST' and not current:
+                    for field,key in [('invoice_date','date'),('due_date','due_date')]:
+                        raw=request.form.get(field,data[key])
+                        try:data[key]=date.fromisoformat(raw).isoformat()
+                        except ValueError:raise UyumError('Fatura ve vade tarihlerini kontrol edin.') from None
+                    if data['due_date']<data['date']:raise UyumError('Vade tarihi fatura tarihinden önce olamaz.')
+                    data['notes']=request.form.get('notes',data['notes'])[:2000]
+                    for key in ('name','tax_number','tax_office','address','city'):
+                        data['buyer'][key]=request.form.get('buyer_'+key,data['buyer'][key]).strip()[:300]
             if request.method=='POST':
-                action=request.form.get('action')
-                if not cfg:raise UyumError('Önce yönetici Uyumsoft bağlantısını tamamlamalı.')
+                action='edit' if request.form.get('edit')=='yes' else request.form.get('action')
                 if current:
                     if action=='status':
-                        if current['account']!=account_id(cfg):raise UyumError('Aktarımın yapıldığı Uyumsoft hesabıyla bağlanın.')
-                        state=Client(cfg).status(current['uuid']);update_record(invoice_id,state=state,message='')
+                        if not cfg or current['account']!=account_id(cfg):raise UyumError('Aktarımın yapıldığı Uyumsoft hesabıyla bağlanın.')
+                        state=Client(cfg).status(current['uuid']);update_record(source_id,table,state=state,message='')
                         flash('Uyumsoft durumu güncellendi.','success')
-                    else:flash('Bu fatura için aktarım kaydı zaten var. İkinci taslak oluşturulmadı.','error')
-                    return redirect(url_for('uyumsoft_preview',invoice_id=invoice_id))
+                    else:flash('Bu kayıt için aktarım zaten başlatılmış. İkinci taslak oluşturulmadı.','error')
+                    return redirect(url_for(endpoint,**route_args))
+                if order_mode and source.invoices:
+                    raise UyumError('Bu siparişe bağlı BOS faturası var. Tekrar tam sipariş faturası oluşturmadan mevcut faturayı kontrol edin.')
+                if order_mode and source.status=='İptal Edildi':raise UyumError('İptal edilmiş sipariş aktarılamaz.')
+                if action=='edit':
+                    return render_template('uyumsoft_preview.html',invoice=invoice,order_mode=order_mode,data=data,connected=bool(cfg),error=None,preview='',current=None,status_labels=STATUS)
                 validate(data)
+                identity=account_id(cfg) if cfg else ''
                 if action=='preview':
-                    invoice_xml(data,str(uuid.uuid4()),True) # Check arithmetic before confirmation.
-                    token=signer.dumps({'hash':digest(data),'account':account_id(cfg)})
+                    invoice_xml(data,str(uuid.uuid4()),True)
+                    token=signer.dumps({'hash':digest(data),'account':identity})
                 elif action=='send':
+                    if not cfg:raise UyumError('Önce yönetici Uyumsoft bağlantısını tamamlamalı.')
                     try:approved=signer.loads(request.form.get('preview',''),max_age=900)
                     except BadSignature:raise UyumError('Önizleme süresi doldu. Faturayı tekrar kontrol edin.') from None
-                    if approved!={'hash':digest(data),'account':account_id(cfg)}:raise UyumError('Fatura veya bağlantı önizlemeden sonra değişti; yeniden önizleyin.')
+                    if approved!={'hash':digest(data),'account':identity}:raise UyumError('Sipariş, fatura veya bağlantı önizlemeden sonra değişti; yeniden önizleyin.')
                     if request.form.get('confirm')!='yes':raise UyumError('Taslak aktarım onayını işaretleyin.')
                     client=Client(cfg);einvoice=client.is_einvoice(data['buyer']['tax_number'])
                     if einvoice:data['alias']=client.resolve_alias(data['buyer']['tax_number'],data['alias'])
                     draft_id=str(uuid.uuid4());invoice_xml(data,draft_id,einvoice)
                     meta.create_all(db.engine)
                     try:
-                        with db.engine.begin() as conn:conn.execute(insert(attempts).values(invoice_id=invoice_id,uuid=draft_id,state='sending',snapshot=canonical(data),account=account_id(cfg),actor=getattr(g,'web_username',''),created_at=datetime.now(timezone.utc).isoformat()))
+                        with db.engine.begin() as conn:conn.execute(insert(table).values(**route_args,uuid=draft_id,state='sending',snapshot=canonical(data),account=identity,actor=getattr(g,'web_username',''),created_at=datetime.now(timezone.utc).isoformat()))
                     except IntegrityError:
-                        flash('Aktarım zaten başlatıldı. Durumu kontrol edin.','error');return redirect(url_for('uyumsoft_preview',invoice_id=invoice_id))
+                        flash('Aktarım zaten başlatıldı. Durumu kontrol edin.','error');return redirect(url_for(endpoint,**route_args))
                     try:
                         result=client.save_draft(data,draft_id,einvoice)
-                        update_record(invoice_id,state='Draft',number=result['number'],message='')
-                        flash('Fatura Uyumsoft’a taslak olarak aktarıldı. Son kontrol ve gönderim Uyumsoft portalında yapılır.','success')
+                        update_record(source_id,table,state='Draft',number=result['number'],message='')
+                        flash('Uyumsoft taslağı oluşturuldu. Son kontrol ve gönderim Uyumsoft portalında yapılır.','success')
                     except UyumError as exc:
-                        update_record(invoice_id,state='unknown',message=str(exc))
-                        flash(str(exc),'error')
-                    return redirect(url_for('uyumsoft_preview',invoice_id=invoice_id))
+                        update_record(source_id,table,state='unknown',message=str(exc));flash(str(exc),'error')
+                    return redirect(url_for(endpoint,**route_args))
                 else:abort(400)
         except UyumError as exc:error=str(exc)
         saved=json.loads(current['snapshot']) if current else None
-        return render_template('uyumsoft_preview.html',invoice=invoice,data=saved or data,connected=bool(cfg),error=error,preview=token,current=current,status_labels=STATUS)
+        return render_template('uyumsoft_preview.html',invoice=invoice,order_mode=order_mode,data=saved or data,
+            connected=bool(cfg),error=error,preview=token,current=current,status_labels=STATUS)

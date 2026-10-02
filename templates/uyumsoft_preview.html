@@ -1,34 +1,67 @@
 {% extends 'base.html' %}
-{% block heading %}Uyumsoft Fatura Taslağı{% endblock %}
+{% block heading %}{{ 'Siparişten Uyumsoft Faturası Hazırla' if order_mode else 'Uyumsoft Fatura Taslağı' }}{% endblock %}
 {% block subheading %}{{ invoice.invoice_no }} · {{ invoice.customer.name }}{% endblock %}
 {% block content %}
-<div class="detail-navigation"><a class="button" href="{{ url_for('invoice_detail',invoice_id=invoice.id) }}">← Faturaya Dön</a>{% if g.web_is_owner %}<a class="button" href="{{ url_for('uyumsoft_settings') }}">Uyumsoft Bağlantısı</a>{% endif %}<a class="button" target="_blank" rel="noopener" href="https://edonusum.uyum.com.tr/">Uyumsoft Portalını Aç ↗</a></div>
+<div class="detail-navigation">
+{% if order_mode %}<a class="button" href="{{ url_for('order_detail',order_id=invoice.id) }}">← Siparişe Dön</a><a class="button" href="{{ url_for('invoices',entry=1,order_id=invoice.id) }}">Kesilmiş Faturayı BOS’a Kaydet</a>{% else %}<a class="button" href="{{ url_for('invoice_detail',invoice_id=invoice.id) }}">← Faturaya Dön</a>{% endif %}
+{% if g.web_is_owner %}<a class="button" href="{{ url_for('uyumsoft_settings') }}">Uyumsoft Bağlantısı</a>{% endif %}<a class="button" target="_blank" rel="noopener" href="https://edonusum.uyum.com.tr/">Uyumsoft Portalını Aç ↗</a></div>
 <section class="panel form-panel">
 {% if error %}<p class="note" role="alert">{{ error }}</p>{% endif %}
 {% if current %}
 <h2>{{ status_labels.get(current.state,current.state) }}</h2>
 <p><b>ETTN:</b> {{ current.uuid }}</p>{% if current.number %}<p><b>Uyumsoft fatura numarası:</b> {{ current.number }}</p>{% endif %}
 {% if current.message %}<p role="alert">{{ current.message }}</p>{% endif %}
-<p>Bu fatura için tekrar taslak oluşturulmaz. Portalda taslağı kontrol edip oradan gönderebilirsiniz. BOS’taki cari ve stok hareketleri ikinci kez işlenmez.</p>
+<p>Bu kayıt için tekrar taslak oluşturulmaz. Son kontrol ve gönderimi Uyumsoft portalında tamamlayın.</p>
+{% if order_mode %}<p>Bu taslak BOS’ta cari veya stok hareketi oluşturmadı. Kesinleşen faturayı, resmî numarasıyla BOS’a ayrıca kaydedebilirsiniz.</p>{% endif %}
 <form method="post"><input name="action" type="hidden" value="status"><button class="button">Uyumsoft Durumunu Sorgula</button></form>
-{% elif not connected %}<h2>Bağlantı kurulmalı</h2><p>Aktarım için yöneticinin Uyumsoft servis hesabını bağlaması gerekiyor.</p>
 {% else %}
-<h2>{{ 'Aktarılacak taslağı kontrol edin' if preview else 'Taslağı hazırla' }}</h2>
-<p>Bu işlem mevcut BOS satış faturasını Uyumsoft’ta taslak oluşturur. Resmî fatura numarasını Uyumsoft verir; BOS referansı {{ invoice.invoice_no }} olarak korunur. Daha önce Uyumsoft veya başka bir sistemde kesilmiş faturayı tekrar aktarmayın.</p>
-<p>Normal yurtiçi, adet birimli, KDV’li satışlar desteklenir. İstisna, tevkifat, ihracat ve internet satışına özel alanlar bu ilk sürümde desteklenmez. E-Arşiv teslim biçimi kağıt olarak hazırlanır; portalda kontrol edilmelidir.</p>
+<h2>{{ 'Aktarılacak taslağı kontrol edin' if preview else 'Uyumsoft Taslağı Hazırla' }}</h2>
+{% if order_mode %}<p>Siparişin tüm ürünleri ve fiyatları aşağıya aktarıldı. Fatura numarasını Uyumsoft verecek. Taslak hazırlanırken BOS’ta cari ve stok hareketi oluşmaz.</p>{% else %}<p>Mevcut BOS faturası Uyumsoft’a taslak olarak aktarılır. Daha önce kesilmiş faturayı tekrar aktarmayın.</p>{% endif %}
+{% if not connected %}<div class="note" role="status">Uyumsoft bağlantısı henüz kurulmamış. Bilgileri hazırlayıp önizleyebilirsiniz; aktarım için {% if g.web_is_owner %}<a href="{{ url_for('uyumsoft_settings') }}" target="_blank" rel="noopener">Uyumsoft hesabını bağlayın</a>{% else %}yöneticiniz hesabı bağlamalı{% endif %}.</div>{% endif %}
 {% endif %}
 {% if data %}
+<form method="post" id="uyumsoft-draft-form">
+<input name="action" type="hidden" value="{{ 'send' if preview else 'preview' }}">
+{% if order_mode and not current and not preview %}
+<div class="form-grid" style="margin:24px 0">
+<label>Fatura numarası<input value="Uyumsoft tarafından verilecek" readonly aria-label="Fatura numarası"></label>
+<label>Sipariş<input value="{{ invoice.invoice_no }}" readonly></label>
+<label>Fatura tarihi<input type="date" name="invoice_date" value="{{ data.date }}" required></label>
+<label>Vade tarihi<input type="date" name="due_date" value="{{ data.due_date }}" required></label>
+</div><h3>Alıcı Bilgileri</h3><div class="form-grid">
+<label>Firma / Ad Soyad<input name="buyer_name" value="{{ data.buyer.name }}" required></label>
+<label>Vergi numarası / TCKN<input name="buyer_tax_number" value="{{ data.buyer.tax_number }}" pattern="[0-9]{10,11}" required></label>
+<label>Vergi dairesi<input name="buyer_tax_office" value="{{ data.buyer.tax_office }}" required></label>
+<label>İl<input name="buyer_city" value="{{ data.buyer.city }}" required></label>
+<label>İlçe<input name="district" value="{{ data.buyer.district }}" required></label>
+<label>Adres<textarea name="buyer_address" required>{{ data.buyer.address }}</textarea></label>
+</div><p>Bu ekranda düzelttiğiniz alıcı bilgileri yalnızca bu fatura taslağında kullanılır.</p>
+{% else %}
 <div class="form-grid"><div><h3>Gönderici</h3><p>{{ data.seller.name }}<br>{{ data.seller.tax_office }} · {{ data.seller.tax_number }}<br>{{ data.seller.address }}<br>{{ data.seller.district }} / {{ data.seller.city }}</p></div>
 <div><h3>Alıcı</h3><p>{{ data.buyer.name }}<br>{{ data.buyer.tax_office or 'Vergi dairesi eksik' }} · {{ data.buyer.tax_number or 'Vergi numarası eksik' }}<br>{{ data.buyer.address or 'Adres eksik' }}<br>{{ data.buyer.district }} / {{ data.buyer.city or 'İl eksik' }}</p></div></div>
 <p><b>Fatura tarihi:</b> {{ data.date }} · <b>Vade:</b> {{ data.due_date or '—' }}</p>
-<div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Adet</th><th>Birim fiyat</th><th>İskonto</th><th>KDV</th></tr></thead><tbody>{% for item in data['items'] %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>₺{{ item.price|float|money }} ({{ 'KDV dâhil' if item.included else 'KDV hariç' }})</td><td>%{{ item.discount|float|money }}</td><td>%{{ item.vat|float|money }}</td></tr>{% endfor %}</tbody></table></div>
-<p><b>KDV hariç:</b> ₺{{ data.net|float|money }} · <b>KDV:</b> ₺{{ data.vat|float|money }}</p>
 {% endif %}
-{% if connected and not current %}
-<form method="post" style="margin-top:24px"><input name="action" type="hidden" value="{{ 'send' if preview else 'preview' }}">
-{% if preview %}<input name="preview" type="hidden" value="{{ preview }}"><input name="district" type="hidden" value="{{ data.buyer.district }}"><input name="alias" type="hidden" value="{{ data.alias }}">
-<label style="display:flex;align-items:flex-start;gap:12px;margin:20px 0"><input name="confirm" value="yes" type="checkbox" required style="width:20px;height:20px;flex:0 0 20px;margin:3px 0"><span>Bu faturanın daha önce kesilmediğini, normal yurtiçi satış olduğunu ve bilgilerini kontrol ettiğimi onaylıyorum. Uyumsoft’a taslak olarak aktarılsın.</span></label>
-<button class="button primary">Uyumsoft’a Taslak Aktar</button>
-{% else %}<label>Alıcının ilçesi<input name="district" value="{{ data.buyer.district if data else '' }}" required placeholder="Fatura adresinin ilçesi"></label><label>e-Fatura posta kutusu (isteğe bağlı)<input name="alias" value="{{ data.alias if data else '' }}" placeholder="Tek posta kutusu varsa otomatik seçilir"></label><p>Diğer alıcı bilgileri eksikse cari kartını güncelleyin. İlçe bu taslakla saklanır.</p><button class="button primary">Taslağı Önizle</button>{% endif %}
+<h3>Fatura Kalemleri</h3><div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Adet</th><th>Birim fiyat</th><th>İskonto</th><th>KDV</th></tr></thead><tbody>{% for item in data['items'] %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>₺{{ item.price|float|money }} ({{ 'KDV dâhil' if item.included else 'KDV hariç' }})</td><td>%{{ item.discount|float|money }}</td><td>%{{ item.vat|float|money }}</td></tr>{% endfor %}</tbody></table></div>
+<p><b>KDV hariç:</b> ₺{{ data.net|float|money }} · <b>KDV:</b> ₺{{ data.vat|float|money }} · <b>Genel toplam:</b> ₺{{ (data.net|float + data.vat|float)|money }}</p>
+{% if not current %}
+{% if preview %}
+<input name="preview" type="hidden" value="{{ preview }}"><input name="district" type="hidden" value="{{ data.buyer.district }}"><input name="alias" type="hidden" value="{{ data.alias }}">
+{% if order_mode %}<input type="hidden" name="invoice_date" value="{{ data.date }}"><input type="hidden" name="due_date" value="{{ data.due_date }}"><input type="hidden" name="notes" value="{{ data.notes }}">{% for key in ['name','tax_number','tax_office','address','city'] %}<input type="hidden" name="buyer_{{ key }}" value="{{ data.buyer[key] }}">{% endfor %}{% endif %}
+{% if data.notes %}<p><b>Not:</b> {{ data.notes }}</p>{% endif %}
+<label style="display:flex;align-items:flex-start;gap:12px;margin:20px 0"><input name="confirm" value="yes" type="checkbox" required style="width:20px;height:20px;flex:0 0 20px;margin:3px 0"><span>Bu satışın daha önce faturalanmadığını ve bilgilerin doğru olduğunu onaylıyorum. Uyumsoft’a taslak olarak aktarılsın.</span></label>
+<button class="button primary" {{ 'disabled' if not connected }}>Uyumsoft’a Taslak Aktar</button>
+<button class="button" name="edit" value="yes" type="submit" formnovalidate>Bilgileri Düzenle</button>
+{% else %}
+{% if not order_mode %}<label>Alıcının ilçesi<input name="district" value="{{ data.buyer.district }}" required></label>{% endif %}
+{% if order_mode %}<label>Fatura notu<textarea name="notes">{{ data.notes }}</textarea></label>{% endif %}
+<details style="margin:16px 0"><summary>e-Fatura posta kutusu (isteğe bağlı)</summary><label>Posta kutusu<input name="alias" value="{{ data.alias }}" placeholder="Tek posta kutusu varsa otomatik seçilir"></label></details>
+<button class="button primary">Taslağı Önizle</button>
+{% endif %}
+<p style="margin-top:16px">Normal yurtiçi, adet birimli, KDV’li satışlar içindir. E-Arşiv taslağı kağıt teslim biçimiyle hazırlanır. İstisna, tevkifat, ihracat ve internet satışına özel işlemler portalda hazırlanmalıdır.</p>
+{% endif %}
 </form>{% endif %}
-</section>{% endblock %}
+</section>
+{% if order_mode and not preview and not current %}<script>
+(() => {const form=document.getElementById('uyumsoft-draft-form');const issued=form.querySelector('[name="invoice_date"]');const due=form.querySelector('[name="due_date"]');issued.addEventListener('change',()=>{const [y,m,d]=issued.value.split('-').map(Number);if(!y||!m||!d)return;const next=new Date(y,m,1);const day=Math.min(d,new Date(y,m+1,0).getDate());due.value=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;});})();
+</script>{% endif %}
+{% endblock %}
