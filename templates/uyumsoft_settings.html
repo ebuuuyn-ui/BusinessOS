@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block heading %}Uyumsoft Bağlantısı{% endblock %}
+{% block subheading %}Satış faturalarını Uyumsoft’a taslak olarak aktarın{% endblock %}
+{% block content %}
+<div class="detail-navigation"><a class="button" href="{{ url_for('invoices') }}">← Faturalara Dön</a></div>
+<section class="panel form-panel"><h2>{{ 'Bağlantı kayıtlı' if connected else 'Servis bağlantısını kur' }}</h2>
+<p>Önce bağlantı doğrulanır. Faturalar yalnızca ayrı aktarım ekranında onay verdiğinizde taslak olarak gönderilir. Son kontrol ve kesin gönderim Uyumsoft portalında yapılır.</p>
+{% if error %}<p role="alert" class="note">{{ error }}</p>{% endif %}{% if message %}<p role="status" class="note">{{ message }}</p>{% endif %}
+<form method="post"><input type="hidden" name="action" value="test"><button class="button">Test Servisi Bağlantısını Kontrol Et</button></form>
+<form method="post" style="margin-top:24px"><input type="hidden" name="action" value="connect">
+<h3>Canlı hesap</h3><p>Uyumsoft servis kullanıcı bilgilerinizi buraya girin. Şifre sunucuda şifrelenerek saklanır ve ekranda gösterilmez.</p>
+<div class="form-grid">
+<label>Servis kullanıcı adı<input name="username" value="{{ username }}" autocomplete="off" required></label>
+<label>Servis şifresi<input name="password" type="password" autocomplete="new-password" placeholder="{{ 'Değişmediyse boş bırakın' if connected else '' }}" {{ '' if connected else 'required' }}></label>
+<label>İşletme unvanı<input name="name" value="{{ seller.name }}" required></label>
+<label>Vergi numarası<input name="tax_number" value="{{ seller.tax_number }}" pattern="[0-9]{10,11}" required></label>
+<label>Vergi dairesi<input name="tax_office" value="{{ seller.tax_office }}" required></label>
+<label>İl<input name="city" value="{{ seller.city }}" required></label>
+<label>İlçe<input name="district" value="{{ seller.district }}" required></label>
+<label>Adres<textarea name="address" required>{{ seller.address }}</textarea></label>
+</div><button class="button primary">Bağlantıyı Doğrula ve Kaydet</button>
+</form></section>
+{% endblock %}
