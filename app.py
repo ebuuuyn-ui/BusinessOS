@@ -2360,6 +2360,16 @@ def create_app(test_config=None):
         archive_dir = os.path.expanduser("~/Documents/Business OS Yedekleri")
         return render_template("backups.html", files=files, archive_dir=archive_dir, local_sqlite=local_sqlite)
 
+    @app.get("/faturalar/excel")
+    def export_invoices_excel():
+        from invoice_export import build_invoice_register
+        records = Invoice.query.options(selectinload(Invoice.customer),
+            selectinload(Invoice.order), selectinload(Invoice.items)).order_by(
+                Invoice.invoice_date.desc(), Invoice.id.desc()).all()
+        return send_file(build_invoice_register(records), as_attachment=True,
+            download_name=f"Tum-Faturalar-{datetime.now(ZoneInfo('Europe/Istanbul')).date().isoformat()}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     @app.route("/faturalar", methods=["GET", "POST"])
     def invoices():
         products = Product.query.filter_by(active=True).order_by(Product.name).all()
