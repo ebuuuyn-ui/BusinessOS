@@ -8,6 +8,7 @@ from test_supplier_sheets_routes import SupplierRouteTests
 from test_web_auth import BASE
 import app as m
 from uyumsoft import snapshot, validate, DEFAULT_SELLER, attempts, connection
+DEFAULT_SELLER = dict(DEFAULT_SELLER, tax_number='1111111111')
 from uyumsoft_client import Client, UyumError, invoice_xml, T, B, A, S, ET
 
 class UyumTests(unittest.TestCase):
@@ -84,6 +85,33 @@ class UyumTests(unittest.TestCase):
             self.assertIn('değişti',r.text);client.assert_not_called()
         i.invoice_type='Satın Alma';m.db.session.commit()
         self.assertEqual(self.client.get(self.path,base_url=BASE).status_code,403)
+    def test_sender_rejection_reprepare_preserves_history_and_blocks_timeout(self):
+        from uyumsoft import rejected_history
+        self.make_invoice();self.connect();token=self.preview()
+        with patch('uyumsoft.Client') as client:
+            client.return_value.is_einvoice.return_value=False
+            client.return_value.save_draft.side_effect=UyumError('Uyumsoft: Vergi Kimlik Numarası AccountingSupplierParty alanındakinden farklıdır.')
+            self.post(self.path,{'action':'send','district':'Ümraniye','preview':token,'confirm':'yes'})
+        self.assertIn('Önce bağlantıdaki',self.post(self.path,{'action':'reprepare'}).text)
+        with patch('uyumsoft.Client') as client:
+            self.post('/yonetim/uyumsoft',dict(DEFAULT_SELLER,name='Test Kişi',tax_number='11111111110',username='private-user',password='',action='connect'))
+        with patch('uyumsoft.Client') as client:
+            self.assertEqual(self.post(self.path,{'action':'reprepare'}).status_code,302)
+            client.assert_not_called()
+        with m.db.engine.connect() as c:
+            self.assertIsNone(c.execute(attempts.select()).first())
+            self.assertEqual(len(c.execute(rejected_history.select()).all()),1)
+        token=self.preview()
+        with patch('uyumsoft.Client') as client:
+            client.return_value.is_einvoice.return_value=False
+            client.return_value.save_draft.side_effect=UyumError('Zaman aşımı')
+            self.post(self.path,{'action':'send','district':'Ümraniye','preview':token,'confirm':'yes'})
+        self.assertIn('Yalnızca kesin',self.post(self.path,{'action':'reprepare'}).text)
+        root=invoice_xml(snapshot(self.invoice,dict(DEFAULT_SELLER,name='Test Kişi',tax_number='11111111110'),'Ümraniye'),'x',True)
+        ident=root.find('.//{'+A+'}AccountingSupplierParty/{'+A+'}Party/{'+A+'}PartyIdentification/{'+B+'}ID')
+        self.assertEqual(ident.get('schemeID'),'TCKN')
+        self.assertEqual(root.findtext('.//{'+A+'}Person/{'+B+'}FamilyName'),'Kişi')
+
     def test_auth_and_no_get_write(self):
         self.make_invoice()
         self.assertEqual(self.app.test_client().get(self.path,base_url=BASE).status_code,302)
@@ -123,7 +151,7 @@ class OrderDraftTests(UyumTests):
         r=self.client.get(f'/siparisler/{o.id}/faturaya-aktar',base_url=BASE)
         self.assertTrue(r.location.endswith(self.path))
         before=(m.Invoice.query.count(),m.StockMovement.query.count(),m.AccountTransaction.query.count())
-        with patch('uyumsoft.Client') as c:
+        with patch('uyumsoft.Client') as c, patch('uyumsoft.DEFAULT_SELLER',DEFAULT_SELLER):
             page=self.client.get(self.path,base_url=BASE)
             self.assertIn('Uyumsoft tarafından verilecek',page.text)
             self.assertNotIn('name="invoice_no"',page.text)

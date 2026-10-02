@@ -26,13 +26,23 @@ order_attempts=Table('businessos_uyumsoft_order_draft',meta,Column('order_id',In
     Column('number',Text),Column('snapshot',Text,nullable=False),Column('account',String(64),nullable=False),
     Column('actor',Text),Column('created_at',Text),Column('message',Text))
 
+rejected_history=Table('businessos_uyumsoft_rejected_history',meta,
+    Column('uuid',String(36),primary_key=True),Column('source_table',Text,nullable=False),
+    Column('record',Text,nullable=False),Column('archived_at',Text,nullable=False))
+
+def sender_rejected(record):
+    return bool(record and record['state'] in ('unknown','sender_rejected') and not record['number']
+        and 'AccountingSupplierParty' in (record['message'] or '')
+        and 'Vergi Kimlik Numarası' in (record['message'] or '')
+        and 'farklıdır' in (record['message'] or ''))
+
 def month_after(value):
     year=value.year + (value.month==12);month=value.month % 12 + 1
     return date(year,month,min(value.day,monthrange(year,month)[1]))
 
-DEFAULT_SELLER={'name':'Abika Mobilya-Ebubekir Uyan','tax_number':'8970492798','tax_office':'Ümraniye',
+DEFAULT_SELLER={'name':'Abika Mobilya-Ebubekir Uyan','tax_number':'','tax_office':'Ümraniye',
  'address':'ATATÜRK MAH. ÇAVUŞBAŞI CAD. ELÇİNGÜL AKTAR NO: 17 A İÇ KAPI NO: 1','district':'Ümraniye','city':'İstanbul'}
-STATUS={'sending':'Sonuç bekleniyor','unknown':'Sonuç belirsiz — yeniden gönderilmedi','Draft':'Uyumsoft’ta taslak',
+STATUS={'sender_rejected':'Gönderici kimliği uyuşmadığı için reddedildi','sending':'Sonuç bekleniyor','unknown':'Sonuç belirsiz — yeniden gönderilmedi','Draft':'Uyumsoft’ta taslak',
  'SentToGib':'GİB’e gönderildi','Approved':'Başarılı','Queued':'Gönderim kuyruğunda','Processing':'İşleniyor',
  'WaitingForAprovement':'Alıcı yanıtı bekleniyor','Declined':'Reddedildi','Canceled':'İptal edildi','Error':'Uyumsoft hatası',
  'NotSend':'Gönderilmedi','NotPrepared':'Hazırlanmadı','Return':'İade','EArchivedCanceled':'E-Arşiv iptal edildi'}
@@ -165,7 +175,21 @@ def register_uyumsoft(app,db,Invoice,Order):
             if request.method=='POST':
                 action='edit' if request.form.get('edit')=='yes' else request.form.get('action')
                 if current:
-                    if action=='status':
+                    if action=='reprepare':
+                        owner()
+                        if not sender_rejected(current):raise UyumError('Yalnızca kesin gönderici kimliği reddi yeniden hazırlanabilir.')
+                        old=json.loads(current['snapshot'])
+                        if not cfg or cfg['seller']['tax_number']==old['seller']['tax_number']:
+                            raise UyumError('Önce bağlantıdaki gönderici kimlik numarasını düzeltin.')
+                        meta.create_all(db.engine)
+                        key=table.c.order_id if order_mode else table.c.invoice_id
+                        with db.engine.begin() as conn:
+                            removed=conn.execute(table.delete().where(key==source_id,table.c.uuid==current['uuid'],table.c.state==current['state']))
+                            if removed.rowcount==1:
+                                conn.execute(insert(rejected_history).values(uuid=current['uuid'],source_table=table.name,
+                                    record=canonical(dict(current)),archived_at=datetime.now(timezone.utc).isoformat()))
+                        flash('Reddedilen deneme geçmişte saklandı. Güncel göndericiyle yeniden önizleyebilirsiniz. Fatura gönderilmedi.','success')
+                    elif action=='status':
                         if not cfg or current['account']!=account_id(cfg):raise UyumError('Aktarımın yapıldığı Uyumsoft hesabıyla bağlanın.')
                         state=Client(cfg).status(current['uuid']);update_record(source_id,table,state=state,message='')
                         flash('Uyumsoft durumu güncellendi.','success')
@@ -200,10 +224,10 @@ def register_uyumsoft(app,db,Invoice,Order):
                         update_record(source_id,table,state='Draft',number=result['number'],message='')
                         flash('Uyumsoft taslağı oluşturuldu. Son kontrol ve gönderim Uyumsoft portalında yapılır.','success')
                     except UyumError as exc:
-                        update_record(source_id,table,state='unknown',message=str(exc));flash(str(exc),'error')
+                        update_record(source_id,table,state='sender_rejected' if sender_rejected({'state':'unknown','number':'','message':str(exc)}) else 'unknown',message=str(exc));flash(str(exc),'error')
                     return redirect(url_for(endpoint,**route_args))
                 else:abort(400)
         except UyumError as exc:error=str(exc)
         saved=json.loads(current['snapshot']) if current else None
         return render_template('uyumsoft_preview.html',invoice=invoice,order_mode=order_mode,data=saved or data,
-            connected=bool(cfg),error=error,preview=token,current=current,status_labels=STATUS)
+            connected=bool(cfg),error=error,preview=token,current=current,status_labels=STATUS,sender_rejected=sender_rejected(current))

@@ -13,7 +13,7 @@
 <label>Servis kullanıcı adı<input name="username" value="{{ username }}" autocomplete="off" required></label>
 <label>Servis şifresi<input name="password" type="password" autocomplete="new-password" placeholder="{{ 'Değişmediyse boş bırakın' if connected else '' }}" {{ '' if connected else 'required' }}></label>
 <label>İşletme unvanı<input name="name" value="{{ seller.name }}" required></label>
-<label>Vergi numarası<input name="tax_number" value="{{ seller.tax_number }}" pattern="[0-9]{10,11}" required></label>
+<label>Vergi numarası / T.C. kimlik numarası<input name="tax_number" value="{{ seller.tax_number }}" pattern="[0-9]{10,11}" required></label>
 <label>Vergi dairesi<input name="tax_office" value="{{ seller.tax_office }}" required></label>
 <label>İl<input name="city" value="{{ seller.city }}" required></label>
 <label>İlçe<input name="district" value="{{ seller.district }}" required></label>
