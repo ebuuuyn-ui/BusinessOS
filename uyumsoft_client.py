@@ -85,7 +85,7 @@ class Client:
         self.config=config
         if config.get('environment') not in ENDPOINTS: raise UyumError('Geçersiz servis ortamı.')
     def call(self, method, params=None):
-        if method not in {'IsEInvoiceUser','SaveAsDraft','QueryOutboxInvoiceStatus','GetUserAliasses'}: raise UyumError('Bu işlem desteklenmiyor.')
+        if method not in {'IsEInvoiceUser','SaveAsDraft','QueryOutboxInvoiceStatus','GetUserAliasses','GetOutboxInvoice','GetOutboxInvoicePdf'}: raise UyumError('Bu işlem desteklenmiyor.')
         env=ET.Element('{'+S+'}Envelope');header=add(env,S,'Header');security=add(header,W,'Security',**{'{'+S+'}mustUnderstand':'1'})
         now=datetime.now(timezone.utc)
         timestamp=add(security,U,'Timestamp')
@@ -96,7 +96,7 @@ class Client:
         try:
             response=requests.post(ENDPOINTS[self.config['environment']],data=ET.tostring(env,encoding='utf-8',xml_declaration=True),
                 headers={'Content-Type':'text/xml; charset=utf-8','SOAPAction':'"http://tempuri.org/IIntegration/'+method+'"'},timeout=(8,25),allow_redirects=False)
-            if len(response.content)>2_000_000:raise UyumError('Servis yanıtı beklenen boyutu aştı.')
+            if len(response.content)>20_000_000:raise UyumError('Servis yanıtı beklenen boyutu aştı.')
             tree=ET.fromstring(response.content)
             result=tree.find('.//{'+T+'}'+method+'Result')
             if response.status_code!=200 or result is None:
@@ -137,3 +137,19 @@ class Client:
         match=next((x for x in values if x.get('InvoiceId','').lower()==uuid.lower()),None)
         if match is None:raise UyumError('Bu ETTN için durum bulunamadı. Portalı veya Uyumsoft desteğini kontrol edin; yeniden aktarım yapılmadı.')
         return match.get('Status','Bilinmiyor')
+
+    def outbox_invoice(self, uuid):
+        p=ET.Element('{'+T+'}invoiceId');p.text=uuid
+        result=self.call('GetOutboxInvoice',[p])
+        root=result.find('{'+T+'}Value/{'+T+'}Invoice')
+        if root is None:raise UyumError('Uyumsoft fatura içeriği alınamadı.')
+        return root
+    def outbox_pdf(self, uuid):
+        import base64, binascii
+        p=ET.Element('{'+T+'}invoiceId');p.text=uuid
+        result=self.call('GetOutboxInvoicePdf',[p]);value=result.find('{'+T+'}Value')
+        if value is None or value.get('InvoiceId','').lower()!=uuid.lower():raise UyumError('PDF ETTN eşleşmedi.')
+        try:data=base64.b64decode(''.join((value.findtext('{'+T+'}Data') or '').split()),validate=True)
+        except (ValueError,binascii.Error):raise UyumError('PDF içeriği okunamadı.') from None
+        if not data.startswith(b'%PDF-') or len(data)>12_000_000:raise UyumError('Geçerli PDF alınamadı; fatura kaydedilmedi.')
+        return data

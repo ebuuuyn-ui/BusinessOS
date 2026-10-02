@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block heading %}Uyumsoft Faturasını BOS’a Al{% endblock %}
+{% block subheading %}{{ order.order_no }} · {{ order.customer.name }}{% endblock %}
+{% block content %}
+<div class="detail-navigation"><a class="button" href="{{ url_for('uyumsoft_order_preview',order_id=order.id) }}">← Uyumsoft Aktarımına Dön</a></div>
+<section class="panel form-panel">
+<h2>Kesilen faturayı ve PDF’sini getir</h2>
+<p>Bu siparişten aktarılan faturanın son bilgileri Uyumsoft’tan alınır. Kaydettiğinizde resmî numarasıyla BOS faturası ve stok çıkışı oluşturulur, cari hesaba işlenir. Aynı fatura ikinci kez kaydedilmez.</p>
+{% if error %}<p class="note" role="alert">{{ error }}</p>{% endif %}
+{% if document and token %}
+<h3>{{ document.number }}</h3><p>Fatura tarihi: {{ document.date }} · Vade: {{ document.due or 'Belirtilmemiş' }}</p>
+<div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Adet</th><th>Net birim fiyat</th><th>KDV %</th><th>KDV hariç</th></tr></thead><tbody>{% for line in document.lines %}<tr><td>{{ line.name }}</td><td>{{ line.quantity }}</td><td>₺{{ line.price|float|money }}</td><td>{{ line.vat }}</td><td>₺{{ line.net|float|money }}</td></tr>{% endfor %}</tbody></table></div>
+<p>KDV hariç: ₺{{ document.net|float|money }} · KDV: ₺{{ document.tax|float|money }} · <b>Toplam: ₺{{ document.total|float|money }}</b></p>
+<p>Faturadaki iskonto net birim fiyata yansıtılır. Uyumsoft PDF’si fatura kaydında saklanır.</p>
+<form method="post"><input type="hidden" name="action" value="save"><input type="hidden" name="token" value="{{ token }}"><button class="button primary">PDF ile BOS’a Kaydet ve İşle</button></form>
+{% else %}<form method="post"><input type="hidden" name="action" value="fetch"><button class="button primary">Uyumsoft’tan Faturayı Getir</button></form>{% endif %}
+</section>{% endblock %}

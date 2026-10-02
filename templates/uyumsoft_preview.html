@@ -8,6 +8,7 @@
 <section class="panel form-panel">
 {% if error %}<p class="note" role="alert">{{ error }}</p>{% endif %}
 {% if current %}
+{% if order_mode and not sender_rejected %}<a class="button primary" href="{{ url_for('uyumsoft_import',order_id=invoice.id) }}">Uyumsoft’tan Faturayı ve PDF’yi Getir</a>{% endif %}
 <h2>{{ 'Gönderici kimliği uyuşmadığı için reddedildi' if sender_rejected else status_labels.get(current.state,current.state) }}</h2>
 <p><b>ETTN:</b> {{ current.uuid }}</p>{% if current.number %}<p><b>Uyumsoft fatura numarası:</b> {{ current.number }}</p>{% endif %}
 {% if current.message %}<p role="alert">{{ current.message }}</p>{% endif %}
