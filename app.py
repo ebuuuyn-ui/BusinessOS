@@ -242,6 +242,14 @@ class PriceQuote(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class QuoteOrderTransfer(db.Model):
+    # Retain the link even if an order is deleted, so it cannot be recreated accidentally.
+    quote_id = db.Column(db.String(36), primary_key=True)
+    order_id = db.Column(db.Integer, nullable=False)
+    order_no = db.Column(db.String(30), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class ProductQuoteImage(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), primary_key=True)
     content = db.Column(db.LargeBinary, nullable=False)

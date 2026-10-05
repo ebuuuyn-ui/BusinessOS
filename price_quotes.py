@@ -1,4 +1,4 @@
-"""Independent, versioned quotations. No stock, order or ledger writes."""
+"""Versioned quotations and explicit, idempotent conversion to sales orders."""
 import base64, io, json, uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -129,7 +129,79 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
     @app.get('/fiyat-teklifleri/<uid>')
     def quote_detail(uid):
         quote=get_quote(uid);data=json.loads(quote.payload)
-        return render_template('quote_detail.html',quote=quote,data=data)
+        from app import QuoteOrderTransfer, Order
+        transfer=db.session.get(QuoteOrderTransfer,uid) if ready(QuoteOrderTransfer) else None
+        linked_order=db.session.get(Order,transfer.order_id) if transfer else None
+        return render_template('quote_detail.html',quote=quote,data=data,transfer=transfer,linked_order=linked_order)
+    @app.route('/fiyat-teklifleri/<uid>/siparise-aktar',methods=['GET','POST'])
+    def quote_to_order(uid):
+        from app import QuoteOrderTransfer, Order, OrderItem, OrderHistory, next_order_no, ORDER_PAYMENT_METHODS, normalize_search_text
+        from sqlalchemy.exc import IntegrityError
+        quote=get_quote(uid);data=json.loads(quote.payload)
+        def linked():
+            return db.session.get(QuoteOrderTransfer,uid) if ready(QuoteOrderTransfer) else None
+        def existing_response(transfer):
+            if db.session.get(Order,transfer.order_id):
+                return redirect(url_for('order_detail',order_id=transfer.order_id))
+            flash('Bu teklif daha önce '+transfer.order_no+' siparişine aktarıldı. Sipariş silinmiş; tekrar aktarım yapılmadı.','error')
+            return redirect(url_for('quote_detail',uid=uid))
+        transfer=linked()
+        if transfer:return existing_response(transfer)
+        customers=Customer.query.order_by(Customer.name).all()
+        code=data.get('customer_code','').strip()
+        candidates=[c for c in customers if (c.code or '').strip()==code] if code else [c for c in customers if normalize_search_text(c.name)==normalize_search_text(data['customer_name'])]
+        selected=request.form.get('customer_id',type=int) if request.method=='POST' else (candidates[0].id if len(candidates)==1 else None)
+        error=None
+        if request.method=='POST':
+            try:
+                if request.form.get('version')!=str(quote.version):raise ValueError('Teklif değişti. Güncel kalemleri kontrol edip tekrar onaylayın.')
+                if not selected or not db.session.get(Customer,selected):raise ValueError('Siparişin bağlanacağı cari kartını seçin.')
+                payment=request.form.get('payment_method','')
+                if payment not in ORDER_PAYMENT_METHODS:raise ValueError('Ödeme yöntemini seçin.')
+                order_date=date.fromisoformat(request.form.get('order_date',''))
+                delivery=date.fromisoformat(request.form['delivery_date']) if request.form.get('delivery_date') else None
+                if delivery and delivery<order_date:raise ValueError('Teslim tarihi sipariş tarihinden önce olamaz.')
+                items=[]
+                for row in data['lines']:
+                    product=db.session.get(Product,row['product_id'])
+                    if not product or not product.active:raise ValueError(row['name']+': stok kartı silinmiş veya pasif. Önce teklifi güncelleyin.')
+                    price=Decimal(row['price']);listed=Decimal(row['list_price']);discount=Decimal(row['discount'])
+                    # Keep the listed price/discount when they reproduce the agreed rounded unit price exactly.
+                    keep_discount=0<=discount<=100 and discount==rounded(discount) and listed*(100-discount)/100==price
+                    items.append(OrderItem(product_id=product.id,product_name=row['name'],quantity=row['quantity'],unit=row.get('unit') or 'Adet',
+                        unit_price=listed if keep_discount else price,discount_rate=discount if keep_discount else Decimal(0),
+                        vat_rate=Decimal(row['vat']),vat_included=False,cost_unit_price=0,description=row.get('description',''),
+                        note='Teklif: '+quote.number+' | Birim fiyatı: '+row['list_price']+' TL | İskonto: %'+row['discount']+' | '+row.get('description','')))
+                QuoteOrderTransfer.__table__.create(db.engine,checkfirst=True)
+                # Compare-and-swap serializes two submissions of the same version without a second order.
+                changed=Quote.query.filter_by(id=uid,version=quote.version).update({Quote.version:Quote.version+1},synchronize_session=False)
+                if changed!=1:
+                    db.session.rollback()
+                    transfer=linked()
+                    if transfer:return existing_response(transfer)
+                    raise ValueError('Teklif değişti; sayfayı yenileyip tekrar kontrol edin.')
+                # A fresh edit version must not make an already transferred quote eligible again.
+                transfer=linked()
+                if transfer:
+                    db.session.rollback();return existing_response(transfer)
+                notes='Fiyat teklifinden aktarıldı: '+quote.number+'\n'+ '\n'.join(k+': '+v for k,v in data.get('conditions',{}).items() if v)
+                order=Order(order_no=next_order_no('Satış'),order_type='Satış',customer_id=selected,order_date=order_date,delivery_date=delivery,
+                            payment_method=payment,status='Bekliyor',notes=notes,items=items)
+                order.history.append(OrderHistory(status='Bekliyor',note=quote.number+' fiyat teklifinden oluşturuldu'))
+                db.session.add(order);db.session.flush()
+                db.session.add(QuoteOrderTransfer(quote_id=uid,order_id=order.id,order_no=order.order_no))
+                db.session.commit()
+                flash(order.order_no+' numaralı satış siparişi oluşturuldu.','success')
+                return redirect(url_for('order_detail',order_id=order.id))
+            except (ValueError,KeyError,TypeError,IntegrityError) as e:
+                db.session.rollback()
+                if isinstance(e,IntegrityError):
+                    transfer=linked()
+                    if transfer:return existing_response(transfer)
+                    error='Sipariş oluşturulamadı. Kayıt çakışması nedeniyle işlem geri alındı; tekrar deneyebilirsiniz.'
+                else:error=str(e)
+        return render_template('quote_to_order.html',quote=quote,data=data,customers=customers,selected=selected,error=error,
+                               payment_methods=ORDER_PAYMENT_METHODS,today=date.today().isoformat())
     @app.get('/fiyat-teklifleri/<uid>/pdf')
     def quote_pdf(uid):
         from quote_pdf import build_pdf

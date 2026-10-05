@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block heading %}Teklifi Siparişe Aktar{% endblock %}
+{% block subheading %}{{ quote.number }} · {{ data.customer_name }}{% endblock %}
+{% block content %}
+<a class="button" href="{{ url_for('quote_detail',uid=quote.id) }}">← Teklife Dön</a>
+<section class="panel form-panel">
+<h2>Satış Siparişini Kontrol Et</h2>
+<p>Cariyi ve tarihleri kontrol edip ödeme yöntemini seçin. Onayladığınızda tek bir satış siparişi oluşturulur.</p>
+{% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+<form method="post">
+<input type="hidden" name="version" value="{{ quote.version }}">
+<div class="form-grid two">
+<label>Cari Ara<input id="transfer-customer-search" placeholder="Cari adı veya kodunun bir kısmını yazın" autocomplete="off"></label>
+<label>Cari *<select name="customer_id" id="transfer-customer" required><option value="">Cari Seçin</option>{% for c in customers %}<option value="{{ c.id }}" {% if c.id==selected %}selected{% endif %}>{{ c.name }} · {{ c.code or '' }}</option>{% endfor %}</select></label>
+<label>Sipariş Tarihi *<input type="date" name="order_date" value="{{ request.form.get('order_date',today) }}" required></label>
+<label>Teslim Tarihi<input type="date" name="delivery_date" value="{{ request.form.get('delivery_date','') }}"></label>
+<label>Ödeme Yöntemi *<select name="payment_method" required><option value="">Seçin</option>{% for method in payment_methods %}<option {% if request.form.get('payment_method')==method %}selected{% endif %}>{{ method }}</option>{% endfor %}</select></label>
+</div>
+<div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Ayrıntı</th><th>Adet</th><th>İskontolu Birim Fiyatı</th><th>KDV</th><th>KDV Hariç Toplam</th></tr></thead><tbody>{% for row in data.lines %}<tr><td>{{ row.name }}<small class="block">{{ row.code }}</small></td><td>{{ row.description }}</td><td>{{ row.quantity }}</td><td>{{ row.price|float|money }} ₺</td><td>%{{ row.vat }}</td><td>{{ row.total|float|money }} ₺</td></tr>{% endfor %}</tbody></table></div>
+<p><strong>Genel Toplam: {{ data.totals.total|float|money }} ₺</strong></p>
+<p>Teklifteki satış fiyatları korunur. Yuvarlama farkı oluşacak kalemlerde iskontolu birim fiyat doğrudan aktarılır; liste fiyatı ve iskonto kalem notunda saklanır. Teklif koşulları sipariş notuna eklenir.</p>
+<button class="button primary" type="submit">Onayla ve Satış Siparişi Oluştur</button>
+</form></section>
+<script src="{{ url_for('static',filename='quote-search.js') }}"></script>
+<script>document.getElementById('transfer-customer-search').addEventListener('input',function(){const terms=normalizeQuoteSearch(this.value).split(/\s+/).filter(Boolean);const select=document.getElementById('transfer-customer');for(const option of select.options){if(!option.value)continue;const match=terms.every(term=>normalizeQuoteSearch(option.textContent).includes(term));option.hidden=!match;option.disabled=!match;}if(select.selectedOptions[0]?.disabled)select.value='';});</script>
+{% endblock %}

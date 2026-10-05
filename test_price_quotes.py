@@ -55,6 +55,61 @@ class QuoteTests(unittest.TestCase):
         self.assertEqual(self.client.get('/fiyat-teklifleri',base_url=BASE).status_code,200)
         self.assertEqual(self.client.get('/fiyat-teklifleri/yeni',base_url=BASE).status_code,200)
 
+    def prepare_transfer(self):
+        data=self.sample();data['customer_name']='ABİKA TEST'
+        data['lines'][0]['description']='Gri kumaş'
+        self.post(data)
+        quote=m.PriceQuote.query.one()
+        return quote,f'/fiyat-teklifleri/{quote.id}/siparise-aktar'
+
+    def transfer_post(self,path,version='1',**values):
+        data=dict(version=version,customer_id='1339',order_date='2026-10-06',delivery_date='2026-10-20',payment_method='Banka Havalesi')
+        data.update(values)
+        return self.client.post(path,base_url=BASE,headers={'Origin':BASE},data=data)
+
+    def test_transfer_preview_commit_and_duplicate_guard(self):
+        quote,path=self.prepare_transfer()
+        self.assertEqual(self.client.get(path,base_url=BASE).status_code,200)
+        self.assertEqual(m.Order.query.count(),1)
+        response=self.transfer_post(path)
+        self.assertEqual(response.status_code,302)
+        link=m.QuoteOrderTransfer.query.one();order=m.db.session.get(m.Order,link.order_id)
+        self.assertEqual(order.order_type,'Satış');self.assertEqual(order.customer_id,1339)
+        self.assertEqual(order.items[0].quantity,4)
+        self.assertEqual(order.items[0].discount_rate,Decimal('10'))
+        self.assertEqual(order.items[0].description,'Gri kumaş')
+        self.assertEqual(order.total_amount,Decimal('20196'))
+        self.assertIn(quote.number,order.notes);self.assertIn('Ödeme: Peşin',order.notes)
+        self.assertEqual(self.transfer_post(path).location,response.location)
+        self.assertEqual(m.Order.query.count(),2)
+        self.assertEqual(m.Invoice.query.count(),0);self.assertEqual(m.StockMovement.query.count(),0)
+        m.db.session.delete(order);m.db.session.commit()
+        self.transfer_post(path)
+        self.assertEqual(m.Order.query.count(),1)
+        self.assertEqual(m.QuoteOrderTransfer.query.count(),1)
+
+    def test_transfer_rejects_stale_missing_fields_inactive_and_cross_origin(self):
+        quote,path=self.prepare_transfer()
+        for fields in [dict(version='0'),dict(customer_id='99999'),dict(payment_method=''),dict(delivery_date='bad')]:
+            response=self.transfer_post(path,**fields)
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(m.Order.query.count(),1)
+        self.p.active=False;m.db.session.commit()
+        self.assertIn('pasif',self.transfer_post(path).text)
+        self.assertEqual(m.Order.query.count(),1)
+        self.assertEqual(self.app.test_client().get(path,base_url=BASE).status_code,302)
+        self.assertEqual(self.client.post(path,base_url=BASE,headers={'Origin':'https://wrong.test'}).status_code,403)
+
+    def test_transfer_direct_price_and_rounding_preserve_agreed_price(self):
+        data=self.sample();data['lines'][0].update(list_price='12.29',discount='13.33',quantity=4)
+        self.post(data);quote=m.PriceQuote.query.one()
+        self.transfer_post(f'/fiyat-teklifleri/{quote.id}/siparise-aktar')
+        link=m.QuoteOrderTransfer.query.one();item=m.db.session.get(m.Order,link.order_id).items[0]
+        saved=json.loads(quote.payload)['lines'][0]
+        self.assertEqual(item.unit_price,Decimal(saved['price']));self.assertEqual(item.discount_rate,0)
+        self.assertEqual(item.net_amount,Decimal(saved['total']))
+        self.assertIn('13.33',item.note)
+
     def test_catalog_images_exact_codes_and_manual_override(self):
         root=Path(__file__).parent
         manifest=json.loads((root/'assets/abika-product-images.json').read_text())['products']
