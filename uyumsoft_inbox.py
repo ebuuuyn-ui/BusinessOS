@@ -83,8 +83,10 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                 cfg,client=connection();rows,pages,total=client.inbox_list(start,end,page)
                 for row in rows:
                     uid=row.get('InvoiceId','')
-                    try:uuidlib.UUID(uid)
-                    except ValueError:raise UyumError('Servisten geçersiz ETTN geldi.') from None
+                    try:
+                        uid=str(uuidlib.UUID(uid.strip()));row['InvoiceId']=uid;row['valid_id']=True
+                    except (ValueError,AttributeError):
+                        row['valid_id']=False;row['bos_id']=None;continue
                     row['bos_id']=existing(uid)
                     numbered=Invoice.query.filter_by(invoice_no=row.get('DocumentId','')).first()
                     row['number_exists']=bool(numbered and not row['bos_id'])
