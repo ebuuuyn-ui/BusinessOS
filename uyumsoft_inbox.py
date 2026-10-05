@@ -56,7 +56,7 @@ def parse_inbox(root,uid,buyer):
         unit=line.find('b:InvoicedQuantity',N).get('unitCode','')
         label=line.findtext('a:Item/b:Name',namespaces=N) or ''
         if not label:raise UyumError('Ürün adı eksik.')
-        lines.append(dict(name=label,quantity=str(qty),unit=unit,net=str(net),tax=str(tax),rate=str(rate)))
+        lines.append(dict(name=label,quantity=str(qty),unit=unit,net=str(net),tax=str(tax),rate=str(rate),net_unit=str(net/qty) if qty else None,total=str(net+tax)))
     net=number(root,'a:LegalMonetaryTotal/b:TaxExclusiveAmount');tax=number(root,'a:TaxTotal/b:TaxAmount');total=number(root,'a:LegalMonetaryTotal/b:PayableAmount')
     if not lines or sum(Decimal(x['net']) for x in lines)!=net or sum(Decimal(x['tax']) for x in lines)!=tax or net+tax!=total:
         raise UyumError('Fatura toplamları kalemlerle uyuşmuyor; otomatik kayıt yapılamaz.')
