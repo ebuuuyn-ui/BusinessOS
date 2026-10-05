@@ -1,4 +1,6 @@
 import unittest,json,io
+from pathlib import Path
+import hashlib
 from decimal import Decimal
 from unittest.mock import patch
 from flask import g
@@ -52,3 +54,22 @@ class QuoteTests(unittest.TestCase):
         m.PriceQuote.__table__.drop(m.db.engine);m.ProductQuoteImage.__table__.drop(m.db.engine)
         self.assertEqual(self.client.get('/fiyat-teklifleri',base_url=BASE).status_code,200)
         self.assertEqual(self.client.get('/fiyat-teklifleri/yeni',base_url=BASE).status_code,200)
+
+    def test_catalog_images_exact_codes_and_manual_override(self):
+        root=Path(__file__).parent
+        manifest=json.loads((root/'assets/abika-product-images.json').read_text())['products']
+        self.assertEqual(len(manifest),143)
+        for code,entry in manifest.items():
+            p=m.Product(name=entry['name'],code=code,unit_price=1,active=True)
+            m.db.session.add(p);m.db.session.commit()
+            response=self.client.get(f'/fiyat-teklifleri/urun/{p.id}/gorsel',base_url=BASE)
+            self.assertEqual(response.status_code,200,code)
+            self.assertEqual(hashlib.sha256(response.data).hexdigest(),entry['sha256'],code)
+        self.assertEqual(m.ProductQuoteImage.query.count(),0)
+        p=m.Product.query.filter_by(code='M00502').one()
+        m.db.session.add(m.ProductQuoteImage(product_id=p.id,content=b'manual-image'))
+        m.db.session.commit()
+        self.assertEqual(self.client.get(f'/fiyat-teklifleri/urun/{p.id}/gorsel',base_url=BASE).data,b'manual-image')
+        p=m.Product(name='Unmatched',code='O04502',unit_price=1,active=True)
+        m.db.session.add(p);m.db.session.commit()
+        self.assertEqual(self.client.get(f'/fiyat-teklifleri/urun/{p.id}/gorsel',base_url=BASE).status_code,404)

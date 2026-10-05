@@ -1,0 +1,1026 @@
+{
+  "source": "Abika Fiyat Listesi-14.09.2026.pdf",
+  "source_sha256": "5b05b7600b67c075800c11fb32ebd7192796596609b324dade3fdedd6e51f74b",
+  "selection": "Only individually verified product variants; no representative family images",
+  "products": {
+    "Y00101": {
+      "page": 2,
+      "object_id": 27,
+      "id": 243,
+      "name": "BARON YÖNETİCİ-KROM AYAK",
+      "sha256": "cd3efd8e9d335bf594731ed79a0a7e54da286f5c9e5c96d0857a0417bc2e0697"
+    },
+    "C00101": {
+      "page": 2,
+      "object_id": 28,
+      "id": 244,
+      "name": "BARON ÇALIŞMA-KROM AYAK",
+      "sha256": "cc879a95e14ca444d89edc862894a1446b3df5d3aa1118293f53d91d26c1f0f8"
+    },
+    "M00101": {
+      "page": 2,
+      "object_id": 29,
+      "id": 245,
+      "name": "BARON MİSAFİR-KROM YILDIZ AYAK",
+      "sha256": "eeb10e63db67fadc5e19997e9cfda0f49e0d70c053c3ab7749b9a93983e24591"
+    },
+    "Y00201": {
+      "page": 2,
+      "object_id": 30,
+      "id": 246,
+      "name": "PANDORA YÖNETİCİ-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "945ef45273235a854d74ec93afe907bcf214e873536886e1fd3484c33fb0b221"
+    },
+    "Y00202": {
+      "page": 2,
+      "object_id": 31,
+      "id": 247,
+      "name": "PANDORA YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "5246684ee757801fecd297fbab2d96e7803d24ad42df145e550a9d2dd7be9056"
+    },
+    "C00201": {
+      "page": 2,
+      "object_id": 32,
+      "id": 248,
+      "name": "PANRORA ÇALIŞMA-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "6987665d7392d68de0ee34b0f50a6a941520a6543d3702f0693f1ba4332d9a46"
+    },
+    "M00201": {
+      "page": 2,
+      "object_id": 33,
+      "id": 249,
+      "name": "PANDORA MİSAFİR-AHŞAP KOL-AHŞAP YILDIZ AYAK",
+      "sha256": "a8d7206ba988aaac3d5262d3015c348408adafad6a02323a050d0a69116a5eb0"
+    },
+    "M00202": {
+      "page": 2,
+      "object_id": 34,
+      "id": 250,
+      "name": "PANDORA MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "90f770f8b61f9da52a1e5e02852f66a8f462ebe7ea70a5284fa16f3c33e61302"
+    },
+    "Y00301": {
+      "page": 2,
+      "object_id": 35,
+      "id": 251,
+      "name": "ALTO YÖNETİCİ-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "8bd3f0e22eeb7911f04b96b8949ee804d68a7ebaf587dd3d3570bc6451ebf0ed"
+    },
+    "C00301": {
+      "page": 2,
+      "object_id": 36,
+      "id": 252,
+      "name": "ALTO ÇALIŞMA-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "a14a0b3c71d2d4aca77f37e453776ac21c623f3698ebb6b098f9d33a72aaf406"
+    },
+    "M00301": {
+      "page": 2,
+      "object_id": 37,
+      "id": 253,
+      "name": "ALTO MİSAFİR-AHŞAP KOL-AHŞAP YILDIZ AYAK",
+      "sha256": "2249f1149428c685d08b069751e8b7c182b857c0f66ceaefd58f86b2e0dcc9f0"
+    },
+    "Y00401": {
+      "page": 3,
+      "object_id": 52,
+      "id": 254,
+      "name": "VENEDİK YÖNETİCİ-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "a4f51bd66810654da551420f26ed8f1eae5407ccafeb4f156a9b89dc8f419b2b"
+    },
+    "C00401": {
+      "page": 3,
+      "object_id": 53,
+      "id": 255,
+      "name": "VENEDİK ÇALIŞMA-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "122f7ad963eb82163f03eb38a5af01442ea60c402aef1cd23212a60689bf2562"
+    },
+    "M00401": {
+      "page": 3,
+      "object_id": 54,
+      "id": 256,
+      "name": "VENEDİK MİSAFİR-AHŞAP KOL-AHŞAP YILDIZ AYAK",
+      "sha256": "f26e5847e9357606649a946c5076e1efd71a0e0c6ad4e156246cace51fd830a3"
+    },
+    "Y00501": {
+      "page": 3,
+      "object_id": 55,
+      "id": 257,
+      "name": "ALBATROS YÖNETİCİ-KROM AYAK",
+      "sha256": "eece415308ca4fe3367673aee5cc196875a4a9aef24a72931fe8f7844fadefa1"
+    },
+    "C00501": {
+      "page": 3,
+      "object_id": 56,
+      "id": 258,
+      "name": "ALBATROS ÇALIŞMA-KROM AYAK",
+      "sha256": "02c1138b4ba1073a4cd9028c54437647ba9e6585b70e54baa32f416e4bda6845"
+    },
+    "M00501": {
+      "page": 3,
+      "object_id": 57,
+      "id": 259,
+      "name": "ALBATROS MİSAFİR-KROM YILDIZ AYAK",
+      "sha256": "32c89aa37c11d9e9fa43a3238f473100586917a4166d8824d2994615c4db8405"
+    },
+    "M00502": {
+      "page": 3,
+      "object_id": 58,
+      "id": 260,
+      "name": "ALBATROS MİSAFİR-KROM U AYAK",
+      "sha256": "a13feec58dd527940c18394a7b56ad74457cb196abef227bcc44d9bd08c8a276"
+    },
+    "Y00601": {
+      "page": 3,
+      "object_id": 59,
+      "id": 261,
+      "name": "FEZA YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "ac3b07eb0c2f70fce97bc367779b324a500551532dcf952e434286698e98f445"
+    },
+    "C00601": {
+      "page": 3,
+      "object_id": 60,
+      "id": 262,
+      "name": "FEZA ÇALIŞMA-KROM KOL-KROM AYAK",
+      "sha256": "0a6b9d7607844fe7c40f9a25bf29ed3d65d64c4e68f1da646e7176ce14fb6e0b"
+    },
+    "M00601": {
+      "page": 3,
+      "object_id": 61,
+      "id": 263,
+      "name": "FEZA MİSAFİR-KROM KOL-KROM YILDIZ AYAK",
+      "sha256": "f2e74232e4acc46544ffd0a19097c624162750f0551c5f367090499c2f68d2e3"
+    },
+    "M00602": {
+      "page": 3,
+      "object_id": 62,
+      "id": 264,
+      "name": "FEZA MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "a5601c662679c0afcf60202fca5df29c1ae267cbda890c36049bb4c2b475607a"
+    },
+    "Y00701": {
+      "page": 4,
+      "object_id": 73,
+      "id": 265,
+      "name": "OLTU YÖNETİCİ-KROM AYAK",
+      "sha256": "facaf686b2a091d52715f4f88f689b49d17c3d7895ed1e37e886575c0c2e375d"
+    },
+    "C00701": {
+      "page": 4,
+      "object_id": 74,
+      "id": 266,
+      "name": "OLTU ÇALIŞMA-KROM AYAK",
+      "sha256": "f1d9078733d9fcc7245705d40d0cc45bb3237dbda5ad34d700844b527e192a49"
+    },
+    "M00701": {
+      "page": 4,
+      "object_id": 75,
+      "id": 267,
+      "name": "OLTU MİSAFİR-KROM YILDIZ AYAK",
+      "sha256": "01e76e7d7d9eec38ae54435720a9d5743999a2ce6f352f3d2ec47a2b6ece5c9a"
+    },
+    "M00702": {
+      "page": 4,
+      "object_id": 76,
+      "id": 268,
+      "name": "OLTU MİSAFİR-KROM U AYAK",
+      "sha256": "a63e25cad259894781165d06dec733db793fa3f5ab5bbfb2900ee491918c91a6"
+    },
+    "Y00801": {
+      "page": 4,
+      "object_id": 77,
+      "id": 269,
+      "name": "FUGA YÖNETİCİ-KROM AYAK",
+      "sha256": "ca9cf01cf34f4561339d449b87dde66c7c1bf2378e79271e8b4e5864204dc0d9"
+    },
+    "C00801": {
+      "page": 4,
+      "object_id": 78,
+      "id": 270,
+      "name": "FUGA ÇALIŞMA-KROM AYAK",
+      "sha256": "41f19a2c43bb5ff4538fff166043a8e2a2a5517ced383b9d9f33b1fb7c4d9469"
+    },
+    "M00801": {
+      "page": 4,
+      "object_id": 79,
+      "id": 271,
+      "name": "FUGA MİSAFİR-KROM YILDIZ AYAK",
+      "sha256": "dffbac5313fd9f18fee0af4730d00e3472dc48036538fc91a76938e7f3ea18bd"
+    },
+    "M00802": {
+      "page": 4,
+      "object_id": 80,
+      "id": 272,
+      "name": "FUGA MİSAFİR-KROM U AYAK",
+      "sha256": "ef556dd4fbfe6d324f5dc989b6bb612b35ab7ba49d15b64644601c00bd3153ea"
+    },
+    "Y02801": {
+      "page": 4,
+      "object_id": 193,
+      "id": 273,
+      "name": "ARUNA YÖNETİCİ-KROM AYAK",
+      "sha256": "c5ea45125651b1b21d0c730e35a4014624e0f19d8f2bbe363d9018aed1d2cf7f"
+    },
+    "C02801": {
+      "page": 4,
+      "object_id": 172,
+      "id": 274,
+      "name": "ARUNA ÇALIŞMA-KROM AYAK",
+      "sha256": "1feef8921b22b6c6f1f5042201abf737879dd485bc2f0890d63190fdb0e20af6"
+    },
+    "Y00901": {
+      "page": 5,
+      "object_id": 81,
+      "id": 275,
+      "name": "SONIC YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "4af1ecb237f5b506eecc4e0709eb329d0feaae1bb3777e5dc569e280ad892f36"
+    },
+    "C00901": {
+      "page": 5,
+      "object_id": 82,
+      "id": 276,
+      "name": "SONIC ÇALIŞMA-KROM KOL-KROM AYAK",
+      "sha256": "67499167ee492d317b290c44b2ef972ed4a56cd918362dc7b66f649949692979"
+    },
+    "M00901": {
+      "page": 5,
+      "object_id": 83,
+      "id": 277,
+      "name": "SONIC MİSAFİR-KROM KOL-KROM YILDIZ AYAK",
+      "sha256": "c8e899524da72d0181ee7cdcf0d48ac15496e2d253f13ba292be4735d3316157"
+    },
+    "M00902": {
+      "page": 5,
+      "object_id": 84,
+      "id": 278,
+      "name": "SONIC MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "a80eaa1b4d96a185f4e356c0fbf461f5f7e314facc3bab8ead7c920f14f0514d"
+    },
+    "Y01001": {
+      "page": 5,
+      "object_id": 222,
+      "id": 279,
+      "name": "İNCİ YÖNETİCİ-ALÜMİNYUM KOL-KROM AYAK",
+      "sha256": "b7600b8410caaa3539ffe9ff2bb5ecf21db71be9ae6e3395af9dac50e8dcf4b9"
+    },
+    "C01001": {
+      "page": 5,
+      "object_id": 223,
+      "id": 280,
+      "name": "İNCİ ÇALIŞMA-ALÜMİNYUM KOL-KROM AYAK",
+      "sha256": "e7db20f16105f176e8b69cbeeca8a2b0e2b142f1eb4c230096b7e0bf1393d94c"
+    },
+    "M01001": {
+      "page": 5,
+      "object_id": 224,
+      "id": 281,
+      "name": "İNCİ MİSAFİR-ALÜMİNYUM KOL-KROM YILDIZ AYAK",
+      "sha256": "f75698a85e7ceb6094d92a5743b5ea7fc8fbc2024e59ed17dd90e82e9b1031bc"
+    },
+    "M01002": {
+      "page": 5,
+      "object_id": 225,
+      "id": 282,
+      "name": "İNCİ MİSAFİR-ALÜMİNYUM KOL-KROM U AYAK",
+      "sha256": "a241a3ae8bb1971715878861f78edd89830fc635b58bda14bff71efcb6479e92"
+    },
+    "Y01101": {
+      "page": 5,
+      "object_id": 226,
+      "id": 283,
+      "name": "VEGAS AHŞAP YÖNETİCİ-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "5ac54eb9e2e73ee70bb31f832f3b6daa4a1448e3ed320a956845daebcd467961"
+    },
+    "C01101": {
+      "page": 5,
+      "object_id": 227,
+      "id": 284,
+      "name": "VEGAS AHŞAP ÇALIŞMA-AHŞAP KOL-AHŞAP AYAK",
+      "sha256": "0cec32223dba8811421c292fadc310162d552c9020d9c5e302047d31228a8f0e"
+    },
+    "M01101": {
+      "page": 5,
+      "object_id": 228,
+      "id": 285,
+      "name": "VEGAS AHŞAP MİSAFİR-AHŞAP KOL-AHŞAP YILDIZ AYAK",
+      "sha256": "bab389a51210d9f09dd35c3ce5882e5ab9cc4d35b1f041b3f10cb8cd9428076c"
+    },
+    "Y01102": {
+      "page": 6,
+      "object_id": 229,
+      "id": 286,
+      "name": "VEGAS METAL YÖNETİCİ-KROM KOL-KROM YILDIZ AYAK",
+      "sha256": "97f743ddb916a72a8dd2ff6609475117e0c5df571fdb5624be63b9a128570432"
+    },
+    "C01102": {
+      "page": 6,
+      "object_id": 230,
+      "id": 287,
+      "name": "VEGAS METAL ÇALIŞMA-KROM KOL-KROM YILDIZ AYAK",
+      "sha256": "ef8f59a087ed7470aa1c693db811f11f420688091fcf1711febb93209f95e91c"
+    },
+    "M01102": {
+      "page": 6,
+      "object_id": 231,
+      "id": 288,
+      "name": "VEGAS METAL MİSAFİR-KROM KOL-KROM YILDIZ AYAK",
+      "sha256": "9875fe168273fe2b745a86a37014b1936255b32255d958ad7e0f09afd94ee855"
+    },
+    "M01103": {
+      "page": 6,
+      "object_id": 232,
+      "id": 289,
+      "name": "VEGAS METAL MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "7b165556ccb4dfc7a203757b6961b6fd1498a61b05aadae18b3bf047a06c8f4d"
+    },
+    "Y02401": {
+      "page": 6,
+      "object_id": 245,
+      "id": 290,
+      "name": "FİT YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "c936b63644289c8864cccd8343b4fe28f33df728f1f3487d473d86f0881aec13"
+    },
+    "C02401": {
+      "page": 6,
+      "object_id": 247,
+      "crop": [
+        0,
+        0,
+        0.5,
+        1
+      ],
+      "id": 291,
+      "name": "FİT ÇALIŞMA-KROM KOL-KROM AYAK",
+      "sha256": "5b0b1f1c0694019e9eb2c2d352e7668add73b276e3bf49e46afc9f7f74bbe99b"
+    },
+    "M02401": {
+      "page": 6,
+      "object_id": 273,
+      "id": 292,
+      "name": "FİT MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "ad4f61a74b70c92549b5f9ee246cf53ecd533d3e95421664563fc4a4b4c9313f"
+    },
+    "Y02501": {
+      "page": 6,
+      "object_id": 388,
+      "id": 293,
+      "name": "ASTRA YÖNETİCİ-METAL KOL-PLASTİK YILDIZ AYAK",
+      "sha256": "9022912f6682979fcaf6348810788a6e6185716423f7fd00f709876a5ab54629"
+    },
+    "C02501": {
+      "page": 6,
+      "object_id": 390,
+      "crop": [
+        0,
+        0,
+        0.5,
+        1
+      ],
+      "id": 294,
+      "name": "ASTRA ÇALIŞMA-METAL KOL-PLASTİK YILDIZ AYAK",
+      "sha256": "26a2cbc5f36026ea3dc28952fb8a6207525353a440b2217b0bc0c3bbfd77314a"
+    },
+    "M02501": {
+      "page": 6,
+      "object_id": 416,
+      "id": 295,
+      "name": "ASTRA MİSAFİR-METAL KOL-METAL U AYAK",
+      "sha256": "b3ef7a3544af881a5db889290acf7e8aa5365101a2835d89218976b716ae5d2b"
+    },
+    "Y02601": {
+      "page": 7,
+      "object_id": 381,
+      "id": 296,
+      "name": "NEST YÖNETİCİ-METAL AYAK",
+      "sha256": "70170d2269860bb6840cd36b79df7d42c4c04d5bd828d4b91d2adc18ea075edb"
+    },
+    "Y02701": {
+      "page": 7,
+      "object_id": 350,
+      "id": 297,
+      "name": "CEBRA YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "b261db2aaa0db7dc00868f9ec249586aa379873f6223aa15a5b0d9827208c96b"
+    },
+    "C02701": {
+      "page": 7,
+      "object_id": 352,
+      "id": 298,
+      "name": "CEBRA ÇALIŞMA-KROM KOL-KROM AYAK",
+      "sha256": "f11c97875924059483e1dd7448ce552500a847176a5ceafb9ae01c363a9cb181"
+    },
+    "M02701": {
+      "page": 7,
+      "object_id": 354,
+      "id": 299,
+      "name": "CEBRA MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "1604e93f3a3a34665c4b5d8e75881b3fca63513980909ce7194e82a28ddde9de"
+    },
+    "Y01201": {
+      "page": 7,
+      "object_id": 451,
+      "id": 300,
+      "name": "LİNDA YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "156b4a9f2a7b5636699941626974abf9fc520a35fd7cddef16d1389ebac80b37"
+    },
+    "C01201": {
+      "page": 7,
+      "object_id": 452,
+      "id": 301,
+      "name": "LİNDA ÇALIŞMA-KROM KOL-KROM AYAK",
+      "sha256": "c72654090566690c1ec01596704bd0d5730af7318e7c0bfcef1f9bc718d1739f"
+    },
+    "M01201": {
+      "page": 7,
+      "object_id": 453,
+      "id": 302,
+      "name": "LİNDA MİSAFİR-KROM KOL-KROM YILDIZ AYAK",
+      "sha256": "22bd663ec77460c1a3ba852a6c49ca5e45e57147df7aa7c51ac9150a6918ab46"
+    },
+    "M01202": {
+      "page": 7,
+      "object_id": 454,
+      "id": 303,
+      "name": "LİNDA MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "8b224d60f417aac3fdb5606abf855b0ac005c1227e323d4cb01f2462034b2d0b"
+    },
+    "Y01301": {
+      "page": 8,
+      "object_id": 455,
+      "id": 304,
+      "name": "FOX YÖNETİCİ-ALÜMİNYUM KOL-KROM AYAK",
+      "sha256": "a4d7bc7e3c71f8583b07bf68b2fce541766b43ea8a986113a712e03ae36041c2"
+    },
+    "C01301": {
+      "page": 8,
+      "object_id": 456,
+      "id": 305,
+      "name": "FOX ÇALIŞMA-ALÜMİNYUM KOL-KROM AYAK",
+      "sha256": "61458e0b5f2ffa8b765f3597f4d0f5dd726d643a582928d71ae41a176916fdff"
+    },
+    "M01301": {
+      "page": 8,
+      "object_id": 457,
+      "id": 306,
+      "name": "FOX MİSAFİR-ALÜMİNYUM KOL-KROM YILDIZ AYAK",
+      "sha256": "7c5a553b08fa3b393bc30f298082b52f606eada9109aa46867a86d30d9731f68"
+    },
+    "M01302": {
+      "page": 8,
+      "object_id": 458,
+      "id": 307,
+      "name": "FOX MİSAFİR-ALÜMİNYUM KOL-KROM U AYAK",
+      "sha256": "c85ea5d120364fd0c3a97cef9173cfc90a1a092976ccd5787ba6587b2ef392f7"
+    },
+    "Y01401": {
+      "page": 8,
+      "object_id": 459,
+      "id": 308,
+      "name": "RİVA YÖNETİCİ-KROM KOL-KROM AYAK",
+      "sha256": "c907e7e2a06e070c273662871e522ced3a2b5fa29703c7658f20e2a53cc45b5d"
+    },
+    "C01401": {
+      "page": 8,
+      "object_id": 460,
+      "id": 309,
+      "name": "RİVA ÇALIŞMA-KROM KOL-KROM AYAK",
+      "sha256": "9432a28ab97394e58871b65835151e73deb3e0a5b5519d6cda28a040a553fa78"
+    },
+    "C01402": {
+      "page": 8,
+      "object_id": 461,
+      "id": 310,
+      "name": "RİVA ÇALIŞMA-PLASTİK KOL-PLASTİK AYAK",
+      "sha256": "31a47f38160d7fb7a00913d0dc339033a62f7a2900914304f1f23bff2ca80ea1"
+    },
+    "M01401": {
+      "page": 8,
+      "object_id": 462,
+      "id": 311,
+      "name": "RİVA MİSAFİR-KROM KOL-KROM U AYAK",
+      "sha256": "dac7d7d24dce68ecabd010a5340996f60a50e93e26afb5df0b63325a7e2940e7"
+    },
+    "M01402": {
+      "page": 8,
+      "object_id": 463,
+      "id": 312,
+      "name": "RİVA MİSAFİR-PLASTİK KOL-SİYAH METAL U AYAK",
+      "sha256": "4e28f5a31455634236662419415ac429901de95922129cf25c06d44d1893384a"
+    },
+    "Y01501": {
+      "page": 8,
+      "object_id": 474,
+      "id": 313,
+      "name": "PRİZMA YÖNETİCİ-PLASTİK KOL-PLASTİK AYAK",
+      "sha256": "af001b51be7afcdcb9aa61b4501ad83901be04a6b9ab7509e3a6061499160d25"
+    },
+    "C01501": {
+      "page": 8,
+      "object_id": 475,
+      "id": 314,
+      "name": "PRİZMA ÇALIŞMA-PLASTİK KOL-PLASTİK AYAK",
+      "sha256": "7ed73652601ec70546e063e71745d94de81779818289913db9f673bb9c00154d"
+    },
+    "M01501": {
+      "page": 8,
+      "object_id": 476,
+      "id": 315,
+      "name": "PRİZMA MİSAFİR-PLASTİK KOL-PLASTİK YILDIZ AYAK",
+      "sha256": "db987e39a1b52e6e2c7328d37cffb02310001d7f898c7913dacd8b4fc0b1ba0b"
+    },
+    "Y02303": {
+      "page": 9,
+      "object_id": 122,
+      "id": 316,
+      "name": "ZENO DERİ YÖNETİCİ-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "9baee883fa3b1b04497070fe3deeb2c0372f7f708ce0ab2064d3973cfbe186bf"
+    },
+    "C02303": {
+      "page": 9,
+      "object_id": 126,
+      "id": 318,
+      "name": "ZENO DERİ ÇALIŞMA-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "5eda0171fc347af366e47d7bb0f454dfde3025bdd7317884acc66d63b5f77ef4"
+    },
+    "M02302": {
+      "page": 9,
+      "object_id": 128,
+      "id": 320,
+      "name": "ZENO DERİ MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "d9d6fdc9da9a913a530255c8df6e6fe29ea2f967c8a2e6f8131e2683ee91cc19"
+    },
+    "C02101": {
+      "page": 9,
+      "object_id": 549,
+      "id": 321,
+      "name": "JUPİ ÇALIŞMA",
+      "sha256": "bc071ef61e30c38bd018bf1c05ea63ac4d14ef2023bf80bd8049b76d804e2e8f"
+    },
+    "M02101": {
+      "page": 9,
+      "object_id": 553,
+      "id": 322,
+      "name": "JUPİ MİSAFİR",
+      "sha256": "4fca189c0c0d6ac44b09324390dba3ea2b936d47d18f991abb9de51b657d1cd2"
+    },
+    "C02901": {
+      "page": 9,
+      "object_id": 104,
+      "id": 323,
+      "name": "W1 ÇALIŞMA-METAL KOL-METAL AYAK",
+      "sha256": "7ce6a62bcea5bf83e512eae70655f3aff484b5812128c8d9d2cf33ad870fd3fb"
+    },
+    "C02601": {
+      "page": 10,
+      "object_id": 595,
+      "id": 324,
+      "name": "NEST TOPLANTI-METAL DÖRTLÜ YILDIZ AYAK",
+      "sha256": "93d1c5d42a7ea72826b524923cdf722a1ba274132c17014d9fce6e82a21e1fc0"
+    },
+    "C03001": {
+      "page": 10,
+      "object_id": 601,
+      "id": 325,
+      "name": "EXA TOPLANTI-METAL DÖRTLÜ YILDIZ AYAK",
+      "sha256": "bd8d1003e91c62bfdf71ab2530d065a07a84884df8778bc3f08dd56d2e8a7f32"
+    },
+    "C03101": {
+      "page": 10,
+      "object_id": 625,
+      "crop": [
+        0,
+        0,
+        0.2,
+        1
+      ],
+      "id": 326,
+      "name": "COSMO TOPLANTI-KROM AYAK",
+      "sha256": "81c226dba4a293f5bab545dae7cc431a9cdb1b8378a5417d2999d339ada89fbb"
+    },
+    "C03102": {
+      "page": 10,
+      "object_id": 629,
+      "id": 327,
+      "name": "COSMOTOPLANTI-METAL DÖRTLÜ BORU AYAK",
+      "sha256": "c8408448627cdf4194fb76b3a5a5396a8445d5c10f4ff627e43f318c2935348d"
+    },
+    "C03201": {
+      "page": 11,
+      "object_id": 718,
+      "id": 328,
+      "name": "LUMİ TOPLANTI-METAL AYAK",
+      "sha256": "d6538aa8b675e8d382323892d33f8eb4902edbff5af13d83ef459a2355fdf797"
+    },
+    "C03202": {
+      "page": 11,
+      "object_id": 721,
+      "id": 329,
+      "name": "LUMİ TOPLANTI-METAL DÖRTLÜ BORU AYAK",
+      "sha256": "d85f530380c7a7b3a9fe6eaa7711bf7a71839e33ef295224c61ab455f5be694b"
+    },
+    "C03203": {
+      "page": 11,
+      "object_id": 719,
+      "id": 330,
+      "name": "LUMİ ÇALIŞMA-METAL DÖRTLÜ YILDIZ AYAK",
+      "sha256": "ca698ade9ccac9f99bf8d160d6afa598ae1e3781611839c5b785590d4bec3ff6"
+    },
+    "C03204": {
+      "page": 11,
+      "object_id": 723,
+      "id": 331,
+      "name": "LUMİ ÇALIŞMA-METAL DÖRTLÜ LAZER AYAK",
+      "sha256": "103bc6a9aa09107e58e4eb6c1ca6aab74818125c71727b68235f06c9c3432a71"
+    },
+    "C03301": {
+      "page": 11,
+      "object_id": 691,
+      "id": 332,
+      "name": "YUKİ TOPLANTI-METAL AYAK",
+      "sha256": "b742584d0b2651bd9d2e661e0ece0b7edd8739adcef3f4d6aefda0c58a9f555f"
+    },
+    "S01601": {
+      "page": 11,
+      "object_id": 477,
+      "id": 333,
+      "name": "FORM KOLLU",
+      "sha256": "3933a1d12aaad8619da099e2191b4918379a79703f41a3f83d173335b8cea7d5"
+    },
+    "S01602": {
+      "page": 11,
+      "object_id": 478,
+      "id": 334,
+      "name": "FORM KOLSUZ",
+      "sha256": "91fb578e3043aab91430132003ac069f60bb38c3f7288466e07ec606c03345a5"
+    },
+    "S01603": {
+      "page": 11,
+      "object_id": 479,
+      "id": 335,
+      "name": "FORM YAZI TABLALI",
+      "sha256": "b2d6e12538bbd7fde0f32a39f75f40a2141914bad127f18e68991c33d5c9b562"
+    },
+    "O04301": {
+      "page": 12,
+      "object_id": 892,
+      "id": 336,
+      "name": "LİVİA TEKLİ KANEPE",
+      "sha256": "d6825f9ced81a8b470880037d4e8ab0c4fbf3d0430aad3c4d735e028ccf5e021"
+    },
+    "O04302": {
+      "page": 12,
+      "object_id": 890,
+      "id": 337,
+      "name": "LİVİA İKİLİ KANEPE",
+      "sha256": "ae37e27d531ba00d173f064e3a4b42b2a76a0d1e7651b237acfc05b219194974"
+    },
+    "O04401": {
+      "page": 12,
+      "object_id": 898,
+      "id": 341,
+      "name": "NESSA TEKLİ KANEPE",
+      "sha256": "088cde2ab791bda81396fa4c962417ec59934f5298fa7ee8dfa71ca512a4fa4e"
+    },
+    "O04501": {
+      "page": 12,
+      "object_id": 896,
+      "id": 346,
+      "name": "ARVO TEKLİ KANEPE",
+      "sha256": "082e4b1533db8d97f78f9310d5d3434358fe6c17a641c81f98e8cdf305563cb6"
+    },
+    "O04503": {
+      "page": 12,
+      "object_id": 894,
+      "id": 348,
+      "name": "ARVO ÜÇLÜ KANEPE",
+      "sha256": "aa5c6fce336c929d13c721297d8fd02e4828eff61ac251acdcee6d46a31162a5"
+    },
+    "O04601": {
+      "page": 13,
+      "object_id": 1020,
+      "id": 351,
+      "name": "SARONA TEKLİ KANEPE",
+      "sha256": "56e250c1f7e1e5f98be4a51350345f36a83d4d62ebb5f80b3572dafc9da4e377"
+    },
+    "O04701": {
+      "page": 13,
+      "object_id": 1024,
+      "id": 356,
+      "name": "ATLANTİS TEKLİ KANEPE",
+      "sha256": "144f6a3185c8cdc9a0b634b8f3c44b1a017875ff6b6dfd078f28e948ee7d749f"
+    },
+    "O04801": {
+      "page": 13,
+      "object_id": 1028,
+      "id": 361,
+      "name": "MOZZA TEKLİ KANEPE",
+      "sha256": "83f7817342183e1a7b537f36029e6a19a9a4c2603887f97c7d97ab6edf842ae1"
+    },
+    "O04901": {
+      "page": 14,
+      "object_id": 1153,
+      "id": 366,
+      "name": "EVENA TEKLİ KANEPE",
+      "sha256": "a166f5e1d133a50342a265cf3e65dfcdd339b99f828dabbbe2324092ba8a5d6a"
+    },
+    "O04903": {
+      "page": 14,
+      "object_id": 1151,
+      "id": 368,
+      "name": "EVENA ÜÇLÜ KANEPE",
+      "sha256": "183b706e65f0faa60e9137df867b676127e5a104e6eac40cce3aa55c47d3fa43"
+    },
+    "O05001": {
+      "page": 14,
+      "object_id": 1146,
+      "id": 371,
+      "name": "MARİA TEKLİ KANEPE",
+      "sha256": "9608fa0294814f9d27e288ff518f0cd69b46c9f9ea7df543f93caf048799cfa3"
+    },
+    "O05101": {
+      "page": 14,
+      "object_id": 1149,
+      "id": 376,
+      "name": "GESTO TELİ KANEPE",
+      "sha256": "2ace1fc6442a3e5ba82089160ea61dc58b93689dfc69a5504d4fdcfcd70bc596"
+    },
+    "O05201": {
+      "page": 15,
+      "object_id": 1258,
+      "id": 381,
+      "name": "MERİDYEN TEKLİ KANEPE",
+      "sha256": "f62a3944a7c2308756f5fc2d3efd9032333f6f59a673f0551aedd9846e52f08e"
+    },
+    "O05301": {
+      "page": 15,
+      "object_id": 1194,
+      "id": 386,
+      "name": "SOFADO TEKLİ KANEPE",
+      "sha256": "0ab6425b5c597de8e39b832222c8353d6e13a54d79ab643fd8e79ab468bc61a4"
+    },
+    "O05302": {
+      "page": 15,
+      "object_id": 1192,
+      "id": 387,
+      "name": "SOFADO ÜÇLÜ KANEPE",
+      "sha256": "b352e0501ab09633a325a30e7765ed77a998f83d4b5a8af234680cffdd21b071"
+    },
+    "O05401": {
+      "page": 15,
+      "object_id": 1223,
+      "id": 389,
+      "name": "VERSA TEKLİ KANEPE",
+      "sha256": "d4f61c6848b0571b36483e58e62b303a21bb3396eb073f5bbb25d2d5f9c3f177"
+    },
+    "O05501": {
+      "page": 16,
+      "object_id": 1317,
+      "id": 394,
+      "name": "GALA TEKLİ KANEPE",
+      "sha256": "a6b1620410aeba3afba8fbc08db25db63377cd58c51775e7fda9460d509632f6"
+    },
+    "O05601": {
+      "page": 16,
+      "object_id": 1362,
+      "id": 399,
+      "name": "TARO TEKLİ KANEPE",
+      "sha256": "1b932e586e784ee640f1747e72b9e1c043453b9767ca4d11025b6ef73601afcc"
+    },
+    "O01703": {
+      "page": 16,
+      "object_id": 481,
+      "id": 404,
+      "name": "SADE METAL TEKLİ KANEPE",
+      "sha256": "e35878c889d9a67333450b5cffa177829138a9c0380270c30fb58103132cfcd7"
+    },
+    "O01701": {
+      "page": 16,
+      "object_id": 480,
+      "id": 405,
+      "name": "SADE METAL İKİLİ KANEPE",
+      "sha256": "adfda063359678bed989871bbcb5600ada10e175df3967217faa5270fe9ab9c3"
+    },
+    "Y02201": {
+      "page": 17,
+      "object_id": 278,
+      "id": 409,
+      "name": "REMUS YÖNETİCİ-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "a6a3681bff50bd5ef3ed14af6807256efa25a2439cdc90138bf7bc19b5b4a9fd"
+    },
+    "C02201": {
+      "page": 17,
+      "object_id": 280,
+      "id": 410,
+      "name": "REMUS ÇALIŞMA-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "45449a9d29b295b6ceff168fab37be98102cf5268e1c19fd8923f348eed8f9a4"
+    },
+    "M02201": {
+      "page": 17,
+      "object_id": 275,
+      "id": 411,
+      "name": "REMUS MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "64dcbb17fdb84aa360dbcbd87ebb5bd24f00456c65a2c5eaf3a7872119748d32"
+    },
+    "Y02301": {
+      "page": 17,
+      "object_id": 327,
+      "id": 412,
+      "name": "ZENO FİLE YÖNETİCİ-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "07e1d795235164a248fbb0f3c7d86fe21391722287458df8a5258ccd7a79b192"
+    },
+    "M02301": {
+      "page": 17,
+      "object_id": 333,
+      "id": 416,
+      "name": "ZENO FİLE MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "c21528251a81405232bc15f5705516b47fe8c925d80233150ef3c73fa39cbe45"
+    },
+    "B03701": {
+      "page": 17,
+      "object_id": 1400,
+      "id": 417,
+      "name": "FRİDA BAR",
+      "sha256": "389e57ce634666c3e588378f9f817c34fb819bb51706edd4f040d9104c3ddefc"
+    },
+    "T03801": {
+      "page": 18,
+      "object_id": 1422,
+      "id": 418,
+      "name": "NİKA TABURE",
+      "sha256": "aa2bbaac650294e594d14f2f14be4fa33252261908909fb64b1743d98b168244"
+    },
+    "O03901": {
+      "page": 18,
+      "object_id": 1466,
+      "id": 419,
+      "name": "NOPPA BERJER",
+      "sha256": "c50164d7d637d1a66b4689abd4b3dfa33e5db9231d0b2a6cb16eaa5907b056a3"
+    },
+    "O01702": {
+      "page": 18,
+      "object_id": 1485,
+      "id": 420,
+      "name": "SADE AHŞAP BERJER",
+      "sha256": "790c10e6f577e3d54913b5701a9e49b767b1676de268f8bd1748e113fe73fc4c"
+    },
+    "O04001": {
+      "page": 19,
+      "object_id": 1447,
+      "id": 421,
+      "name": "FURİA BERJER",
+      "sha256": "d24bd930a934d8a0ecd469b6d7c335429d644e44bd457528007657753faa1a7b"
+    },
+    "O04101": {
+      "page": 19,
+      "object_id": 1535,
+      "id": 422,
+      "name": "ROMEA BERJER",
+      "sha256": "22d0d132d416329dcbca6c4aefe43b303dcb4053c148e1968a7672e2a179b91a"
+    },
+    "O04201": {
+      "page": 19,
+      "object_id": 1524,
+      "id": 423,
+      "name": "LENA BERJER",
+      "sha256": "2ec6167196e316794f8c635766013077937d8627ca1191b2ab2416f7c43c5471"
+    },
+    "S03601": {
+      "page": 20,
+      "object_id": 1602,
+      "id": 424,
+      "name": "FUZİ MİSAFİR-KOLLU",
+      "sha256": "2c1869f6090848cf0c6208db779afba2785c903ab2cc0c0e8752f61b184f0ad9"
+    },
+    "S03602": {
+      "page": 20,
+      "object_id": 1621,
+      "id": 425,
+      "name": "FUZİ MİSAFİR-KOLSUZ",
+      "sha256": "f5805bce64255c437c6cc9a3e55f9fa536d8b42174fa4ab44f5c430a029641bf"
+    },
+    "P03401": {
+      "page": 20,
+      "object_id": 703,
+      "id": 426,
+      "name": "IQ PUF",
+      "sha256": "af8b9b40cda9b99528da759064dcdc88c38b0b6323983f1737da99c65b1abc9d"
+    },
+    "Y01801": {
+      "page": 20,
+      "object_id": 1802,
+      "id": 427,
+      "name": "LUMBAR SİYAH YÖNETİCİ-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "268a65872b59bd8c2d9ab1af344a4ab39a7437292d002f842f8d2a936f76dc19"
+    },
+    "C01801": {
+      "page": 20,
+      "object_id": 1803,
+      "id": 429,
+      "name": "LUMBAR SİYAH ÇALIŞMA-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "b0fad2d44d26d93501d7c0a58ff256aa841a53c75649e73c3be23c7a275f64f5"
+    },
+    "M01801": {
+      "page": 20,
+      "object_id": 1804,
+      "id": 431,
+      "name": "LUMBAR SİYAH MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "3d93260ae37a3acda9ee6a7833b0fe63b00808febc65edccb4e50d2501a8588d"
+    },
+    "Y01803": {
+      "page": 21,
+      "object_id": 1805,
+      "id": 432,
+      "name": "LUMBAR RENKLİ YÖNETİCİ-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "11ce0ec37b97360b45f8d230dfe848b0751531656db73be9201f7016943060ac"
+    },
+    "C01803": {
+      "page": 21,
+      "object_id": 1806,
+      "id": 434,
+      "name": "LUMBAR RENKLİ ÇALIŞMA-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "1ae24c333de788dd2d13fc52a51b3d69e32a06a3dc050df64d6868e3cb975f2d"
+    },
+    "M01802": {
+      "page": 21,
+      "object_id": 1808,
+      "id": 436,
+      "name": "LUMBAR RENKLİ MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "0f5f8368796e146ada2d7558a8e697b15ea3b707febe505b7f4a790058451bc6"
+    },
+    "C01901": {
+      "page": 21,
+      "object_id": 1705,
+      "id": 437,
+      "name": "LETO SİYAH ÇALIŞMA-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "32c48bbf3bbef05be4d9c18586865412ab079e9a8aaddec62a2cf9d2a4f4b548"
+    },
+    "M01901": {
+      "page": 21,
+      "object_id": 1709,
+      "id": 439,
+      "name": "LETO SİYAH MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "7fef5d53712663cf39886118affd08fa7d51363bbe1512c5d24187227fd71d28"
+    },
+    "C01903": {
+      "page": 21,
+      "object_id": 522,
+      "id": 440,
+      "name": "LETO RENKLİ ÇALIŞMA-AYARLI KOL-PLASTİK AYAK",
+      "sha256": "e7ca300d95cfd33d1e23ec6fd5cf15f5a2ee632ac877de1ccf646941dd4759c2"
+    },
+    "M01902": {
+      "page": 21,
+      "object_id": 526,
+      "id": 442,
+      "name": "LETO RENKLİ MİSAFİR-SABİT KOL-METAL U AYAK",
+      "sha256": "a9d22d9e48214fc86cc1de49ddaae542709831618f7af59033542655756a0f23"
+    },
+    "C02001": {
+      "page": 22,
+      "object_id": 534,
+      "id": 443,
+      "name": "SİSA ÇALIŞMA",
+      "sha256": "2ef4574b9ff587d287918d1461c043d1d35799606859b9994bb497e034d1052e"
+    },
+    "M03501": {
+      "page": 22,
+      "object_id": 1585,
+      "id": 444,
+      "name": "COTTO MİSAFİR-KOLLU METAL İSKELET",
+      "sha256": "04e9e88202f5dc509012283de2253da1f8242aed22dbc436b8cd08545b44ca6e"
+    },
+    "C03501": {
+      "page": 22,
+      "object_id": 1587,
+      "id": 445,
+      "name": "COTTO ÇALIŞMA-SABİT KOL-PLASTİK AYAK",
+      "sha256": "0c449e7b49e89e359f1ed327ea089aebab3df10808727a24a6c201ebaa53f008"
+    },
+    "C03502": {
+      "page": 22,
+      "object_id": 1589,
+      "id": 446,
+      "name": "COTTO ÇALIŞMA-SABİT KOL-METAL DÖRTLÜ BORU AYAK",
+      "sha256": "092849a6008b805516ccac18bc086ebc2c1c6ba115d04e203af59d7a85ded1b5"
+    },
+    "S03501": {
+      "page": 23,
+      "object_id": 1901,
+      "id": 447,
+      "name": "COTTO MİSAFİR-KOLLU METAL AYAK",
+      "sha256": "858358d30e7149745d22077285f0d594d6562625e43754490f228ddb3453c9a1"
+    },
+    "S03502": {
+      "page": 23,
+      "object_id": 1902,
+      "id": 448,
+      "name": "COTTO MİSAFİR-KOLSUZ METAL AYAK",
+      "sha256": "93960c0c39cde9d041a441f5ab77906f353f17def5ed57d47ab342b690fdc457"
+    },
+    "B03501": {
+      "page": 23,
+      "object_id": 1910,
+      "id": 449,
+      "name": "COTTO BAR",
+      "sha256": "c9c8b31d4e0823266f950299a77614be3362c648a39d01089b522f10265639dd"
+    }
+  }
+}
