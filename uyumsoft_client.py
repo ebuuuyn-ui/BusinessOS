@@ -1,5 +1,6 @@
 """Uyumsoft SOAP integration: draft creation only, never fiscal submission."""
 import copy
+import uuid as uuidlib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import xml.etree.ElementTree as ET
@@ -167,6 +168,12 @@ class Client:
         value=self.call('GetInboxInvoiceList',[q]).find('{'+T+'}Value')
         if value is None:raise UyumError('Gelen fatura listesi okunamadı.')
         rows=[{x.tag.split('}')[-1]:x.text or '' for x in row} for row in value.findall('{'+T+'}Items')]
+        # The live list service calls the fiscal number InvoiceId and the ETTN DocumentId.
+        # Normalize the list for callers; the fetched UBL UUID is verified again before use.
+        for row in rows:
+            try:uuidlib.UUID(row.get('DocumentId','').strip())
+            except ValueError:continue
+            row['InvoiceId'],row['DocumentId']=row.get('DocumentId',''),row.get('InvoiceId','')
         return rows,int(value.get('TotalPages','1')),int(value.get('TotalCount',str(len(rows))))
     def inbox_invoice(self, uuid):
         p=ET.Element('{'+T+'}invoiceId');p.text=uuid

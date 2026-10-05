@@ -118,7 +118,7 @@ class InboxTests(unittest.TestCase):
 class InboxSoapTests(unittest.TestCase):
     def test_request_and_result_shape(self):
         c=Client({'environment':'test','username':'x','password':'x'})
-        r=ET.fromstring(f'<R xmlns="{T}"><Value TotalPages="1" TotalCount="1"><Items><InvoiceId>abc</InvoiceId><DocumentId>NUMBER</DocumentId></Items></Value></R>')
+        r=ET.fromstring(f'<R xmlns="{T}"><Value TotalPages="1" TotalCount="1"><Items><InvoiceId>NUMBER</InvoiceId><DocumentId>22222222-3333-4444-5555-666666666666</DocumentId></Items></Value></R>')
         with patch.object(c,'call',return_value=r) as call:
             rows,pages,total=c.inbox_list('2026-10-01','2026-10-05')
             self.assertEqual(rows[0]['DocumentId'],'NUMBER')
