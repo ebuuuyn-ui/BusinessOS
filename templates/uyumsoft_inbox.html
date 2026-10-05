@@ -2,7 +2,7 @@
 {% block heading %}Uyumsoft Gelen Faturalar{% endblock %}
 {% block subheading %}Tedarikçi faturalarını inceleyin, ürünleri eşleştirin ve BOS’a alın{% endblock %}
 {% block content %}
-<style>.inbox-filter{display:grid;grid-template-columns:1fr 1fr auto;gap:16px;align-items:end}.inbox-list-heading{padding:20px 24px}.inbox-list-heading h2{margin:0 0 8px}@media(max-width:700px){.inbox-filter{grid-template-columns:1fr}}</style>
+<style>.inbox-filter{display:grid;grid-template-columns:1fr 1fr auto;gap:16px;align-items:end}.inbox-filter>label{margin:0;min-width:0}.inbox-filter input[type=date],.inbox-filter>.button{box-sizing:border-box;height:44px;min-height:44px}.inbox-filter>.button{margin:0;display:flex;align-items:center;justify-content:center;white-space:nowrap}.inbox-list-heading{padding:20px 24px}.inbox-list-heading h2{margin:0 0 8px}@media(max-width:700px){.inbox-filter{grid-template-columns:1fr}}</style>
 <div class="detail-navigation"><a class="button" href="{{ url_for('invoices') }}">← Faturalara Dön</a></div>
 <section class="panel form-panel">
 <form method="get" class="inbox-filter"><input type="hidden" name="fetch" value="1"><label>Başlangıç tarihi<input type="date" name="start" value="{{ start }}" required></label><label>Bitiş tarihi<input type="date" name="end" value="{{ end }}" required></label><button class="button primary">Uyumsoft’tan Getir</button></form>
