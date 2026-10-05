@@ -18,7 +18,7 @@
 </div>
 <div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Ayrıntı</th><th>Adet</th><th>İskontolu Birim Fiyatı</th><th>KDV</th><th>KDV Hariç Toplam</th></tr></thead><tbody>{% for row in data.lines %}<tr><td>{{ row.name }}<small class="block">{{ row.code }}</small></td><td>{{ row.description }}</td><td>{{ row.quantity }}</td><td>{{ row.price|float|money }} ₺</td><td>%{{ row.vat }}</td><td>{{ row.total|float|money }} ₺</td></tr>{% endfor %}</tbody></table></div>
 <p><strong>Genel Toplam: {{ data.totals.total|float|money }} ₺</strong></p>
-<p>Teklifteki satış fiyatları korunur. Yuvarlama farkı oluşacak kalemlerde iskontolu birim fiyat doğrudan aktarılır; liste fiyatı ve iskonto kalem notunda saklanır. Teklif koşulları sipariş notuna eklenir.</p>
+<details class="ui-help"><summary>Aktarım hakkında</summary><p>Teklifteki satış fiyatları korunur. Yuvarlama farkı oluşacak kalemlerde iskontolu birim fiyat doğrudan aktarılır; liste fiyatı ve iskonto kalem notunda saklanır. Teklif koşulları sipariş notuna eklenir.</p></details>
 <button class="button primary" type="submit">Onayla ve Satış Siparişi Oluştur</button>
 </form></section>
 <script src="{{ url_for('static',filename='quote-search.js') }}"></script>

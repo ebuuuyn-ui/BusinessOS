@@ -16,9 +16,10 @@
   <a class="{{ 'active' if not selected_type }}" href="{{ url_for('orders', delivery_pending=1) if delivery_pending else url_for('orders', active=1) if active_only else url_for('orders') }}">{{ 'Açık Tahsilat / Ödemeler' if delivery_pending else 'Devam Edenler' if active_only else 'Tüm Siparişler' }} <b>{{ type_counts.values()|sum }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satış' }}" href="{{ url_for('orders', type='Satış', delivery_pending=1) if delivery_pending else url_for('orders', type='Satış', active=1) if active_only else url_for('orders', type='Satış') }}">Satış Siparişleri <b>{{ type_counts['Satış'] }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satın Alma' }}" href="{{ url_for('orders', type='Satın Alma', delivery_pending=1) if delivery_pending else url_for('orders', type='Satın Alma', active=1) if active_only else url_for('orders', type='Satın Alma') }}">Satın Alma Siparişleri <b>{{ type_counts['Satın Alma'] }}</b></a>
-  <a class="button" href="{{ request.full_path }}">↻ Yenile</a>
+
 </div>
 
+<details class="section-disclosure"><summary>Sipariş Özeti <small>Durumlara göre adet ve tutarları göster</small></summary>
 <div class="order-status-summary">
   {% for order_type in ['Satış', 'Satın Alma'] %}
   <section class="order-status-summary-group {{ 'purchase' if order_type == 'Satın Alma' }}">
@@ -32,16 +33,21 @@
   {% endfor %}
 </div>
 
+</details>
 {% if delivery_pending %}<div class="pending-delivery-banner"><div><b>{{ 'Beklenen Tahsilat' if selected_type == 'Satış' else 'Beklenen Ödeme' if selected_type == 'Satın Alma' else 'Açık Tahsilat ve Ödemeler' }}</b><span>Gelecek siparişler ile sevk/teslim edilmiş açık cari bakiyeler · {{ orders|length }} sipariş</span></div><strong>₺{{ listed_total|money }}</strong></div>{% endif %}
 
 <div class="panel orders-panel">
+  <div class="ui-list-heading"><h2>Sipariş Listesi</h2><details class="action-menu"><summary>Raporlar</summary><div class="action-menu-panel">
+  <a class="button" href="{{ url_for('export_orders_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">Sipariş Listesi · Excel</a>
+  <a class="button" href="{{ url_for('export_orders_detailed_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">Kalem Ayrıntıları · Excel</a></div></details></div>
   <form class="filters" method="get" action="{{ url_for('orders') }}" id="order-filters">
     {% if active_only %}<input type="hidden" name="active" value="1">{% endif %}{% if delivery_pending %}<input type="hidden" name="delivery_pending" value="1">{% endif %}
-    <select name="type"><option value="">Tüm sipariş türleri</option>{% for type_name in ['Satış', 'Satın Alma'] %}<option value="{{ type_name }}" {{ 'selected' if selected_type == type_name }}>{{ type_name }} siparişleri</option>{% endfor %}</select>
-    <input name="customer_q" list="order-customer-options" value="{{ customer_query }}" placeholder="Cari adı veya kodu ara">
+    <input type="hidden" name="type" value="{{ selected_type }}">
+    <label>Cari<input name="customer_q" list="order-customer-options" value="{{ customer_query }}" placeholder="Cari adı veya kodu"></label>
     <datalist id="order-customer-options">{% for customer in customers %}<option value="{{ customer.name }}">{{ customer.code or '' }}</option>{% endfor %}</datalist>
-    <input name="q" value="{{ query }}" placeholder="Sipariş no veya cari ara">
-    <select name="invoice_status"><option value="">Tüm fatura durumları</option><option value="Faturalandı" {{ 'selected' if selected_invoice_status == 'Faturalandı' }}>Faturalandı</option><option value="Kısmen Faturalandı" {{ 'selected' if selected_invoice_status == 'Kısmen Faturalandı' }}>Kısmen faturalandı</option><option value="Fatura Bekliyor" {{ 'selected' if selected_invoice_status == 'Fatura Bekliyor' }}>Fatura bekliyor</option></select>
+    <label>Sipariş Ara<input name="q" value="{{ query }}" placeholder="Sipariş no veya cari"></label>
+    <label>Fatura Durumu<select name="invoice_status"><option value="">Tüm fatura durumları</option><option value="Faturalandı" {{ 'selected' if selected_invoice_status == 'Faturalandı' }}>Faturalandı</option><option value="Kısmen Faturalandı" {{ 'selected' if selected_invoice_status == 'Kısmen Faturalandı' }}>Kısmen faturalandı</option><option value="Fatura Bekliyor" {{ 'selected' if selected_invoice_status == 'Fatura Bekliyor' }}>Fatura bekliyor</option></select></label>
+    <div class="ui-status-filter"><span class="ui-field-label">Sipariş Durumu</span>
     {% if active_only or delivery_pending %}
     <span class="filter-static">{{ 'Teslim bekleyen durumlar' if delivery_pending else 'Devam eden durumlar' }}</span>
     {% else %}
@@ -53,10 +59,8 @@
       </div>
     </details>
     {% endif %}
-    <button class="button">Filtrele</button>
+    </div><div class="filter-actions"><button class="button primary">Filtrele</button><a class="button" href="{{ url_for('orders',type=selected_type) }}">Temizle</a></div>
     {% if active_only or delivery_pending %}<a class="button" href="{{ url_for('orders') }}">Tümünü Göster</a>{% endif %}
-    <a class="button" href="{{ url_for('export_orders_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">⇩ Excel'e Aktar</a>
-    <a class="button" href="{{ url_for('export_orders_detailed_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">⇩ Ayrıntılı Excel</a>
   </form>
 
   {% if orders %}

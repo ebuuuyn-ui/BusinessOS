@@ -16,18 +16,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Business OS{% endblock %}</title>
 {% include '_favicon.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='sidebar-toggle-20260930-1') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='shared-ui-20261006-1') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='ui.css',v='20261006-1') }}">
+<script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
 </head>
-<body{% if request.endpoint == 'orders' %} class="orders-page"{% endif %}>
+<body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}">
   <aside class="sidebar" id="main-sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>
       <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}"><i class="nav-icon">⌂</i><span>Ana Sayfa</span></a>
-      <details class="nav-group {{ 'has-active' if request.endpoint in ['quotes','quote_edit','quote_detail','orders','order_detail','new_order','edit_order','convert_to_purchase','invoices','invoice_detail','delete_invoice','telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document','earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}" {{ 'open' if request.endpoint in ['quotes','quote_edit','quote_detail','orders','order_detail','new_order','edit_order','convert_to_purchase','invoices','invoice_detail','delete_invoice','telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document','earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}>
+      <details class="nav-group {{ 'has-active' if request.endpoint in ['quotes','quote_edit','quote_detail','quote_to_order','orders','order_detail','new_order','edit_order','convert_to_purchase','invoices','invoice_detail','delete_invoice','telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document','earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}" {{ 'open' if request.endpoint in ['quotes','quote_edit','quote_detail','quote_to_order','orders','order_detail','new_order','edit_order','convert_to_purchase','invoices','invoice_detail','delete_invoice','telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document','earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}>
         <summary><i class="nav-icon">▤</i><span>Siparişler</span><b class="nav-chevron">⌄</b></summary>
         <div class="nav-sub">
           <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}">Tüm Siparişler</a>
-          <a class="{{ 'active' if request.endpoint in ['quotes','quote_edit','quote_detail'] }}" href="{{ url_for('quotes') }}">Fiyat Teklifleri</a>
+          <a class="{{ 'active' if request.endpoint in ['quotes','quote_edit','quote_detail','quote_to_order'] }}" href="{{ url_for('quotes') }}">Fiyat Teklifleri</a>
           <a class="{{ 'active' if request.endpoint in ['invoices','invoice_detail','delete_invoice'] }}" href="{{ url_for('invoices') }}">Faturalar</a>
           <a class="{{ 'active' if request.endpoint in ['telegram_documents','refresh_telegram_documents','link_telegram_document','delete_telegram_document'] }}" href="{{ url_for('telegram_documents') }}">Telegram Belgeleri</a>
           <a class="{{ 'active' if request.endpoint in ['earchive_documents','refresh_earchive_documents','link_earchive_document','delete_earchive_document'] }}" href="{{ url_for('earchive_documents') }}">E-Arşiv Faturaları</a>

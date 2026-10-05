@@ -1,7 +1,7 @@
 <section class="panel order-documents" id="siparis-belgeleri">
   <div class="document-toolbar">
     <div class="document-title"><h2>Belgeler</h2><span>{{ order.documents|length }} belge</span></div>
-    <div class="document-actions order-form-downloads"><a class="button small" href="{{ url_for('export_order_excel', order_id=order.id) }}" data-native-download data-export-name="{{ order.order_no }}-{{ order.order_date.isoformat() }}.xlsx">Excel İndir</a><a class="button small" href="{{ url_for('export_order_pdf', order_id=order.id) }}" data-native-download data-export-name="{{ order.order_no }}-{{ order.order_date.isoformat() }}.pdf">PDF İndir</a></div>
+
 
     <form method="post" action="{{ url_for('upload_order_documents', order_id=order.id) }}" enctype="multipart/form-data" class="document-upload-form" id="document-upload-form">
     <label>
@@ -19,7 +19,7 @@
     <input type="hidden" name="source" id="document-source" value="manual">
     <button class="button primary" type="submit">Kaydet</button>
     </form>
-    <p class="document-paste-hint">Bu çubuğa tıklayıp görseli <b>⌘V</b> ile yapıştırabilir veya dosyayı bırakabilirsin.</p>
+    <p class="document-paste-hint">Dosyaları buraya sürükleyebilir veya görsel yapıştırabilirsiniz.</p>
   </div>
 
   {% if order.documents %}
