@@ -7,16 +7,23 @@
 </style>
 <div class="detail-navigation"><a class="button" href="{{ url_for('uyumsoft_inbox') }}">← Gelen Faturalara Dön</a><a class="button" data-native-download data-export-name="{{ doc.number if doc else uid }}.pdf" href="{{ url_for('uyumsoft_inbox_pdf',uid=uid) }}">Orijinal PDF’yi İndir</a></div>
 {% if error %}<section class="panel form-panel"><p class="note" role="alert">{{ error }}</p></section>{% endif %}
+<section class="panel form-panel"><form method="get" class="inbox-fields"><label>İlgili siparişler (isteğe bağlı)<input name="order_refs" value="{{ order_refs }}" placeholder="SA-2026-00057, SA-2026-00070"></label><div><button class="button">Sipariş Kalemlerini Getir</button></div></form><p>Birden fazla sipariş numarasını virgülle ayırabilirsiniz. Aşağıda her fatura kalemini sipariş satırlarına ve adetlerine dağıtın.</p></section>
 {% if doc %}
 <section class="panel form-panel"><div class="inbox-meta"><div><small>Fatura</small><b>{{ doc.number }}</b><p>{{ doc.date }} · Vade: {{ doc.due or 'Belirtilmemiş' }}</p></div><div><small>Tedarikçi</small><b>{{ doc.supplier }}</b><p>VKN / TCKN: {{ doc.supplier_id }}</p></div></div><p>Orijinal fatura ve PDF korunur. Aşağıdaki seçimler BOS kaydında kullanılacak ürün ve açıklamayı belirler; fatura miktar ve tutarları değişmez.</p></section>
-<form method="post" id="inbox-form"><input type="hidden" name="token" value="{{ token }}">
-<section class="panel form-panel"><div class="inbox-fields"><label>BOS tedarikçi carisi<input name="customer_ref" list="inbox-customers" value="{{ customer_ref }}" placeholder="Cari adı yazın ve listeden seçin" required autocomplete="off"></label><label>Bağlı satın alma siparişi (isteğe bağlı)<input name="order_ref" value="{{ order_ref }}" placeholder="Örn. SA-2026-00067"></label></div>
+
+<form method="post" id="inbox-form"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="order_refs" value="{{ order_refs }}">
+<section class="panel form-panel"><div class="inbox-fields"><label>BOS tedarikçi carisi<input name="customer_ref" list="inbox-customers" value="{{ customer_ref }}" placeholder="Cari adı yazın ve listeden seçin" required autocomplete="off"></label></div>
 <datalist id="inbox-customers">{% for ref in customer_refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
 <datalist id="inbox-products">{% for ref in product_refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
 <p><a href="{{ url_for('customers') }}" target="_blank" rel="noopener">Cari kartlarını aç ↗</a> · <a href="{{ url_for('products') }}" target="_blank" rel="noopener">Yeni stok kartı oluştur ↗</a></p><p class="muted">Yeni kart oluşturduktan sonra bu sayfayı yenileyin. Kaydetmeden yaptığınız seçimler yenilemede sıfırlanır.</p>
 {% for line in doc.lines %}{% set i=loop.index0 %}{% set choice=choices[i] %}
-<article class="inbox-line"><div class="inbox-original"><small>Faturadaki {{ loop.index }}. kalem</small><h3>{{ line.name }}</h3><span>{{ line.quantity }} {{ 'Adet' if line.unit=='C62' else line.unit }} · KDV hariç ₺{{ line.net|float|money }} · KDV %{{ line.rate }}: ₺{{ line.tax|float|money }}</span></div>
+<article class="inbox-line" data-quantity="{{ line.quantity }}"><div class="inbox-original"><small>Faturadaki {{ loop.index }}. kalem</small><h3>{{ line.name }}</h3><span>{{ line.quantity }} {{ 'Adet' if line.unit=='C62' else line.unit }} · KDV hariç ₺{{ line.net|float|money }} · KDV %{{ line.rate }}: ₺{{ line.tax|float|money }}</span></div>
 <div class="inbox-fields"><label>BOS’a kayıt türü<select name="kind_{{ i }}" class="inbox-kind"><option value="stock" {{ 'selected' if choice.kind=='stock' }}>Stok ürünü — stok girişi oluştur</option><option value="expense" {{ 'selected' if choice.kind=='expense' }}>Gider / hizmet — stok hareketi yok</option></select></label><label class="inbox-stock">BOS stok kartı<input name="product_{{ i }}" list="inbox-products" value="{{ choice.product }}" placeholder="Ürün adı veya kodu yazıp seçin" autocomplete="off"></label><label class="inbox-expense">BOS’ta görünecek açıklama<input name="label_{{ i }}" value="{{ choice.label }}" maxlength="160"></label></div>
+<div class="inbox-distribution"><h4>Sipariş kalemlerine dağıtım</h4><div class="allocation-rows">
+{% for allocation in choice.allocations %}<div class="allocation-row" style="display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:12px;align-items:end;margin:12px 0">
+<label>Sipariş satırı<select name="allocation_item_{{ i }}[]" class="allocation-item"><option value="">Siparişe bağlama</option>{% for option in candidate_options %}<option value="{{ option.id }}" data-product="{{ option.product }}" data-remaining="{{ option.remaining }}" {{ 'selected' if allocation.item==option.id }}>{{ option.label }}</option>{% endfor %}</select></label>
+<label>Adet<input name="allocation_qty_{{ i }}[]" class="allocation-qty" type="number" min="1" step="1" value="{{ allocation.quantity }}"></label><button type="button" class="button allocation-remove" aria-label="Dağıtım satırını kaldır">×</button></div>{% endfor %}
+</div><button type="button" class="button allocation-add">+ Adet Bölüştür</button><p class="allocation-summary muted"></p></div>
 <label class="inbox-check"><input type="checkbox" name="remember_{{ i }}" value="yes" {{ 'checked' if choice.remember }}><span>Bu tedarikçinin aynı ürün adı için seçimimi hatırla.</span></label>
 </article>{% endfor %}
 <div class="inbox-total">KDV hariç ₺{{ doc.net|float|money }} · KDV ₺{{ doc.tax|float|money }}<p><strong>Genel toplam ₺{{ doc.total|float|money }}</strong></p></div>
@@ -25,6 +32,14 @@
 <button class="button primary" type="submit">Kontrol Ettim, BOS’a İşle</button></section></form>
 <script>
 document.querySelectorAll('.inbox-line').forEach(line=>{const select=line.querySelector('.inbox-kind');const sync=()=>{const stock=select.value==='stock';line.querySelector('.inbox-stock').hidden=!stock;line.querySelector('.inbox-expense').hidden=stock;line.querySelector('.inbox-stock input').required=stock;line.querySelector('.inbox-expense input').required=!stock};select.addEventListener('change',sync);sync()});
+document.querySelectorAll('.inbox-line').forEach(line=>{
+const rows=line.querySelector('.allocation-rows');
+const summary=()=>{let used=0;rows.querySelectorAll('.allocation-row').forEach(row=>{const selected=!!row.querySelector('select').value;const qty=row.querySelector('input');qty.required=selected;if(selected)used+=Number(qty.value||0)});line.querySelector('.allocation-summary').textContent=`Dağıtılan: ${used} / ${line.dataset.quantity} adet`;};
+rows.addEventListener('change',event=>{if(event.target.matches('select')){const selected=event.target.selectedOptions[0];const qty=event.target.closest('.allocation-row').querySelector('input');if(selected.value){const product=line.querySelector('.inbox-stock input');if(!product.value)product.value=selected.dataset.product||'';if(!qty.value){let others=0;rows.querySelectorAll('input').forEach(input=>{if(input!==qty)others+=Number(input.value||0)});qty.value=Math.max(1,Math.min(Number(selected.dataset.remaining),Number(line.dataset.quantity)-others));}}else qty.value='';}summary();});
+rows.addEventListener('input',summary);
+rows.addEventListener('click',event=>{if(event.target.closest('.allocation-remove')){const row=event.target.closest('.allocation-row');if(rows.children.length>1)row.remove();else{row.querySelector('select').value='';row.querySelector('input').value='';}summary();}});
+line.querySelector('.allocation-add').addEventListener('click',()=>{const row=rows.firstElementChild.cloneNode(true);row.querySelector('select').value='';row.querySelector('input').value='';rows.append(row);summary();});summary();
+});
 document.getElementById('inbox-form').addEventListener('submit',event=>{event.currentTarget.querySelector('button[type=submit]').disabled=true});
 </script>
 {% endif %}

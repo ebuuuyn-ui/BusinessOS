@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import re
 import uuid as uuidlib
 from datetime import date,datetime,timedelta,timezone
 from decimal import Decimal,InvalidOperation
@@ -98,7 +99,10 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
     def uyumsoft_inbox_review(uid):
         access();uid=str(uid);saved=existing(uid)
         if saved:return redirect(url_for('invoice_detail',invoice_id=saved))
-        error=None;doc=None;token='';choices=[];customer_ref=request.form.get('customer_ref','');order_ref=request.form.get('order_ref','')
+        from app import InvoiceOrderAllocation, OrderItem, normalize_search_text
+        from invoice_order_allocation import remaining, validate_distribution
+        error=None;doc=None;token='';choices=[];customer_ref=request.form.get('customer_ref','')
+        order_refs=request.values.get('order_refs','').strip();candidates={};candidate_options=[];order_fingerprint=''
         customers=Customer.query.order_by(Customer.name).all();products=Product.query.filter_by(active=True).order_by(Product.name).all()
         product_refs={str(x.id)+' · '+(x.code or 'Kodsuz')+' · '+x.name:x for x in products}
         customer_refs={str(x.id)+' · '+x.name:x for x in customers}
@@ -108,22 +112,40 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
             if request.method=='GET':
                 found=[ref for ref,c in customer_refs.items() if c.tax_number==doc['supplier_id']]
                 if len(found)==1:customer_ref=found[0]
+            requested_orders=set(re.split(r'[,;\s]+',order_refs.upper()))-{''}
+            supplier_customers=[c.id for c in customers if c.tax_number==doc['supplier_id']]
+            query=Order.query.filter(Order.customer_id.in_(supplier_customers),Order.order_type=='Satın Alma',Order.status!='İptal Edildi')
+            if requested_orders:query=query.filter(Order.order_no.in_(requested_orders))
+            eligible_orders=query.order_by(Order.order_no).all()
+            # Old header-only invoice links have no reliable per-line remaining quantity.
+            legacy_ids={o.id for o in eligible_orders if o.invoices}
+            if requested_orders and (requested_orders!={o.order_no for o in eligible_orders} or legacy_ids):
+                raise UyumError('Siparişlerden biri bu tedarikçiye ait değil, iptal edilmiş veya eski yöntemle faturaya bağlanmış. Sipariş numaralarını kontrol edin.')
+            candidates={item.id:item for o in eligible_orders if o.id not in legacy_ids for item in o.items}
+            available=remaining(list(candidates.values()))
+            order_fingerprint=hashlib.sha256(json.dumps([(x.id,x.product_id,x.quantity,x.unit,x.order_id,x.order.customer_id,x.order.status,available[x.id]) for x in candidates.values()]).encode()).hexdigest()
+            for item in candidates.values():
+                if available[item.id]<=0:continue
+                ref=next((r for r,p in product_refs.items() if p.id==item.product_id),'')
+                label=f'{item.order.order_no} · {item.product_name} · {item.variant or ""} · Kalan {available[item.id]} adet'
+                candidate_options.append(dict(id=str(item.id),label=label,product=ref,remaining=available[item.id]))
             for i,line in enumerate(doc['lines']):
                 suggestion=db.session.execute(select(matches).where(matches.c.key==key(doc['supplier_id'],line['name']))).mappings().first() if ready(matches) else None
                 product_ref=next((r for r,p in product_refs.items() if suggestion and p.id==suggestion['product_id']),'')
                 choices.append(dict(kind=request.form.get(f'kind_{i}',suggestion['kind'] if suggestion else 'stock'),
                     product=request.form.get(f'product_{i}',product_ref),label=request.form.get(f'label_{i}',suggestion['label'] if suggestion and suggestion['label'] else line['name'][:160]),
-                    remember=request.form.get(f'remember_{i}')=='yes' if request.method=='POST' else True))
-            token=signer.dumps(dict(uuid=uid,hash=fingerprint,buyer=cfg['seller']['tax_number']))
+                    remember=request.form.get(f'remember_{i}')=='yes' if request.method=='POST' else True,
+                    allocations=[dict(item=a,quantity=b) for a,b in zip(request.form.getlist(f'allocation_item_{i}[]'),request.form.getlist(f'allocation_qty_{i}[]'))] or [dict(item='',quantity='')]))
+                if len(request.form.getlist(f'allocation_item_{i}[]'))!=len(request.form.getlist(f'allocation_qty_{i}[]')):raise UyumError('Sipariş dağıtımı eksik gönderildi.')
+            token=signer.dumps(dict(uuid=uid,hash=fingerprint,buyer=cfg['seller']['tax_number'],orders=order_fingerprint))
             if request.method=='POST':
                 try:approved=signer.loads(request.form.get('token',''),max_age=1800)
                 except BadSignature:raise UyumError('Önizleme süresi doldu. Güncel bilgileri tekrar kontrol edin.') from None
-                if approved!=dict(uuid=uid,hash=fingerprint,buyer=cfg['seller']['tax_number']):raise UyumError('Uyumsoft faturası değişmiş. Güncel bilgileri kontrol edip yeniden onaylayın.')
+                if approved!=dict(uuid=uid,hash=fingerprint,buyer=cfg['seller']['tax_number'],orders=order_fingerprint):raise UyumError('Fatura veya siparişlerin kalan adetleri değişmiş. Güncel bilgileri kontrol edip yeniden onaylayın.')
                 if request.form.get('confirm')!='yes':raise UyumError('Kaydetmeden önce kontrol onayını işaretleyin.')
                 customer=customer_refs.get(customer_ref)
                 if not customer or customer.tax_number!=doc['supplier_id']:raise UyumError('Tedarikçinin VKN/TCKN bilgisiyle eşleşen BOS carisini seçin; gerekirse cari kartını güncelleyin.')
-                order=Order.query.filter_by(order_no=order_ref).first() if order_ref else None
-                if order_ref and (not order or order.order_type!='Satın Alma' or order.customer_id!=customer.id):raise UyumError('Satın alma siparişi seçilen tedarikçiye ait olmalı.')
+                if request.form.get('order_ref'):raise UyumError('Sipariş bağlantısını aşağıdaki kalem dağıtımından seçin.')
                 prepared=[]
                 for line,choice in zip(doc['lines'],choices):
                     if choice['kind']=='stock':
@@ -141,24 +163,35 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                     else:raise UyumError('Geçersiz kalem türü.')
                 if sum(Decimal(x['net'])*Decimal(x['rate'])/100 for x in doc['lines'])!=Decimal(doc['tax']):
                     raise UyumError('KDV yuvarlama farkı var; BOS toplamıyla birebir eşleşmediği için manuel kontrol gerekiyor.')
+                distribution=validate_distribution(doc,choices,prepared,candidates,customer.id,bool(requested_orders))
                 state=client.inbox_status(uid)
                 if state not in FINAL_STATES:raise UyumError('Bu durumdaki fatura işlenemez: '+state)
                 pdf=client.inbox_pdf(uid);backup();meta.create_all(db.engine)
+                InvoiceOrderAllocation.__table__.create(db.engine,checkfirst=True)
                 try:
                     db.session.query(Customer).filter_by(id=customer.id).with_for_update().one()
                     saved=existing(uid)
                     if saved:
                         db.session.rollback();return redirect(url_for('invoice_detail',invoice_id=saved))
                     if Invoice.query.filter_by(invoice_no=doc['number']).first():raise UyumError('Bu fatura numarası BOS’ta zaten var; ikinci kayıt oluşturulmadı.')
-                    inv=Invoice(invoice_no=doc['number'],invoice_type='Satın Alma',customer_id=customer.id,order_id=order.id if order else None,
+                    selected_ids=sorted({item.order_id for line in distribution for item,qty in line})
+                    if selected_ids:
+                        locked=Order.query.filter(Order.id.in_(selected_ids)).order_by(Order.id).with_for_update().populate_existing().all()
+                        if len(locked)!=len(selected_ids) or Invoice.query.filter(Invoice.order_id.in_(selected_ids)).first() or any(o.customer_id!=customer.id or o.order_type!='Satın Alma' or o.status=='İptal Edildi' for o in locked):raise UyumError('Sipariş bilgileri değişti; tekrar kontrol edin.')
+                        locked_items=OrderItem.query.filter(OrderItem.order_id.in_(selected_ids)).with_for_update().populate_existing().all()
+                        distribution=validate_distribution(doc,choices,prepared,{x.id:x for x in locked_items},customer.id,bool(requested_orders))
+                    inv=Invoice(invoice_no=doc['number'],invoice_type='Satın Alma',customer_id=customer.id,order_id=None,
                         invoice_date=date.fromisoformat(doc['date']),due_date=date.fromisoformat(doc['due']) if doc['due'] else None,notes='Uyumsoft gelen fatura ETTN: '+uid)
                     db.session.add(inv);db.session.flush();mapping=[]
-                    for line,choice,row in zip(doc['lines'],choices,prepared):
+                    for line,choice,row,assigned in zip(doc['lines'],choices,prepared,distribution):
                         movement=None
                         if row['product']:
                             movement=StockMovement(product_id=row['product'].id,movement_type='Stok Girişi',quantity=row['quantity'],movement_date=inv.invoice_date,note='Satın Alma faturası · '+inv.invoice_no)
                             db.session.add(movement);db.session.flush()
-                        db.session.add(InvoiceItem(invoice_id=inv.id,product_id=row['product'].id if row['product'] else None,product_name=row['name'],unit='Adet',quantity=row['quantity'],unit_price=row['price'],vat_rate=Decimal(line['rate']),discount_rate=0,vat_included=False,stock_movement_id=movement.id if movement else None))
+                        invoice_item=InvoiceItem(invoice_id=inv.id,product_id=row['product'].id if row['product'] else None,product_name=row['name'],unit='Adet',quantity=row['quantity'],unit_price=row['price'],vat_rate=Decimal(line['rate']),discount_rate=0,vat_included=False,stock_movement_id=movement.id if movement else None)
+                        db.session.add(invoice_item);db.session.flush()
+                        for item,qty in assigned:
+                            db.session.add(InvoiceOrderAllocation(invoice_id=inv.id,invoice_item_id=invoice_item.id,order_id=item.order_id,order_item_id=item.id,quantity=qty))
                         mapping.append(dict(original=line,kind=choice['kind'],bos_name=row['name'],product_id=row['product'].id if row['product'] else None))
                         if choice['remember']:
                             k=key(doc['supplier_id'],line['name']);values=dict(supplier=doc['supplier_id'],original=line['name'],kind=choice['kind'],product_id=row['product'].id if row['product'] else None,label=row['name'])
@@ -170,8 +203,10 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                     return redirect(url_for('invoice_detail',invoice_id=inv.id))
                 except IntegrityError:
                     db.session.rollback();raise UyumError('Kayıt çakışması oluştu; ikinci fatura veya stok hareketi oluşturulmadı.') from None
-        except UyumError as exc:db.session.rollback();error=str(exc)
-        return render_template('uyumsoft_inbox_review.html',doc=doc,error=error,token=token,choices=choices,customer_refs=customer_refs,product_refs=product_refs,customer_ref=customer_ref,order_ref=order_ref,uid=uid)
+        except UyumError as exc:
+            db.session.rollback();error=str(exc)
+            if doc and len(choices)!=len(doc['lines']):doc=None
+        return render_template('uyumsoft_inbox_review.html',doc=doc,error=error,token=token,choices=choices,customer_refs=customer_refs,product_refs=product_refs,customer_ref=customer_ref,order_refs=order_refs,candidate_options=candidate_options,uid=uid)
     @app.get('/faturalar/uyumsoft-gelen/<uuid:uid>/pdf')
     def uyumsoft_inbox_pdf(uid):
         access();uid=str(uid)

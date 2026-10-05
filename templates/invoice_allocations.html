@@ -1,0 +1,5 @@
+{% if invoice_allocations %}<section class="panel form-panel"><h2>Fatura – sipariş dağıtımı</h2>
+{% if order is defined %}<p>{{ invoice_progress.state }} · {{ invoice_progress.quantity }}/{{ invoice_progress.total }} adet faturaya bağlandı.</p>{% endif %}
+<div class="table-wrap"><table class="compact-table"><thead><tr><th>Fatura</th><th>Sipariş</th><th>Sipariş ürünü / ayrıntı</th><th>Faturalanan adet</th></tr></thead><tbody>
+{% for allocation in invoice_allocations %}<tr><td><a href="{{ url_for('invoice_detail',invoice_id=allocation.invoice_id) }}">{{ allocation.invoice.invoice_no }}</a></td><td><a href="{{ url_for('order_detail',order_id=allocation.order_id) }}">{{ allocation.order.order_no }}</a></td><td>{{ allocation.order_item.product_name }}<small class="block">{{ allocation.order_item.variant or '' }}</small></td><td>{{ allocation.quantity }}</td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}

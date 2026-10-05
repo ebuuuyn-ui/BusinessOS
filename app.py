@@ -112,14 +112,14 @@ def selected_order_statuses(args):
 def selected_order_invoice_status(args):
     """Siparişin en az bir faturaya bağlı olup olmadığına göre filtreyi döndürür."""
     value = args.get("invoice_status", "")
-    return value if value in {"Faturalandı", "Fatura Bekliyor"} else ""
+    return value if value in {"Faturalandı", "Fatura Bekliyor", "Kısmen Faturalandı"} else ""
 
 
 def apply_order_invoice_status_filter(records, invoice_status):
     if not invoice_status:
         return records
-    invoiced_order_ids = db.session.query(Invoice.order_id).filter(Invoice.order_id.isnot(None))
-    return records.filter(Order.id.in_(invoiced_order_ids) if invoice_status == "Faturalandı" else ~Order.id.in_(invoiced_order_ids))
+    from invoice_order_allocation import filter_orders
+    return filter_orders(records, invoice_status)
 
 
 def apply_order_text_filters(records, query="", customer_query="", dialect_name=None):
@@ -387,6 +387,11 @@ class Invoice(db.Model):
     items = db.relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceItem.id")
 
     @property
+    def linked_orders(self):
+        from invoice_order_allocation import linked_orders
+        return linked_orders(self)
+
+    @property
     def net_amount(self):
         return sum((item.net_amount for item in self.items), Decimal("0"))
 
@@ -432,6 +437,20 @@ class InvoiceItem(db.Model):
     @property
     def total_amount(self):
         return self.net_amount + self.vat_amount
+
+
+class InvoiceOrderAllocation(db.Model):
+    """A quantity of one invoice line assigned to one purchase-order line."""
+    invoice_item_id = db.Column(db.Integer, db.ForeignKey("invoice_item.id", ondelete="CASCADE"), primary_key=True)
+    order_item_id = db.Column(db.Integer, db.ForeignKey("order_item.id"), primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("order.id"), nullable=False, index=True)
+    quantity = db.Column(db.Integer, nullable=False)
+    __table_args__ = (db.CheckConstraint("quantity > 0", name="positive_allocated_quantity"),)
+    invoice = db.relationship("Invoice")
+    invoice_item = db.relationship("InvoiceItem")
+    order = db.relationship("Order")
+    order_item = db.relationship("OrderItem")
 
 
 class TelegramIncomingDocument(db.Model):
@@ -2462,6 +2481,9 @@ def create_app(test_config=None):
                 errors.append("Bağlı siparişi listeden seçin.")
             if linked_order and customer and (linked_order.order_type != invoice_type or linked_order.customer_id != customer.id):
                 errors.append("Bağlı siparişin türü ve carisi faturayla aynı olmalıdır.")
+            from invoice_order_allocation import for_order
+            if linked_order and for_order(linked_order.id):
+                errors.append('Bu sipariş kalem bazında faturalanmış. Kalan kalemler için Uyumsoft Gelen Faturalar ekranından dağıtım yapın.')
             if not lines:
                 errors.append("En az bir stok kalemi girin.")
             if errors:
@@ -2538,7 +2560,8 @@ def create_app(test_config=None):
     def invoice_detail(invoice_id):
         invoice = db.get_or_404(Invoice, invoice_id)
         returns, source_invoice = app.extensions["invoice_returns"]["related"](invoice)
-        return render_template("invoice_detail.html", invoice=invoice, returns=returns, source_invoice=source_invoice)
+        from invoice_order_allocation import for_invoice
+        return render_template("invoice_detail.html", invoice=invoice, returns=returns, source_invoice=source_invoice, invoice_allocations=for_invoice(invoice.id))
 
     @app.route("/faturalar/<int:invoice_id>/duzenle", methods=["GET", "POST"])
     def edit_invoice(invoice_id):
@@ -2625,6 +2648,9 @@ def create_app(test_config=None):
                 errors.append("Bağlı siparişi listeden seçin.")
             if linked_order and customer and (linked_order.order_type != invoice_type or linked_order.customer_id != customer.id):
                 errors.append("Bağlı siparişin türü ve carisi faturayla aynı olmalıdır.")
+            from invoice_order_allocation import for_order
+            if linked_order and for_order(linked_order.id):
+                errors.append('Bu sipariş kalem bazında faturalanmış. Kalan kalemler için Uyumsoft Gelen Faturalar ekranından dağıtım yapın.')
             if not lines:
                 errors.append("En az bir stok kalemi girin.")
             if errors:
@@ -4355,7 +4381,9 @@ def create_app(test_config=None):
             order.id: procurement_summary(order, linked_by_source.get(order.id, []))
             for order in listed_orders if order.order_type == "Satış"
         }
-        invoice_counts = {order.id: len(order.invoices) for order in listed_orders}
+        from invoice_order_allocation import summaries
+        invoice_progress = summaries(listed_orders)
+        invoice_counts = {key: value["count"] for key,value in invoice_progress.items()}
         pending_expected = pending_expected if delivery_pending else {}
         listed_total = sum((pending_expected.get(order.id, order.total_amount) for order in listed_orders), Decimal("0"))
         export_args = {}
@@ -4378,7 +4406,7 @@ def create_app(test_config=None):
         customers_list = Customer.query.join(Order).distinct().order_by(Customer.name).all()
         page_args = request.args.to_dict(flat=False)
         page_args.pop("page", None)
-        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, source_orders_by_id=source_orders_by_id, export_args=export_args, page=page, total_pages=total_pages, total_count=total_count, page_args=page_args)
+        return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, invoice_progress=invoice_progress, source_orders_by_id=source_orders_by_id, export_args=export_args, page=page, total_pages=total_pages, total_count=total_count, page_args=page_args)
 
     @app.get("/siparisler/excel")
     def export_orders_excel():
@@ -4765,7 +4793,8 @@ def create_app(test_config=None):
             if confirmed != identity or request.form.get("ack") != "yes":
                 abort(400)
         blockers = []
-        if Invoice.query.filter_by(order_id=order.id).first():
+        from invoice_order_allocation import for_order
+        if Invoice.query.filter_by(order_id=order.id).first() or for_order(order.id):
             blockers.append("Bu siparişe bağlı fatura var. Önce fatura bağlantısını düzenleyin.")
         item_ids = [item.id for item in order.items]
         if (Order.query.filter_by(source_order_id=order.id).first() or
@@ -4791,8 +4820,10 @@ def create_app(test_config=None):
         procurement = procurement_summary(order, converted_orders) if order.order_type == "Satış" else None
         source_order = db.session.get(Order, order.source_order_id) if order.order_type == "Satın Alma" and order.source_order_id else None
         collection_item = next((item for item in delivered_sales_collection_tracking() if item["order"].id == order.id), None) if order.order_type == "Satış" and order.status == "Teslim Edildi" else None
+        from invoice_order_allocation import for_order, summaries
         return render_template(
             "order_detail.html",
+            invoice_allocations=for_order(order.id), invoice_progress=summaries([order])[order.id],
             order=order,
             converted_orders=converted_orders,
             procurement=procurement,
@@ -5051,6 +5082,12 @@ def create_app(test_config=None):
     @app.route("/siparisler/<int:order_id>/duzenle", methods=["GET", "POST"])
     def edit_order(order_id):
         order = db.get_or_404(Order, order_id)
+        from invoice_order_allocation import for_order
+        if request.method == 'POST':
+            order = Order.query.filter_by(id=order_id).with_for_update().populate_existing().one()
+        if for_order(order.id):
+            flash('Bu siparişin kalemleri faturaya dağıtılmış. Kalem bağlantılarını korumak için sipariş düzenlenemez; sevkiyat durumunu sipariş ekranından güncelleyebilirsiniz.', 'error')
+            return redirect(url_for('order_detail',order_id=order.id))
         customers_list = Customer.query.order_by(Customer.name).all()
         products_list = Product.query.filter_by(active=True).order_by(Product.name).all()
         sales_orders = Order.query.filter_by(order_type="Satış").order_by(Order.order_date.desc(), Order.id.desc()).all()

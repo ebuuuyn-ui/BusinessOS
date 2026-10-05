@@ -18,7 +18,7 @@ def build_invoice_register(invoices):
         values = [invoice.invoice_date, invoice.due_date, invoice.invoice_no,
                   invoice.invoice_type, customer.code or '', customer.name,
                   customer.tax_office or '', customer.tax_number or '',
-                  invoice.order.order_no if invoice.order else '', len(invoice.items),
+                  ', '.join(o.order_no for o in invoice.linked_orders) if hasattr(invoice,'linked_orders') else (invoice.order.order_no if invoice.order else ''), len(invoice.items),
                   invoice.net_amount, invoice.vat_amount, invoice.total_amount,
                   invoice.notes or '']
         sheet.append(values)
