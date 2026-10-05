@@ -76,7 +76,7 @@ def validate(data):
             raise UyumError('İlk sürüm %1, %10 ve %20 KDV’li normal satışlar içindir; istisna ve tevkifat desteklenmiyor.')
 
 
-def register_uyumsoft(app,db,Invoice,Order,InvoiceItem,StockMovement,backup):
+def register_uyumsoft(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Product,backup):
     cipher=Fernet(base64.urlsafe_b64encode(hashlib.sha256(('bos-uyumsoft-v1:'+app.secret_key).encode()).digest()))
     signer=URLSafeTimedSerializer(app.secret_key,salt='uyumsoft-preview-v1')
     def config():
@@ -100,6 +100,8 @@ def register_uyumsoft(app,db,Invoice,Order,InvoiceItem,StockMovement,backup):
 
     from uyumsoft_import import register_import
     register_import(app,db,Invoice,Order,InvoiceItem,StockMovement,config,record,order_attempts,access,backup)
+    from uyumsoft_inbox import register_inbox
+    register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Product,config,access,backup)
 
     @app.before_request
     def protect_exported_invoice():

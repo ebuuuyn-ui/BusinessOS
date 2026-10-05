@@ -85,7 +85,7 @@ class Client:
         self.config=config
         if config.get('environment') not in ENDPOINTS: raise UyumError('Geçersiz servis ortamı.')
     def call(self, method, params=None):
-        if method not in {'IsEInvoiceUser','SaveAsDraft','QueryOutboxInvoiceStatus','GetUserAliasses','GetOutboxInvoice','GetOutboxInvoicePdf'}: raise UyumError('Bu işlem desteklenmiyor.')
+        if method not in {'IsEInvoiceUser','SaveAsDraft','QueryOutboxInvoiceStatus','GetUserAliasses','GetOutboxInvoice','GetOutboxInvoicePdf','GetInboxInvoiceList','GetInboxInvoice','GetInboxInvoicePdf','QueryInboxInvoiceStatus'}: raise UyumError('Bu işlem desteklenmiyor.')
         env=ET.Element('{'+S+'}Envelope');header=add(env,S,'Header');security=add(header,W,'Security',**{'{'+S+'}mustUnderstand':'1'})
         now=datetime.now(timezone.utc)
         timestamp=add(security,U,'Timestamp')
@@ -152,4 +152,39 @@ class Client:
         try:data=base64.b64decode(''.join((value.findtext('{'+T+'}Data') or '').split()),validate=True)
         except (ValueError,binascii.Error):raise UyumError('PDF içeriği okunamadı.') from None
         if not data.startswith(b'%PDF-') or len(data)>12_000_000:raise UyumError('Geçerli PDF alınamadı; fatura kaydedilmedi.')
+        return data
+
+    def inbox_list(self, start, end, page=0):
+        q=ET.Element('{'+T+'}query',PageIndex=str(page),PageSize='25',OnlyNewestInvoices='false')
+        xsi='http://www.w3.org/2001/XMLSchema-instance'
+        for name in ('ExecutionStartDate','ExecutionEndDate','CreateStartDate','CreateEndDate','Status'):
+            if name=='ExecutionStartDate':add(q,T,name,start+'T00:00:00')
+            elif name=='ExecutionEndDate':add(q,T,name,end+'T23:59:59')
+            else:add(q,T,name,**{'{'+xsi+'}nil':'true'})
+        add(q,T,'SortColumn','ExecutionDate');add(q,T,'SortMode','Descending')
+        add(q,T,'IsArchived',**{'{'+xsi+'}nil':'true'})
+        add(q,T,'IncludeTagList','false')
+        value=self.call('GetInboxInvoiceList',[q]).find('{'+T+'}Value')
+        if value is None:raise UyumError('Gelen fatura listesi okunamadı.')
+        rows=[{x.tag.split('}')[-1]:x.text or '' for x in row} for row in value.findall('{'+T+'}Items')]
+        return rows,int(value.get('TotalPages','1')),int(value.get('TotalCount',str(len(rows))))
+    def inbox_invoice(self, uuid):
+        p=ET.Element('{'+T+'}invoiceId');p.text=uuid
+        root=self.call('GetInboxInvoice',[p]).find('{'+T+'}Value/{'+T+'}Invoice')
+        if root is None:raise UyumError('Gelen fatura içeriği alınamadı.')
+        return root
+    def inbox_status(self, uuid):
+        ids=ET.Element('{'+T+'}invoiceIds');add(ids,T,'string',uuid)
+        rows=self.call('QueryInboxInvoiceStatus',[ids]).findall('{'+T+'}Value')
+        match=next((x for x in rows if x.get('InvoiceId','').lower()==uuid.lower()),None)
+        if match is None:raise UyumError('Gelen faturanın durumu bulunamadı.')
+        return match.get('Status','Bilinmiyor')
+    def inbox_pdf(self, uuid):
+        import base64,binascii
+        p=ET.Element('{'+T+'}invoiceId');p.text=uuid
+        value=self.call('GetInboxInvoicePdf',[p]).find('{'+T+'}Value')
+        if value is None or value.get('InvoiceId','').lower()!=uuid.lower():raise UyumError('PDF ETTN eşleşmedi.')
+        try:data=base64.b64decode(''.join((value.findtext('{'+T+'}Data') or '').split()),validate=True)
+        except (ValueError,binascii.Error):raise UyumError('PDF okunamadı.') from None
+        if not data.startswith(b'%PDF-') or len(data)>12_000_000:raise UyumError('Geçerli PDF alınamadı.')
         return data

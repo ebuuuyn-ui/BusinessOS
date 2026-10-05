@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block heading %}Gelen Faturayı İncele{% endblock %}
+{% block subheading %}Tedarikçinin ürün adını kendi BOS stok kartınızla eşleştirin{% endblock %}
+{% block content %}
+<style>
+.inbox-meta,.inbox-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.inbox-meta small{display:block;color:#6b7280;margin-bottom:8px}.inbox-line{padding:24px;border:1px solid #dfe5ee;border-radius:18px;margin:18px 0;background:#fff}.inbox-original{padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid #e7ebf2}.inbox-original h3{margin:0 0 8px}.inbox-check{display:flex!important;align-items:flex-start;gap:10px;margin:18px 0}.inbox-check input[type=checkbox]{width:20px!important;height:20px!important;flex:0 0 20px;margin:2px 0!important;box-shadow:none}.inbox-total{text-align:right;font-size:1.1rem;padding:18px 0}.inbox-fields label{min-width:0}.inbox-fields input,.inbox-fields select{width:100%}.inbox-fields [hidden]{display:none!important}@media(max-width:750px){.inbox-meta,.inbox-fields{grid-template-columns:1fr}.inbox-line{padding:16px}}
+</style>
+<div class="detail-navigation"><a class="button" href="{{ url_for('uyumsoft_inbox') }}">← Gelen Faturalara Dön</a><a class="button" data-native-download data-export-name="{{ doc.number if doc else uid }}.pdf" href="{{ url_for('uyumsoft_inbox_pdf',uid=uid) }}">Orijinal PDF’yi İndir</a></div>
+{% if error %}<section class="panel form-panel"><p class="note" role="alert">{{ error }}</p></section>{% endif %}
+{% if doc %}
+<section class="panel form-panel"><div class="inbox-meta"><div><small>Fatura</small><b>{{ doc.number }}</b><p>{{ doc.date }} · Vade: {{ doc.due or 'Belirtilmemiş' }}</p></div><div><small>Tedarikçi</small><b>{{ doc.supplier }}</b><p>VKN / TCKN: {{ doc.supplier_id }}</p></div></div><p>Orijinal fatura ve PDF korunur. Aşağıdaki seçimler BOS kaydında kullanılacak ürün ve açıklamayı belirler; fatura miktar ve tutarları değişmez.</p></section>
+<form method="post" id="inbox-form"><input type="hidden" name="token" value="{{ token }}">
+<section class="panel form-panel"><div class="inbox-fields"><label>BOS tedarikçi carisi<input name="customer_ref" list="inbox-customers" value="{{ customer_ref }}" placeholder="Cari adı yazın ve listeden seçin" required autocomplete="off"></label><label>Bağlı satın alma siparişi (isteğe bağlı)<input name="order_ref" value="{{ order_ref }}" placeholder="Örn. SA-2026-00067"></label></div>
+<datalist id="inbox-customers">{% for ref in customer_refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
+<datalist id="inbox-products">{% for ref in product_refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
+<p><a href="{{ url_for('customers') }}" target="_blank" rel="noopener">Cari kartlarını aç ↗</a> · <a href="{{ url_for('products') }}" target="_blank" rel="noopener">Yeni stok kartı oluştur ↗</a></p><p class="muted">Yeni kart oluşturduktan sonra bu sayfayı yenileyin. Kaydetmeden yaptığınız seçimler yenilemede sıfırlanır.</p>
+{% for line in doc.lines %}{% set i=loop.index0 %}{% set choice=choices[i] %}
+<article class="inbox-line"><div class="inbox-original"><small>Faturadaki {{ loop.index }}. kalem</small><h3>{{ line.name }}</h3><span>{{ line.quantity }} {{ 'Adet' if line.unit=='C62' else line.unit }} · KDV hariç ₺{{ line.net|float|money }} · KDV %{{ line.rate }}: ₺{{ line.tax|float|money }}</span></div>
+<div class="inbox-fields"><label>BOS’a kayıt türü<select name="kind_{{ i }}" class="inbox-kind"><option value="stock" {{ 'selected' if choice.kind=='stock' }}>Stok ürünü — stok girişi oluştur</option><option value="expense" {{ 'selected' if choice.kind=='expense' }}>Gider / hizmet — stok hareketi yok</option></select></label><label class="inbox-stock">BOS stok kartı<input name="product_{{ i }}" list="inbox-products" value="{{ choice.product }}" placeholder="Ürün adı veya kodu yazıp seçin" autocomplete="off"></label><label class="inbox-expense">BOS’ta görünecek açıklama<input name="label_{{ i }}" value="{{ choice.label }}" maxlength="160"></label></div>
+<label class="inbox-check"><input type="checkbox" name="remember_{{ i }}" value="yes" {{ 'checked' if choice.remember }}><span>Bu tedarikçinin aynı ürün adı için seçimimi hatırla.</span></label>
+</article>{% endfor %}
+<div class="inbox-total">KDV hariç ₺{{ doc.net|float|money }} · KDV ₺{{ doc.tax|float|money }}<p><strong>Genel toplam ₺{{ doc.total|float|money }}</strong></p></div>
+<p>Kaydettiğinizde alış faturası cari hesaba işlenir ve seçilen stoklara giriş yapılır. Gider / hizmet satırları faturada tutulur; ödeme veya stok hareketi oluşturmaz. İskonto net tutara yansıtılır.</p>
+<label class="inbox-check"><input type="checkbox" name="confirm" value="yes" required><span>Tedarikçiyi, ürün eşleştirmelerini ve tutarları kontrol ettim. Faturanın BOS’a işlenmesini onaylıyorum.</span></label>
+<button class="button primary" type="submit">Kontrol Ettim, BOS’a İşle</button></section></form>
+<script>
+document.querySelectorAll('.inbox-line').forEach(line=>{const select=line.querySelector('.inbox-kind');const sync=()=>{const stock=select.value==='stock';line.querySelector('.inbox-stock').hidden=!stock;line.querySelector('.inbox-expense').hidden=stock;line.querySelector('.inbox-stock input').required=stock;line.querySelector('.inbox-expense input').required=!stock};select.addEventListener('change',sync);sync()});
+document.getElementById('inbox-form').addEventListener('submit',event=>{event.currentTarget.querySelector('button[type=submit]').disabled=true});
+</script>
+{% endif %}
+{% endblock %}

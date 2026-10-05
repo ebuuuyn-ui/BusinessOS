@@ -2064,7 +2064,7 @@ def create_app(test_config=None):
     from supplier_trello import register_supplier_trello
     register_supplier_trello(app, db, Order)
     from uyumsoft import register_uyumsoft
-    register_uyumsoft(app, db, Invoice, Order, InvoiceItem, StockMovement, lambda: create_database_backup(app, "before_uyumsoft_import"))
+    register_uyumsoft(app, db, Invoice, Order, InvoiceItem, StockMovement, Customer, Product, lambda: create_database_backup(app, "before_uyumsoft_import"))
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
 
