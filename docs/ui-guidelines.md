@@ -11,3 +11,15 @@ Ortak görünüm `static/ui.css`, açılır işlem menüleri `static/ui.js` üze
 - Değişiklikleri geniş ve dar ekranda, ayrıca sekmeli çalışma alanındaki iframe içinde kontrol edin. Açılır menülerin ve arama sonuçlarının kesilmediğini doğrulayın.
 
 Bu düzenleme iş kayıtları, hesaplama ve entegrasyon davranışlarını değiştirmez.
+
+## Telefon düzeni
+
+`static/mobile.css` ve `static/mobile.js`, aynı formları ve kayıtları telefon için yeniden yerleştirir.
+
+- 700 px ve altında basit başlıklı tablolar etiketli kartlara dönüşür. Müşteri/ürün adı gizlenmez; tutar ve durum ayrı alanlarda gösterilir. Karmaşık başlıklı tablolar kendi alanında yatay kayar.
+- Kart başlıkları `thead` içeriğinden alınır. Sıralama bağlantıları telefon görünümünde ayrı bir açılır alana taşınır. Filtrelenmiş veya kapalı ayrıntı satırlarının `hidden` niteliği korunur.
+- GET filtreleri telefonda açılır; masaüstünde görünür kalır. Alan ve olay dinleyicilerini kopyalamayın.
+- Formlar tek sütuna, sipariş/fatura kalemlerinin sayısal alanları iki sütuna yerleşir. Giriş metni en az 16 px, dokunma düğmeleri en az 44 px kullanır.
+- Alt gezinme Ana Sayfa, Siparişler, Cariler ve Menü bağlantılarını sunar. Açılır yan menü Escape, kapatma düğmesi veya arka plana dokunmayla kapanır; odağı içinde tutar ve kapanınca geri verir.
+- Güvenli ekran kenarlarını (`safe-area-inset-bottom`) ve ekran klavyesini hesaba katın. Mobil doğrudan gezinmede masaüstünün boş sekme çubuğunu göstermeyin.
+- 320, 360 ve 390 px telefon genişliklerinde belge taşmasını; filtreleme, satır açma, arama ve menü davranışlarını doğrulayın. Masaüstü iframe görünümünü ayrıca kontrol edin. Tarayıcı dar ekran kontrolü, gerçek iOS/Android cihaz testi yerine geçmez.

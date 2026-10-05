@@ -13,15 +13,17 @@
     html.workspace-frame-document #workspace-stage{display:none!important}
     html.workspace-frame-document body>main{margin-left:0!important;min-height:0}
   </style>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Business OS{% endblock %}</title>
 {% include '_favicon.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='shared-ui-20261006-1') }}">
 <link rel="stylesheet" href="{{ url_for('static',filename='ui.css',v='20261006-1') }}">
 <script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static',filename='mobile.css',v='20261006-1') }}">
+<script defer src="{{ url_for('static',filename='mobile.js',v='20261006-1') }}"></script>
 </head>
 <body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}">
-  <aside class="sidebar" id="main-sidebar">
+  <aside class="sidebar" id="main-sidebar" aria-label="Ana menü"><button type="button" class="mobile-nav-close" aria-label="Menüyü kapat" data-mobile-menu-close>×</button>
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>
       <a class="{{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}"><i class="nav-icon">⌂</i><span>Ana Sayfa</span></a>
@@ -64,7 +66,7 @@
   </aside>
   <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="main-sidebar" aria-expanded="true" aria-label="Menüyü kapat" title="Menüyü kapat">☰</button>
   <main>
-    <header class="topbar"><button class="menu" onclick="document.body.classList.toggle('nav-open')">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div>{% block header_action %}{% endblock %}</header>
+    <header class="topbar"><button type="button" class="menu" data-mobile-menu aria-controls="main-sidebar" aria-expanded="false" aria-label="Menüyü aç">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div>{% block header_action %}{% endblock %}</header>
     <div class="workspace-tabs" id="workspace-tabs" aria-label="Açık çalışma sekmeleri" hidden></div>
     <div class="workspace-stage" id="workspace-stage" hidden></div>
     <section class="content" id="workspace-source">
@@ -72,6 +74,13 @@
       {% block content %}{% endblock %}
     </section>
   </main>
+  <button type="button" class="mobile-nav-backdrop" data-mobile-menu-close aria-label="Menüyü kapat" tabindex="-1" hidden></button>
+  <nav class="mobile-bottom-nav" aria-label="Hızlı erişim">
+    <a href="{{ url_for('dashboard') }}" {{ 'aria-current=page' if request.endpoint=='dashboard' }}><span aria-hidden="true">⌂</span>Ana Sayfa</a>
+    <a href="{{ url_for('orders') }}" {{ 'aria-current=page' if request.path.startswith('/siparisler') }}><span aria-hidden="true">▤</span>Siparişler</a>
+    <a href="{{ url_for('customers') }}" {{ 'aria-current=page' if request.path.startswith('/musteriler') }}><span aria-hidden="true">♙</span>Cariler</a>
+    <button type="button" data-mobile-menu aria-controls="main-sidebar" aria-expanded="false"><span aria-hidden="true">☰</span>Menü</button>
+  </nav>
   <script>
     (function(){
       if(window.top!==window) return;
