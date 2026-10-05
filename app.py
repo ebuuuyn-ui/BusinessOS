@@ -233,6 +233,20 @@ class Product(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class PriceQuote(db.Model):
+    id = db.Column(db.String(36), primary_key=True)
+    number = db.Column(db.String(40), unique=True, nullable=False)
+    customer_name = db.Column(db.String(1000), nullable=False)
+    payload = db.Column(db.Text, nullable=False)
+    version = db.Column(db.Integer, default=1, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ProductQuoteImage(db.Model):
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), primary_key=True)
+    content = db.Column(db.LargeBinary, nullable=False)
+
+
 class StockMovement(db.Model):
     """Fiziksel stok için elle doğrulanmış giriş/çıkış hareketi."""
     id = db.Column(db.Integer, primary_key=True)
@@ -2074,6 +2088,8 @@ def create_app(test_config=None):
         app.config.update(test_config)
     db.init_app(app)
     install_web_auth(app, db)
+    from price_quotes import register_quotes
+    register_quotes(app, db, Product, Customer, PriceQuote, ProductQuoteImage)
     from audit_log import install_audit
     install_audit(app, db)
     from supplier_sheets import register_supplier_sheets
