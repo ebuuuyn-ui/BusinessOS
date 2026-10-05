@@ -5221,9 +5221,10 @@ def create_app(test_config=None):
             elif action == "new_month":
                 new_month = " ".join(request.form.get("new_month", "").split())
                 source = db.session.get(PersonalMonth, selected_month)
-                duplicate = PersonalMonth.query.filter(
-                    db.func.normalize_tr(PersonalMonth.month) == normalize_search_text(new_month)
-                ).first() if new_month else None
+                # Period names are a small set; normalize in Python so this works
+                # on PostgreSQL too (normalize_tr is registered only on SQLite).
+                duplicate = any(normalize_search_text(row.month) == normalize_search_text(new_month)
+                                for row in db.session.query(PersonalMonth.month)) if new_month else False
                 if new_month and len(new_month) <= 80 and not duplicate:
                     target = PersonalMonth(month=new_month)
                     db.session.add(target)
@@ -5248,7 +5249,9 @@ def create_app(test_config=None):
                     flash(f"{target_label} dönemi ve {entry_count} ödeme satırı silindi.", "success")
             elif action == "add_person":
                 name = request.form.get("person_name", "").strip()
-                if name and not PersonalPerson.query.filter(db.func.normalize_tr(PersonalPerson.name) == normalize_search_text(name)).first():
+                duplicate = any(normalize_search_text(row.name) == normalize_search_text(name)
+                                for row in db.session.query(PersonalPerson.name)) if name else False
+                if name and not duplicate:
                     person = PersonalPerson(name=name)
                     db.session.add(person)
                     db.session.commit()
