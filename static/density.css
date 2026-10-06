@@ -24,7 +24,7 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui .content .account-summary>div{padding:7px 10px;gap:1px}
   body.bos-ui .content .account-summary strong{font-size:18px}
   body.bos-ui .account-filter{flex-wrap:wrap;gap:6px}
-  body.bos-ui .account-filter label{display:flex;flex-direction:column;margin:0;font-size:10px}
+  body.bos-ui .content .account-filter label{display:flex;flex-direction:column;margin:0;font-size:10px}
   body.bos-ui .account-table{min-width:1000px;table-layout:fixed}
   body.bos-ui .account-table>thead>tr>th{white-space:nowrap}
   body.bos-ui .account-table>thead>tr>th:nth-child(1){width:90px}
