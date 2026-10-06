@@ -2095,6 +2095,8 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     db.init_app(app)
+    from request_metrics import install_request_metrics
+    install_request_metrics(app, db)
     install_web_auth(app, db)
     from price_quotes import register_quotes
     register_quotes(app, db, Product, Customer, PriceQuote, ProductQuoteImage)

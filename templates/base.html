@@ -15,6 +15,20 @@
   </style>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Business OS{% endblock %}</title>
+{% if g.page_metrics is defined and g.web_is_owner %}
+  <script>
+    window.addEventListener('load',()=>setTimeout(()=>{
+      const n=performance.getEntriesByType('navigation')[0];
+      if(!n)return;
+      console.info('BOS_PERF '+JSON.stringify({
+        run:new URL(location.href).searchParams.get('_perf_run'),path:location.pathname,
+        ttfbMs:n.responseStart-n.requestStart,downloadMs:n.responseEnd-n.responseStart,
+        domMs:n.domContentLoadedEventEnd,loadMs:n.loadEventEnd,
+        server:n.serverTiming.map(t=>({name:t.name,duration:t.duration,description:t.description}))
+      }));
+    },0),{once:true});
+  </script>
+{% endif %}
 {% include '_favicon.html' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='shared-ui-20261006-6') }}">
 <link rel="stylesheet" href="{{ url_for('static',filename='ui.css',v='20261006-2') }}">
