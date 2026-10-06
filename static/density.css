@@ -2,12 +2,12 @@
 body.bos-ui{--row-line:#bac6d4;--cell-line:#d1d9e2}
 /* Action groups use equal cells instead of sizing each button by its label. */
 body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions){align-items:stretch;max-width:100%}
-body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions)>:is(.button,button,.action-menu){flex:0 0 180px;width:180px;min-width:0;max-width:100%;min-height:var(--control-height);height:auto;margin:0;align-self:stretch;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box}
+body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions)>:is(.button,button,.action-menu){flex:0 0 160px;width:160px;min-width:0;max-width:100%;min-height:var(--control-height);height:auto;margin:0;align-self:stretch;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box}
 body.bos-ui :is(.content,.topbar) .header-actions>.action-menu>summary{height:100%;min-height:var(--control-height);box-sizing:border-box;text-align:center}
-body.bos-ui .filter-actions>:is(.button,button){flex:0 0 96px;width:96px;min-width:0;white-space:normal;align-self:stretch}
+body.bos-ui .filter-actions>:is(.button,button){flex:0 0 72px;width:72px;min-width:0;white-space:normal;align-self:stretch}
 body.bos-ui .account-layout{grid-template-columns:minmax(0,1fr);gap:8px}
 body.bos-ui .account-entry-disclosure{min-width:0}
-body.bos-ui .account-entry-disclosure>summary{width:180px;max-width:100%;cursor:pointer;list-style:none}
+body.bos-ui .account-entry-disclosure>summary{width:160px;max-width:100%;cursor:pointer;list-style:none}
 body.bos-ui .account-entry-disclosure>summary::-webkit-details-marker{display:none}
 body.bos-ui .account-entry-disclosure[open]>.account-entry{margin-top:8px}
 body.bos-ui .statement-description>summary{display:flex;align-items:center;gap:5px;cursor:pointer;list-style:none;min-width:0}
@@ -43,7 +43,7 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui .statement-description>summary>span{white-space:normal}
 }
 @media(min-width:701px){
-  body.bos-ui{--control-height:32px;--control-radius:5px;--control-padding-block:5px;font-size:12px;line-height:1.35}
+  body.bos-ui{--control-height:28px;--control-radius:4px;--control-padding-block:4px;font-size:12px;line-height:1.35}
   body.bos-ui .content,body.bos-ui.workspace-embedded .content{padding:12px;max-width:none}
   body.bos-ui .topbar{min-height:56px;padding:9px 12px;gap:10px}
   body.bos-ui .topbar b{font-size:18px;line-height:1.2}
@@ -56,8 +56,8 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui .form-panel>.panel-head{margin:-12px -12px 12px}
   body.bos-ui .form-panel h2{margin-bottom:10px}
   body.bos-ui .form-panel>p{font-size:12px;margin:8px 0}
-  body.bos-ui :is(.content,.topbar) .button,body.bos-ui .content button:not(.row-delete,.remove-row,.order-expand-button,.item-details-toggle){min-height:32px;padding:5px 10px;font-size:12px;line-height:1.3;border-radius:5px;gap:5px}
-  body.bos-ui .content :is(input,select):not([type=checkbox],[type=radio],[type=hidden],[type=file]){font-size:12px;padding:5px 8px;line-height:1.3;margin-top:3px}
+  body.bos-ui :is(.content,.topbar) .button,body.bos-ui .content button:not(.row-delete,.remove-row,.order-expand-button,.item-details-toggle){min-height:var(--control-height);padding:4px 8px;font-size:11px;line-height:1.3;border-radius:4px;gap:4px}
+  body.bos-ui .content :is(input,select):not([type=checkbox],[type=radio],[type=hidden],[type=file]){font-size:12px;padding:4px 7px;line-height:1.3;margin-top:3px}
   body.bos-ui .content textarea{font-size:12px;line-height:1.4;padding:8px;min-height:64px}
   body.bos-ui :is(.customer-combobox,.product-combobox)::after{top:50%;transform:translateY(-50%);line-height:1}
   body.bos-ui .content label,body.bos-ui .content #order-form label,body.bos-ui .ui-field-label{font-size:11px;line-height:1.3}
@@ -72,16 +72,18 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui .filters>label>:is(input,select){margin-top:3px}
   body.bos-ui .filter-actions{gap:5px}
   body.bos-ui .ui-status-filter{flex-basis:150px;min-width:130px}
-  body.bos-ui .status-multiselect{font-size:12px;margin-top:3px;border-radius:5px}
-  body.bos-ui .status-multiselect summary{min-height:30px;padding:5px 28px 5px 8px;line-height:1.3}
-  body.bos-ui .filter-static{height:32px;margin-top:3px;font-size:12px}
+  body.bos-ui .status-multiselect{height:var(--control-height);font-size:12px;margin-top:3px;border-radius:4px}
+  body.bos-ui .status-multiselect summary{height:100%;min-height:0;padding:4px 26px 4px 7px;line-height:1.3}
+  body.bos-ui .content .account-filter input[type=date]{width:124px;max-width:124px;font-size:11px}
+  body.bos-ui .content :is(.filters,.account-filter) .button{min-width:64px}
+  body.bos-ui .filter-static{height:var(--control-height);min-height:var(--control-height);padding:4px 7px;margin-top:3px;font-size:11px}
   body.bos-ui .order-tabs{gap:4px;margin-bottom:8px}
   body.bos-ui .order-tabs>a{min-height:30px;padding:5px 10px;font-size:12px;border-radius:5px}
   body.bos-ui .section-disclosure{margin-bottom:8px;border-radius:5px}
   body.bos-ui .section-disclosure>summary{padding:6px 10px;min-height:30px;font-size:12px;gap:8px}
   body.bos-ui .section-disclosure>summary small{font-size:11px}
-  body.bos-ui .action-menu>summary{height:32px;padding:5px 10px;font-size:12px;border-radius:5px}
-  body.bos-ui .action-menu-panel .button{min-height:32px}
+  body.bos-ui .action-menu>summary{height:var(--control-height);padding:4px 8px;font-size:11px;border-radius:4px}
+  body.bos-ui .action-menu-panel .button{min-height:var(--control-height)}
   body.bos-ui table{font-variant-numeric:tabular-nums}
   body.bos-ui table th{padding:5px 8px;font-size:11px;line-height:1.25;background:#e9eef4;color:#34465d;border-bottom:1px solid #9eafc2;border-right:1px solid var(--row-line)}
   body.bos-ui table td{height:30px;padding:3px 8px;font-size:12px;line-height:1.3;border-bottom:1px solid var(--row-line);border-right:1px solid var(--cell-line);vertical-align:middle}
@@ -132,9 +134,9 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui .order-summary :is(b,a){font-size:14px}
   body.bos-ui .invoice-main-grid{gap:10px;padding:12px}
   body.bos-ui .invoice-item-grid,body.bos-ui .content #order-form .compact-item-grid{gap:8px}
-  body.bos-ui .content #order-form .stock-card-search{width:32px;min-width:32px;height:32px;min-height:32px}
+  body.bos-ui .content #order-form .stock-card-search{width:var(--control-height);min-width:var(--control-height);height:var(--control-height);min-height:var(--control-height)}
   body.bos-ui .content #order-form .stock-card-search::after{font-size:18px}
-  body.bos-ui .invoice-line-total{height:32px}
+  body.bos-ui .invoice-line-total{height:var(--control-height)}
   body.bos-ui .invoice-note{margin:10px 12px}
   body.bos-ui .quote-meta{gap:10px}
   body.bos-ui .quote-line{padding:12px;margin:10px 0;border-radius:6px}
