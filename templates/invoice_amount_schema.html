@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block heading %}Fatura Tutar Hassasiyeti{% endblock %}
+{% block content %}<section class="panel form-panel">
+{% if ready %}<h2>Fatura tutar hassasiyeti hazır</h2><p>Resmî kalem ve fatura toplamları ayrı saklanabilir. Birim fiyatlar sekiz ondalık basamağa kadar korunur.</p>
+{% else %}<h2>Resmî fatura tutarlarını koruma desteği</h2><p>Fatura ve kalem tablolarına isteğe bağlı net ve KDV tutarı alanları eklenir. Birim fiyat hassasiyeti artırılır. Mevcut fatura tutarları değiştirilmez.</p>
+<form method="post"><input type="hidden" name="operation" value="prepare-invoice-amounts"><button class="button primary">Tutar Hassasiyetini Hazırla</button></form>{% endif %}
+</section>{% endblock %}

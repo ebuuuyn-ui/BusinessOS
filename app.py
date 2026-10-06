@@ -2110,6 +2110,8 @@ def create_app(test_config=None):
     register_supplier_trello(app, db, Order)
     from uyumsoft import register_uyumsoft
     register_uyumsoft(app, db, Invoice, Order, InvoiceItem, StockMovement, Customer, Product, lambda: create_database_backup(app, "before_uyumsoft_import"))
+    from invoice_amounts import register_schema
+    register_schema(app, db)
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
 
