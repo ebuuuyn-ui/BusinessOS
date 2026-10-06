@@ -132,7 +132,7 @@ body.bos-ui .invoice-items-actions strong{font-size:14px}
   body.bos-ui .filter-actions>.button{flex:1 1 0}
 }
 
-body.bos-ui .content .compact-item-grid :is(input,select):not([type=hidden],[type=checkbox],[type=radio]){height:44px!important;min-height:44px!important}
+body.bos-ui .content .compact-item-grid :is(input,select):not([type=hidden],[type=checkbox],[type=radio]){height:var(--control-height)!important;min-height:var(--control-height)!important}
 body.bos-ui .content #order-form .stock-card-search{width:44px;min-width:44px;height:44px;min-height:44px;padding:0;font-size:0;gap:0}
 body.bos-ui .content #order-form .stock-card-search::after{font-size:22px}
 body.bos-ui .content #order-form .items-panel .panel-head h2{font-size:18px}

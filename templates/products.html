@@ -8,7 +8,7 @@
   {% set next_direction = 'desc' if stock_sort == key and stock_direction == 'asc' else 'asc' %}
   <a class="stock-sort" href="{{ url_for('products', q=query, stock_sort=key, stock_direction=next_direction, stock_product_id=selected_stock_product.id if selected_stock_product else none) }}" title="{{ title }} {{ 'artan' if next_direction == 'asc' else 'azalan' }} sırala">{{ title }}<span {% if stock_sort != key %}class="stock-sort-hint"{% endif %} aria-hidden="true">{{ ('↑' if stock_direction == 'asc' else '↓') if stock_sort == key else '↕' }}</span></a>
 {%- endmacro %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stock-list-filter.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='stock-list-filter.css', v='20261006-2') }}">
 <div class="products-layout stocks-layout">
   <div class="panel stock-movement-panel">
     <div class="panel-head"><div><h2>Stok Hareketi</h2><p>Fiziksel giriş, çıkış ve sayım farkını kaydedin.</p></div></div>

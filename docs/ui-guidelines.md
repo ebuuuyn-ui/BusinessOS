@@ -1,8 +1,10 @@
 # BOS ortak arayüz düzeni
 
-Ortak görünüm `static/ui.css`, açılır işlem menüleri `static/ui.js` üzerinden yönetilir.
+Ortak görünüm `static/ui.css`, sıkı çalışma düzeni `static/density.css`, açılır işlem menüleri `static/ui.js` üzerinden yönetilir.
 
-- Normal düğmeler, tek satırlı girişler ve seçim alanları 44 px yüksekliğindedir. Satır silme/açma simgeleri ve onay kutuları ayrı ölçü kullanır.
+- Masaüstünde normal düğmeler, tek satırlı girişler ve seçim alanları 32 px; liste içindeki kontroller 24–26 px yüksekliğindedir. Telefonda giriş ve dokunma alanları 44 px kalır. Ölçüyü ortak `--control-height` değişkeninden alın.
+- Masaüstü liste metni 12 px, sütun başlıkları 11 px kullanır. Standart satır yaklaşık 30–34 px yüksekliğindedir; çok satırlı gerçek içerik için satır büyüyebilir. Satır ve sütun çizgileri belirgindir, uygun listelerde dönüşümlü zemin vardır.
+- Başlık, filtre, form ve panel aralıklarını küçük tutun; geniş ekranı tam kullanın. Bu yoğunluk tercihi sipariş, fatura, cari, stok, teklif ve finans alanlarının tamamı için geçerlidir. PDF/Excel belge tasarımları bu ekran kurallarından bağımsızdır.
 - Sayfanın ana işlemi üst başlıktaki `header-actions` içinde görünür. Aynı işlem içerikte tekrar edilmez.
 - İndirme ve ikincil işlemler `details.action-menu` içinde gruplanır. `summary` açık bir ad taşır; menü Escape veya dışarı tıklama ile kapanır.
 - Filtre alanlarının üzerinde görünür etiket bulunur. `filters` satırları dar ekranda kırılır; `filter-actions` alanı düğmeleri hizalar.

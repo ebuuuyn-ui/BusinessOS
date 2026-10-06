@@ -2,7 +2,7 @@
 .stock-card-filters .stock-column-filter{display:block;box-sizing:border-box;width:100%;min-width:0;margin:6px 0 0}
 .stock-card-filters .stock-name-filter{display:flex;align-items:center;gap:8px;min-width:0}
 .stock-name-filter .stock-column-filter{flex:1}
-#stock-filter-clear{flex:none;width:44px;height:44px!important;min-height:44px!important;margin:6px 0 0;padding:0;border:1px solid #d3dce9;border-radius:6px;font:600 18px/1 system-ui;box-shadow:none}
+#stock-filter-clear{flex:none;width:var(--control-height,44px);height:var(--control-height,44px)!important;min-height:var(--control-height,44px)!important;margin:6px 0 0;padding:0;border:1px solid #d3dce9;border-radius:6px;font:600 18px/1 system-ui;box-shadow:none}
 .stock-table tbody tr[hidden],#stock-filter-empty[hidden],#stock-filter-clear[hidden]{display:none!important}
 @media(min-width:701px){
   .compact-table.stock-table{table-layout:auto}
