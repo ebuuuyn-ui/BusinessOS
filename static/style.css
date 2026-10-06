@@ -1101,13 +1101,25 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 .personal-payment-table td:nth-child(9) input.personal-money{color:#155c93!important;background:#f2f9ff!important}
 .personal-payment-table .personal-calculated{min-width:0;padding:9px 6px;border-radius:10px;background:#edf9f3;color:#087653!important;font-size:13px;font-weight:850;font-variant-numeric:tabular-nums;letter-spacing:0}
 .personal-payment-table tfoot td:nth-child(n+6):nth-child(-n+10){color:#14223b;font-size:13px;font-weight:850;font-variant-numeric:tabular-nums}
-.personal-payment-table thead th{position:sticky;top:82px;z-index:6;padding-top:14px;padding-bottom:14px;background:#f5f7fb;box-shadow:0 1px 0 rgba(96,112,143,.18);font-size:13px;line-height:1.2;letter-spacing:.04em}
+.personal-payment-table thead{position:sticky;top:var(--payment-selection-height,0px);z-index:6;background:#e9eef4}
+.personal-payment-table thead th{position:static;padding-top:14px;padding-bottom:14px;background:#f5f7fb;box-shadow:0 1px 0 rgba(96,112,143,.18);font-size:13px;line-height:1.2;letter-spacing:.04em}
 .payment-check-cell{width:38px!important;min-width:38px!important;padding-left:10px!important;padding-right:4px!important;text-align:center}
 .payment-check-cell input{min-width:0!important;width:17px!important;height:17px!important;min-height:0;margin:0!important;padding:0!important;accent-color:#0a84ff;cursor:pointer}
-.payment-selection-bar{position:sticky;top:82px;z-index:7;display:flex;align-items:center;gap:18px;padding:11px 16px;border-bottom:1px solid rgba(96,112,143,.16);background:rgba(238,246,255,.96);box-shadow:0 4px 14px rgba(32,51,83,.08);backdrop-filter:blur(14px)}
+.payment-selection-bar{position:sticky;top:0;z-index:7;display:flex;align-items:center;gap:18px;padding:11px 16px;border-bottom:1px solid rgba(96,112,143,.16);background:#eef6ff;box-shadow:0 1px 0 #adbcca}
 .payment-selection-bar>div{display:flex;flex-direction:column}.payment-selection-bar span{font-size:11px;font-weight:800}.payment-selection-bar small{color:var(--muted);font-size:8px;font-weight:750;letter-spacing:.035em}.payment-selection-bar .selection-title{min-width:120px}.payment-selection-bar .selection-amount{min-width:125px;padding-left:14px;border-left:1px solid rgba(96,112,143,.15)}.payment-selection-bar strong{color:#17213b;font-size:17px;letter-spacing:-.02em}.payment-selection-bar .minimum strong{color:#a76108}.payment-selection-bar .payment strong{color:#0878df}.payment-selection-bar .button{margin-left:auto}
-.payment-selection-bar+.table-wrap .personal-payment-table thead th{top:142px}
-@media(max-width:900px){.personal-payment-table thead th{top:72px}.personal-sheet>.table-wrap{overflow-x:auto}.personal-summary{grid-template-columns:repeat(2,1fr)}}
+/* Freeze the entire header group directly below the measured selection strip. */
+.personal-payment-table{border-collapse:separate;border-spacing:0}
+@media screen and (max-width:900px){
+  body.bos-ui #paymentForm>.payment-selection-bar{position:static}
+  body.bos-ui #paymentForm>.payment-table-scroll{max-height:65dvh;overflow:auto;isolation:isolate}
+  body.bos-ui #paymentForm .personal-payment-table{min-width:1100px!important}
+  body.bos-ui #paymentForm .personal-payment-table thead{top:0}
+}
+@media print{
+  .payment-selection-bar,.personal-payment-table thead{position:static}
+  body.bos-ui #paymentForm>.payment-table-scroll{max-height:none;overflow:visible}
+}
+@media(max-width:900px){.personal-sheet>.table-wrap{overflow-x:auto}.personal-summary{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:750px){.payment-selection-bar{align-items:flex-start;flex-wrap:wrap}.payment-selection-bar .selection-title{width:100%}.payment-selection-bar .selection-amount{min-width:30%;padding-left:8px}.payment-selection-bar .button{margin-left:0}}
 
 /* Ortak yerleşim denetimi: araç çubukları, tablo eylemleri ve taşma */
