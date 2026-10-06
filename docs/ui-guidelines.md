@@ -6,6 +6,7 @@ Ortak görünüm `static/ui.css`, sıkı çalışma düzeni `static/density.css`
 - Masaüstü liste metni 12 px, sütun başlıkları 11 px kullanır. Standart satır yaklaşık 30–34 px yüksekliğindedir; çok satırlı gerçek içerik için satır büyüyebilir. Satır ve sütun çizgileri belirgindir, uygun listelerde dönüşümlü zemin vardır.
 - Başlık, filtre, form ve panel aralıklarını küçük tutun; geniş ekranı tam kullanın. Bu yoğunluk tercihi sipariş, fatura, cari, stok, teklif ve finans alanlarının tamamı için geçerlidir. PDF/Excel belge tasarımları bu ekran kurallarından bağımsızdır.
 - Sayfanın ana işlemi üst başlıktaki `header-actions` içinde görünür. Aynı işlem içerikte tekrar edilmez.
+- `header-actions`, `detail-navigation` ve `actions` içindeki düğmeler masaüstünde 180 px eşit genişlik kullanır. Uzun metin sarılır ve aynı satırdaki düğmeler birlikte uzar. Telefonda eşit iki sütun kullanılır; son düğme tek başına kalsa da genişlemez. Filtre düğmeleri masaüstünde 96 px genişliğindedir. Simge düğmeleri ve açılır menünün içindeki seçenekler bu genişlik kuralına girmez.
 - İndirme ve ikincil işlemler `details.action-menu` içinde gruplanır. `summary` açık bir ad taşır; menü Escape veya dışarı tıklama ile kapanır.
 - Filtre alanlarının üzerinde görünür etiket bulunur. `filters` satırları dar ekranda kırılır; `filter-actions` alanı düğmeleri hizalar.
 - Uzun açıklama ve özetler `section-disclosure` veya `ui-help` ile gerektiğinde açılır. İşlemin sonucu veya gerekli uyarı gizlenmez.

@@ -1,5 +1,10 @@
 /* Dense working views: shared spacing, clear row rules, no changes to exports. */
 body.bos-ui{--row-line:#bac6d4;--cell-line:#d1d9e2}
+/* Action groups use equal cells instead of sizing each button by its label. */
+body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions){align-items:stretch;max-width:100%}
+body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions)>:is(.button,button,.action-menu){flex:0 0 180px;width:180px;min-width:0;max-width:100%;min-height:var(--control-height);height:auto;margin:0;align-self:stretch;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box}
+body.bos-ui :is(.content,.topbar) .header-actions>.action-menu>summary{height:100%;min-height:var(--control-height);box-sizing:border-box;text-align:center}
+body.bos-ui .filter-actions>:is(.button,button){flex:0 0 96px;width:96px;min-width:0;white-space:normal;align-self:stretch}
 @media(min-width:701px){
   body.bos-ui{--control-height:32px;--control-radius:5px;--control-padding-block:5px;font-size:12px;line-height:1.35}
   body.bos-ui .content,body.bos-ui.workspace-embedded .content{padding:12px;max-width:none}
@@ -123,6 +128,12 @@ body.bos-ui{--row-line:#bac6d4;--cell-line:#d1d9e2}
   body.bos-ui.workspace-web-shell .workspace-stage{height:calc(100vh - 36px)}
 }
 @media(max-width:700px){
+  body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:1fr;gap:8px;width:100%}
+  body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions)>:is(.button,button,.action-menu){width:100%;padding:6px 8px;font-size:12px;line-height:1.25}
+  body.bos-ui :is(.content,.topbar) .header-actions>.action-menu{padding:0}
+  body.bos-ui :is(.content,.topbar) .header-actions>.action-menu>summary{padding:6px 8px;font-size:12px;line-height:1.25}
+  body.bos-ui :is(.detail-navigation,.actions)>:not(.button,button,.action-menu){grid-column:1/-1}
+  body.bos-ui .filter-actions>:is(.button,button){flex:1 1 0;width:auto}
   body.bos-ui .panel{border-radius:8px;margin-bottom:10px}
   body.bos-ui .panel-head,body.bos-ui .ui-list-heading{padding:10px 12px;gap:8px}
   body.bos-ui .panel h2{font-size:16px}
