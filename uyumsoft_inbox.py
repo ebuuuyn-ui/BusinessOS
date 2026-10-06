@@ -170,7 +170,7 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                 for line,choice in zip(doc['lines'],choices):
                     if choice['kind']=='stock':
                         product=product_refs.get(choice['product']);qty=Decimal(line['quantity'])
-                        if not product or line['unit']!='C62' or qty!=int(qty) or (product.unit or '').casefold() not in ('adet','ad','c62'):raise UyumError('Her ürün için adet birimli aktif stok kartını seçin. Diğer birimler manuel incelenmelidir.')
+                        if not product or line['unit'] not in ('C62','NIU') or qty!=int(qty) or (product.unit or '').casefold() not in ('adet','ad','c62'):raise UyumError('Her ürün için adet birimli aktif stok kartını seçin. Diğer birimler manuel incelenmelidir.')
                         price=Decimal(line['net_unit']).quantize(Decimal('.00000001'),rounding=ROUND_HALF_UP)
                         prepared.append(dict(product=product,quantity=int(qty),price=price,name=product.name))
                     elif choice['kind']=='expense':

@@ -31,6 +31,7 @@ class RoundingTests(unittest.TestCase):
         for i, row in enumerate((line,second)):
             row.find('{'+B+'}ID').text=str(i+1)
             row.find('{'+B+'}InvoicedQuantity').text='20'
+            row.find('{'+B+'}InvoicedQuantity').set('unitCode','NIU')
             row.find('{'+B+'}LineExtensionAmount').text='27272.73'
             row.find('{'+A+'}Item/{'+B+'}Name').text='SİSA '+('SOMON' if not i else 'GRİ')
             row.find('{'+A+'}Price/{'+B+'}PriceAmount').text='1363.63636'

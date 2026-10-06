@@ -19,7 +19,7 @@
 <p><a href="{{ url_for('customers') }}" target="_blank" rel="noopener">Cari kartlarını aç ↗</a> · <a href="{{ url_for('products') }}" target="_blank" rel="noopener">Yeni stok kartı oluştur ↗</a></p><p class="muted">Yeni kart oluşturduktan sonra bu sayfayı yenileyin. Kaydetmeden yaptığınız seçimler yenilemede sıfırlanır.</p>
 {% for line in doc.lines %}{% set i=loop.index0 %}{% set choice=choices[i] %}
 <article class="inbox-line" data-quantity="{{ line.quantity }}"><div class="inbox-original"><small>Faturadaki {{ loop.index }}. kalem</small><h3>{{ line.name }}</h3><dl class="inbox-line-prices">
-<div><dt>Miktar</dt><dd>{{ line.quantity }} {{ 'Adet' if line.unit=='C62' else line.unit }}</dd></div>
+<div><dt>Miktar</dt><dd>{{ line.quantity }} {{ 'Adet' if line.unit in ('C62','NIU') else line.unit }}</dd></div>
 <div><dt>Birim fiyat (KDV hariç)</dt><dd>{{ '₺' ~ (line.net_unit|precise_money) if line.net_unit is not none else '—' }}</dd></div>
 <div><dt>Toplam (KDV hariç)</dt><dd>₺{{ line.net|float|money }}</dd></div>
 <div><dt>KDV (%{{ line.rate }})</dt><dd>₺{{ line.tax|float|money }}</dd></div>
