@@ -22,12 +22,12 @@ class MobilePerformanceTests(unittest.TestCase):
         db.drop_all()
         self.context.pop()
 
-    def test_customer_cards_are_paginated(self):
+    def test_customer_register_is_paginated(self):
         response = self.client.get("/musteriler?page=2")
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn("125 kayıt · 2/3. sayfa", body)
-        self.assertEqual(body.count('class="record-card"'), 50)
+        self.assertEqual(body.count('data-customer-row'), 50)
         self.assertIn("Cari 0050", body)
         self.assertNotIn("Cari 0000", body)
 

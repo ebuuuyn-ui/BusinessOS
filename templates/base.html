@@ -20,10 +20,10 @@
 <link rel="stylesheet" href="{{ url_for('static',filename='ui.css',v='20261006-2') }}">
 <script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static',filename='mobile.css',v='20261006-1') }}">
-<script defer src="{{ url_for('static',filename='mobile.js',v='20261006-1') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261006-8') }}">
+<script defer src="{{ url_for('static',filename='mobile.js',v='20261006-2') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261006-9') }}">
 </head>
-<body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}">
+<body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}{% block body_class %}{% endblock %}">
   <aside class="sidebar" id="main-sidebar" aria-label="Ana menü"><button type="button" class="mobile-nav-close" aria-label="Menüyü kapat" data-mobile-menu-close>×</button>
     <a class="brand" href="{{ url_for('dashboard') }}"><span>B</span><strong>Business OS<small>Order Center</small></strong></a>
     <nav>

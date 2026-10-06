@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% block body_class %} register-page{% endblock %}
 {% block title %}Siparişler · Business OS{% endblock %}
 {% block heading %}Siparişler{% endblock %}
 {% block subheading %}Satış ve satın alma siparişlerini takip edin{% endblock %}
@@ -12,14 +12,14 @@
 .order-inline-actions .order-full-detail-link span{display:inline;color:inherit;font-size:inherit;font-weight:inherit;letter-spacing:normal;line-height:1}
 @media(max-width:640px){.order-inline-actions{width:100%;margin-left:0}.order-inline-actions .button{flex:1;min-height:40px}}
 </style>
+<div class="register-toolbar">
 <div class="order-tabs">
   <a class="{{ 'active' if not selected_type }}" href="{{ url_for('orders', delivery_pending=1) if delivery_pending else url_for('orders', active=1) if active_only else url_for('orders') }}">{{ 'Açık Tahsilat / Ödemeler' if delivery_pending else 'Devam Edenler' if active_only else 'Tüm Siparişler' }} <b>{{ type_counts.values()|sum }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satış' }}" href="{{ url_for('orders', type='Satış', delivery_pending=1) if delivery_pending else url_for('orders', type='Satış', active=1) if active_only else url_for('orders', type='Satış') }}">Satış Siparişleri <b>{{ type_counts['Satış'] }}</b></a>
   <a class="{{ 'active' if selected_type == 'Satın Alma' }}" href="{{ url_for('orders', type='Satın Alma', delivery_pending=1) if delivery_pending else url_for('orders', type='Satın Alma', active=1) if active_only else url_for('orders', type='Satın Alma') }}">Satın Alma Siparişleri <b>{{ type_counts['Satın Alma'] }}</b></a>
 
 </div>
-
-<details class="section-disclosure"><summary>Sipariş Özeti <small>Durumlara göre adet ve tutarları göster</small></summary>
+<div class="register-tools"><details class="action-menu register-summary"><summary>Sipariş Özeti</summary><div class="action-menu-panel">
 <div class="order-status-summary">
   {% for order_type in ['Satış', 'Satın Alma'] %}
   <section class="order-status-summary-group {{ 'purchase' if order_type == 'Satın Alma' }}">
@@ -33,13 +33,13 @@
   {% endfor %}
 </div>
 
-</details>
+</div></details><details class="action-menu"><summary>Raporlar</summary><div class="action-menu-panel">
+  <a class="button" href="{{ url_for('export_orders_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">Sipariş Listesi · Excel</a>
+  <a class="button" href="{{ url_for('export_orders_detailed_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">Kalem Ayrıntıları · Excel</a></div></details></div>
+</div>
 {% if delivery_pending %}<div class="pending-delivery-banner"><div><b>{{ 'Beklenen Tahsilat' if selected_type == 'Satış' else 'Beklenen Ödeme' if selected_type == 'Satın Alma' else 'Açık Tahsilat ve Ödemeler' }}</b><span>Gelecek siparişler ile sevk/teslim edilmiş açık cari bakiyeler · {{ orders|length }} sipariş</span></div><strong>₺{{ listed_total|money }}</strong></div>{% endif %}
 
 <div class="panel orders-panel">
-  <div class="ui-list-heading"><h2>Sipariş Listesi</h2><details class="action-menu"><summary>Raporlar</summary><div class="action-menu-panel">
-  <a class="button" href="{{ url_for('export_orders_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">Sipariş Listesi · Excel</a>
-  <a class="button" href="{{ url_for('export_orders_detailed_excel', **export_args) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">Kalem Ayrıntıları · Excel</a></div></details></div>
   <form class="filters" method="get" action="{{ url_for('orders') }}" id="order-filters">
     {% if active_only %}<input type="hidden" name="active" value="1">{% endif %}{% if delivery_pending %}<input type="hidden" name="delivery_pending" value="1">{% endif %}
     <input type="hidden" name="type" value="{{ selected_type }}">
@@ -65,7 +65,7 @@
 
   {% if orders %}
   <div class="table-wrap orders-table-scroll">
-    <table class="compact-table order-list-table">
+    <table class="compact-table register-table order-list-table">
       <thead><tr><th>Tür</th><th>Sipariş No</th><th class="procurement-heading" title="Satış siparişinin satın alma durumu">Tedarik</th><th>Fatura</th><th>Müşteri / Tedarikçi</th><th>Sipariş Tarihi</th><th>Toplam Adet</th><th>{{ 'Kalan Tutar' if delivery_pending else 'Tutar' }}</th><th>Durum</th></tr></thead>
       <tbody>
       {% for order in orders %}{% set procurement = procurement_summaries.get(order.id) %}{% set invoice_count = invoice_counts.get(order.id, 0) %}{% set source_order = source_orders_by_id.get(order.source_order_id) %}
@@ -73,7 +73,7 @@
           <td><span class="type-badge {{ 'purchase' if order.order_type == 'Satın Alma' }}">{{ order.order_type }}</span></td>
           <td class="order-number-cell"><a href="{{ url_for('order_detail', order_id=order.id) }}" data-workspace-new-tab class="order-number-link"><b>{{ order.order_no }}</b></a><button type="button" class="order-expand-button" data-order-detail-toggle aria-label="{{ order.order_no }} ayrıntılarını göster" aria-expanded="false" aria-controls="order-detail-{{ order.id }}"><span aria-hidden="true">⌄</span></button></td>
           <td class="procurement-cell">{% if procurement %}<span class="procurement-indicator {{ procurement.code }}" tabindex="0" title="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet · {{ procurement.active_orders|length }} satın alma siparişi" data-tooltip="{{ procurement.label }} · {{ procurement.covered_quantity }}/{{ procurement.required_quantity }} adet">{% if procurement.code == 'complete' %}✓{% elif procurement.code == 'partial' %}◐{% elif procurement.code == 'linked' %}↗{% else %}!{% endif %}</span>{% else %}<span class="procurement-na">—</span>{% endif %}</td>
-          <td class="invoice-status-cell">{% if invoice_count %}<span class="invoice-status invoiced" title="{{ invoice_count }} bağlı fatura">{{ invoice_progress[order.id].state }}{% if invoice_progress[order.id].allocated %} · {{ invoice_progress[order.id].quantity }}/{{ invoice_progress[order.id].total }} adet{% endif %}{% if invoice_count > 1 %} · {{ invoice_count }}{% endif %}</span>{% else %}<span class="invoice-status pending">Fatura bekliyor</span>{% endif %}</td>
+          <td class="invoice-status-cell">{% if invoice_count %}<span class="invoice-status invoiced" title="{{ invoice_progress[order.id].state }} · {{ invoice_count }} bağlı fatura{% if invoice_progress[order.id].allocated %} · {{ invoice_progress[order.id].quantity }}/{{ invoice_progress[order.id].total }} adet{% endif %}">{{ invoice_progress[order.id].state }}{% if invoice_progress[order.id].allocated %} · {{ invoice_progress[order.id].quantity }}/{{ invoice_progress[order.id].total }} adet{% endif %}{% if invoice_count > 1 %} · {{ invoice_count }}{% endif %}</span>{% else %}<span class="invoice-status pending">Fatura bekliyor</span>{% endif %}</td>
           <td class="order-customer-cell" title="{{ order.customer.name }}">{{ order.customer.name }}</td>
           <td>{{ order.order_date.strftime('%d.%m.%Y') }}</td>
           <td>{{ order.total_quantity }}</td>

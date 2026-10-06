@@ -92,5 +92,7 @@
     labelRows();
     new MutationObserver(labelRows).observe(table,{childList:true,subtree:true});
   };
-  document.querySelectorAll('.table-wrap > table').forEach(decorateTable);
+  const decorateTables = () => document.querySelectorAll('.table-wrap > table').forEach(decorateTable);
+  decorateTables();
+  document.addEventListener('bos:customer-results', decorateTables);
 })();

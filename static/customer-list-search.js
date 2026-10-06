@@ -21,6 +21,7 @@
       const ids=['customer-result-count','customer-list-results','customer-list-pagination'];
       if(ids.some(id=>!page.getElementById(id))) throw new Error('search');
       ids.forEach(id=>document.getElementById(id).innerHTML=page.getElementById(id).innerHTML);
+      document.dispatchEvent(new Event('bos:customer-results'));
       const oldClear=form.querySelector('a');
       const newClear=page.querySelector('#customer-list-search a');
       if(oldClear) oldClear.remove();
