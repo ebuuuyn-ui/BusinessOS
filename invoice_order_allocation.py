@@ -1,6 +1,7 @@
 """Order-line allocations without duplicating invoices, stock or ledger entries."""
 from collections import defaultdict
 from sqlalchemy import inspect, func, select
+from sqlalchemy.orm import joinedload
 
 
 def ready():
@@ -22,6 +23,19 @@ def linked_orders(invoice):
     orders={invoice.order_id:invoice.order} if invoice.order else {}
     for a in for_invoice(invoice.id):orders[a.order_id]=a.order
     return sorted(orders.values(),key=lambda x:x.order_no)
+
+
+def linked_orders_for_invoices(invoices):
+    """Load allocation links once for a register, including legacy order links."""
+    from app import InvoiceOrderAllocation as A
+    grouped = {invoice.id: ({invoice.order_id: invoice.order} if invoice.order else {})
+               for invoice in invoices}
+    if grouped and ready():
+        allocations = A.query.options(joinedload(A.order)).filter(A.invoice_id.in_(grouped)).all()
+        for allocation in allocations:
+            grouped[allocation.invoice_id][allocation.order_id] = allocation.order
+    return {invoice_id: sorted(orders.values(), key=lambda order: order.order_no)
+            for invoice_id, orders in grouped.items()}
 
 
 def remaining(items):

@@ -2551,7 +2551,7 @@ def create_app(test_config=None):
         query = request.args.get("q", "").strip()
         start_date = parse_date(request.args.get("start_date"))
         end_date = parse_date(request.args.get("end_date"))
-        records = Invoice.query
+        records = Invoice.query.options(joinedload(Invoice.customer), joinedload(Invoice.order), selectinload(Invoice.items))
         if invoice_type in {"Satış", "Satın Alma", "Satış İadesi"}:
             records = records.filter_by(invoice_type=invoice_type)
         else:
@@ -2571,7 +2571,9 @@ def create_app(test_config=None):
         next_month = invoice_today.month % 12 + 1
         next_year = invoice_today.year + (invoice_today.month == 12)
         default_due_date = date(next_year, next_month, min(invoice_today.day, calendar.monthrange(next_year, next_month)[1]))
+        from invoice_order_allocation import linked_orders_for_invoices
         return render_template("invoices.html", invoices=listed_invoices, customers=customers, products=products, orders=orders, prefill_order=prefill_order, prefill_discount_rates=prefill_discount_rates, entry_mode=request.args.get("entry") == "1", saved=request.args.get("saved") == "1",
+            invoice_orders=linked_orders_for_invoices(listed_invoices),
             selected_type=invoice_type, selected_customer_id=selected_customer_id, query=query,
             start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""), today=invoice_today.isoformat(), default_due_date=default_due_date.isoformat())
 
