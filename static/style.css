@@ -551,20 +551,9 @@ main{margin:0}
 .check-table a{color:var(--blue);text-decoration:none;font-weight:700}
 .check-table select{margin:0;padding:5px;font-size:10px}
 .overdue-row{background:#fff1f0}
-.account-entry #payment-fields{padding:12px;margin-bottom:14px;border:1px solid #bed0f4;border-radius:8px;background:#f6f9ff}
-.account-entry #payment-fields>label{margin-bottom:8px}
-
-/* Cari ekstredeki yeni hareket formu: select ve input ölçülerini eşitle */
-.account-entry .form-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.account-entry input:not([type="checkbox"]),.account-entry select{height:44px!important;min-height:44px!important;width:100%;min-width:0}
-.account-entry #payment-fields{padding:16px;margin:14px 0;border-radius:14px}
-.account-entry #payment-fields>label{display:block;margin:0 0 14px}
-.account-entry #payment-fields>label>select{margin-top:6px}
-.account-entry #check-fields,.account-entry #card-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.account-entry #check-fields label,.account-entry #card-fields label{min-width:0;margin:0}
+/* Cari hareket formu ortak kontrol ölçülerini kullanır. */
+.account-entry input:not([type="checkbox"]),.account-entry select{width:100%;min-width:0}
 .account-entry #payment-fields[hidden],.account-entry #check-fields[hidden],.account-entry #card-fields[hidden],.account-entry #card-owner-field[hidden],.account-entry #card-customer-field[hidden],.account-entry #direct-toggle-field[hidden],.account-entry #direct-supplier-field[hidden]{display:none!important}
-.account-entry #direct-toggle-field{height:44px;min-height:44px;align-self:end;margin-top:6px}
-@media(max-width:560px){.account-entry .form-grid,.account-entry #check-fields,.account-entry #card-fields{grid-template-columns:1fr}}
 
 @media(max-width:1000px){.treasury-summary{grid-template-columns:repeat(2,1fr)}
 .treasury-layout{grid-template-columns:1fr}

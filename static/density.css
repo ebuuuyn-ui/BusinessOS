@@ -10,6 +10,37 @@ body.bos-ui .account-entry-disclosure{min-width:0}
 body.bos-ui .account-entry-disclosure>summary{width:160px;max-width:100%;cursor:pointer;list-style:none}
 body.bos-ui .account-entry-disclosure>summary::-webkit-details-marker{display:none}
 body.bos-ui .account-entry-disclosure[open]>.account-entry{margin-top:8px}
+/* A compact entry strip above the ledger; payment details appear only as needed. */
+body.bos-ui .content .account-entry{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;border-color:var(--row-line);margin-bottom:0}
+body.bos-ui .account-entry-main{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;min-width:0}
+body.bos-ui .content .account-entry label{min-width:0;margin:0}
+body.bos-ui .content .account-entry :is(input,select):not([type=hidden],[type=checkbox]){border-color:#a6b6c9}
+body.bos-ui .account-entry #payment-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding-top:8px;border-top:1px solid var(--row-line);min-width:0}
+body.bos-ui .content .account-entry #payment-fields .form-grid{grid-template-columns:minmax(0,1fr);gap:8px;margin:0}
+body.bos-ui .account-entry #direct-toggle-field{display:flex;align-items:center;gap:5px;align-self:end;min-height:var(--control-height)}
+body.bos-ui .content .account-entry-save{width:160px;max-width:100%;justify-self:end;align-self:end;margin:0}
+@media screen and (min-width:701px){
+  body.bos-ui .content .account-entry{grid-template-columns:minmax(0,1fr) 140px;column-gap:10px;padding:8px}
+  body.bos-ui .account-entry-main{grid-template-columns:repeat(3,minmax(0,1fr));grid-column:1;grid-row:1;gap:6px}
+  body.bos-ui .account-entry-description{grid-column:span 2}
+  body.bos-ui .account-entry-main>label{padding-right:8px;border-right:1px solid var(--cell-line)}
+  body.bos-ui .account-entry-main>label:last-child{padding-right:0;border-right:0}
+  body.bos-ui .content .account-entry-save{grid-column:2;grid-row:1;width:140px}
+  body.bos-ui .account-entry #payment-fields{grid-column:1/-1;grid-template-columns:155px minmax(0,1fr)}
+  body.bos-ui .content .account-entry #payment-fields .form-grid{grid-template-columns:repeat(3,minmax(0,1fr));column-gap:10px}
+  body.bos-ui .account-entry #payment-fields>label{padding-right:10px;border-right:1px solid var(--cell-line)}
+  body.bos-ui .account-entry #card-fields>label{grid-column:auto;max-width:none;width:auto}
+  body.bos-ui .account-entry #direct-toggle-field{height:var(--control-height);min-height:var(--control-height);padding:3px 6px;border-radius:4px;line-height:1.2}
+  body.bos-ui .account-entry .supplier-search{--supplier-toggle-size:20px;--supplier-toggle-top:7px}
+}
+@media screen and (min-width:1000px){
+  body.bos-ui .account-entry-main{grid-template-columns:110px 138px 150px 108px minmax(140px,1fr)}
+  body.bos-ui .account-entry-description{grid-column:auto}
+}
+@media screen and (min-width:401px) and (max-width:700px){
+  body.bos-ui .account-entry-main{grid-template-columns:repeat(2,minmax(0,1fr))}
+  body.bos-ui .account-entry-description{grid-column:1/-1}
+}
 body.bos-ui .statement-description>summary{display:flex;align-items:center;gap:5px;cursor:pointer;list-style:none;min-width:0}
 body.bos-ui .statement-description>summary::-webkit-details-marker{display:none}
 body.bos-ui .statement-description>summary::before{content:'▸';flex:0 0 10px;color:var(--muted)}
@@ -167,6 +198,7 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui.workspace-web-shell .workspace-stage{height:calc(100vh - 36px)}
 }
 @media(max-width:700px){
+  body.bos-ui .content .account-entry .account-entry-save{font-size:12px;padding:6px 8px}
   body.bos-ui .account-table .statement-description>summary{min-height:44px}
   body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:1fr;gap:8px;width:100%}
   body.bos-ui :is(.content,.topbar) :is(.header-actions,.detail-navigation,.actions)>:is(.button,button,.action-menu){width:100%;padding:6px 8px;font-size:12px;line-height:1.25}
