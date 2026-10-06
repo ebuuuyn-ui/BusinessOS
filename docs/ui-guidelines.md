@@ -10,6 +10,7 @@ Ortak görünüm `static/ui.css`, sıkı çalışma düzeni `static/density.css`
 - İndirme ve ikincil işlemler `details.action-menu` içinde gruplanır. `summary` açık bir ad taşır; menü Escape veya dışarı tıklama ile kapanır.
 - Filtre alanlarının üzerinde görünür etiket bulunur. `filters` satırları dar ekranda kırılır; `filter-actions` alanı düğmeleri hizalar.
 - Uzun açıklama ve özetler `section-disclosure` veya `ui-help` ile gerektiğinde açılır. İşlemin sonucu veya gerekli uyarı gizlenmez.
+- Cari hesap ekstresi tam genişlik kullanır; yeni hareket formu kapalı bir disclosure içinde saklanır. Masaüstünde hareketler 28 px tek satırdır; tarih, referans ve tutarlar bölünmez. Uzun açıklama ve ödeme ayrıntıları doğal `details/summary` ile açılır. Yazdırmada ayrıntılar açılıp sonrasında önceki ekran durumu geri yüklenir; PDF/Excel dışa aktarma verileri değişmez.
 - Temel metin, boşluk, kenarlık ve renk değişikliği için sayfa bazlı ek kurallar yerine ortak dosyayı düzenleyin. Yeni `!important` yükseklik kuralları eklemeyin.
 - Değişiklikleri geniş ve dar ekranda, ayrıca sekmeli çalışma alanındaki iframe içinde kontrol edin. Açılır menülerin ve arama sonuçlarının kesilmediğini doğrulayın.
 

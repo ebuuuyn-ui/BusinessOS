@@ -16,12 +16,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Business OS{% endblock %}</title>
 {% include '_favicon.html' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='shared-ui-20261006-3') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='shared-ui-20261006-4') }}">
 <link rel="stylesheet" href="{{ url_for('static',filename='ui.css',v='20261006-2') }}">
 <script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static',filename='mobile.css',v='20261006-1') }}">
 <script defer src="{{ url_for('static',filename='mobile.js',v='20261006-1') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261006-3') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261006-4') }}">
 </head>
 <body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}">
   <aside class="sidebar" id="main-sidebar" aria-label="Ana menü"><button type="button" class="mobile-nav-close" aria-label="Menüyü kapat" data-mobile-menu-close>×</button>
