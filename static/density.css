@@ -141,10 +141,10 @@ body.bos-ui .account-table>tbody>tr[hidden]{display:none!important}
   body.bos-ui .order-list-table tbody td.order-customer-cell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
   body.bos-ui .order-list-table .invoice-status{max-width:100%;white-space:normal}
   body.bos-ui .procurement-indicator{width:20px;height:20px;font-size:12px}
-  body.bos-ui .invoice-table{table-layout:fixed;width:100%;min-width:1180px}
+  body.bos-ui .invoice-table{table-layout:fixed;width:100%;min-width:1210px}
   body.bos-ui .invoice-table>thead>tr>th{padding:4px 6px;font-size:10px;white-space:nowrap}
   body.bos-ui .invoice-table>thead>tr>th:nth-child(1){width:78px}
-  body.bos-ui .invoice-table>thead>tr>th:nth-child(2){width:150px}
+  body.bos-ui .invoice-table>thead>tr>th:nth-child(2){width:180px}
   body.bos-ui .invoice-table>thead>tr>th:nth-child(3){width:82px}
   body.bos-ui .invoice-table>thead>tr>th:nth-child(4){width:auto}
   body.bos-ui .invoice-table>thead>tr>th:nth-child(5){width:210px}
