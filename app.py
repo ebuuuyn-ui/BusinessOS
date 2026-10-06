@@ -413,17 +413,29 @@ class Invoice(db.Model):
         from invoice_order_allocation import linked_orders
         return linked_orders(self)
 
+    source_net_amount = db.Column(db.Numeric(18, 2), nullable=True)
+    source_vat_amount = db.Column(db.Numeric(18, 2), nullable=True)
+
     @property
     def net_amount(self):
+        if self.source_net_amount is not None:
+            return self.source_net_amount
         return sum((item.net_amount for item in self.items), Decimal("0"))
 
     @property
     def vat_amount(self):
+        if self.source_vat_amount is not None:
+            return self.source_vat_amount
         return sum((item.vat_amount for item in self.items), Decimal("0"))
 
     @property
     def total_amount(self):
         return self.net_amount + self.vat_amount
+
+
+    @property
+    def rounding_difference(self):
+        return self.total_amount - sum((item.total_amount for item in self.items), Decimal("0"))
 
 
 class InvoiceItem(db.Model):
@@ -433,7 +445,7 @@ class InvoiceItem(db.Model):
     product_name = db.Column(db.String(160), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     unit = db.Column(db.String(30), nullable=False, default="Adet")
-    unit_price = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    unit_price = db.Column(db.Numeric(20, 8), nullable=False, default=0)
     discount_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
     vat_rate = db.Column(db.Numeric(5, 2), nullable=False, default=10)
     vat_included = db.Column(db.Boolean, default=False, nullable=False)
@@ -441,8 +453,13 @@ class InvoiceItem(db.Model):
     invoice = db.relationship("Invoice", back_populates="items")
     product = db.relationship("Product")
 
+    source_net_amount = db.Column(db.Numeric(18, 2), nullable=True)
+    source_vat_amount = db.Column(db.Numeric(18, 2), nullable=True)
+
     @property
     def net_amount(self):
+        if self.source_net_amount is not None:
+            return self.source_net_amount
         gross = (self.unit_price or Decimal("0")) * self.quantity
         discount = max(Decimal("0"), min(self.discount_rate or Decimal("0"), Decimal("100")))
         discounted = gross * (Decimal("100") - discount) / Decimal("100")
@@ -451,6 +468,8 @@ class InvoiceItem(db.Model):
 
     @property
     def vat_amount(self):
+        if self.source_vat_amount is not None:
+            return self.source_vat_amount
         gross = (self.unit_price or Decimal("0")) * self.quantity
         discount = max(Decimal("0"), min(self.discount_rate or Decimal("0"), Decimal("100")))
         discounted = gross * (Decimal("100") - discount) / Decimal("100")
@@ -2028,7 +2047,7 @@ def load_invoice_ledger(customer_id=None, customer_ids=None):
     """Read only the ledger columns and invoice totals needed for allocation."""
     from types import SimpleNamespace
     customers = db.session.query(Customer.id, Customer.name, Customer.code)
-    headers = (Invoice.id, Invoice.customer_id, Invoice.invoice_no, Invoice.invoice_type, Invoice.invoice_date, Invoice.due_date)
+    headers = (Invoice.id, Invoice.customer_id, Invoice.invoice_no, Invoice.invoice_type, Invoice.invoice_date, Invoice.due_date, Invoice.source_net_amount, Invoice.source_vat_amount)
     if db.engine.dialect.name == "sqlite":
         rates = (InvoiceItem.unit_price, InvoiceItem.discount_rate, InvoiceItem.vat_rate, InvoiceItem.vat_included)
         invoices = db.session.query(*headers, *rates, func.sum(InvoiceItem.quantity)).outerjoin(InvoiceItem).group_by(*headers, *rates)
@@ -2053,8 +2072,11 @@ def load_invoice_ledger(customer_id=None, customer_ids=None):
     for row in invoices.all():
         invoice = invoice_rows.setdefault(row[0], SimpleNamespace(id=row[0], customer_id=row[1],
             invoice_no=row[2], invoice_type=row[3], invoice_date=row[4], due_date=row[5], total_amount=Decimal('0')))
+        if row[6] is not None and row[7] is not None:
+            invoice.total_amount = row[6] + row[7]
+            continue
         if db.engine.dialect.name == "sqlite":
-            price, discount, vat, included, quantity = row[6:]
+            price, discount, vat, included, quantity = row[8:]
             if quantity is None:
                 continue
             discount = max(Decimal('0'), min(discount or Decimal('0'), Decimal('100')))
@@ -2063,7 +2085,7 @@ def load_invoice_ledger(customer_id=None, customer_ids=None):
                 total *= (Decimal('100') + (vat or Decimal('0'))) / Decimal('100')
             invoice.total_amount += total
         else:
-            invoice.total_amount = row[6]
+            invoice.total_amount = row[8]
     return customers.all(), list(invoice_rows.values()), transactions.all()
 
 
@@ -2112,6 +2134,8 @@ def create_app(test_config=None):
     register_uyumsoft(app, db, Invoice, Order, InvoiceItem, StockMovement, Customer, Product, lambda: create_database_backup(app, "before_uyumsoft_import"))
     from invoice_amounts import register_schema
     register_schema(app, db)
+    from invoice_amounts import precise_money
+    app.jinja_env.filters["precise_money"] = precise_money
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
 
@@ -5449,6 +5473,8 @@ def create_app(test_config=None):
     with app.app_context():
         create_database_backup(app, "startup")
         db.create_all()
+        from invoice_amounts import prepare_schema
+        prepare_schema(db.engine)
         import_personal_finance_data(app)
         # Küçük SQLite kurulumlarında ayrıca bir migration aracı gerektirmeden
         # eski müşteri tablolarını yeni alanlarla uyumlu hale getirir.

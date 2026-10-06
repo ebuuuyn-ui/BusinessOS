@@ -11,6 +11,7 @@
 {% if doc %}
 <section class="panel form-panel"><div class="inbox-meta"><div><small>Fatura</small><b>{{ doc.number }}</b><p>{{ doc.date }} · Vade: {{ doc.due or 'Belirtilmemiş' }}</p></div><div><small>Tedarikçi</small><b>{{ doc.supplier }}</b><p>VKN / TCKN: {{ doc.supplier_id }}</p></div></div><p>Orijinal fatura ve PDF korunur. Aşağıdaki seçimler BOS kaydında kullanılacak ürün ve açıklamayı belirler; fatura miktar ve tutarları değişmez.</p></section>
 
+{% if doc.has_rounding %}<section class="panel form-panel"><p class="note">Faturada kuruş yuvarlama farkı var. Resmî kalem tutarları, KDV ve {{ doc.total|float|money }} TL fatura toplamı korunarak kaydedilecek.</p></section>{% endif %}
 <form method="post" id="inbox-form"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="order_refs" value="{{ order_refs }}">
 <section class="panel form-panel"><div class="inbox-fields"><label>BOS tedarikçi carisi<input name="customer_ref" list="inbox-customers" value="{{ customer_ref }}" placeholder="Cari adı yazın ve listeden seçin" required autocomplete="off"></label></div>
 <datalist id="inbox-customers">{% for ref in customer_refs %}<option value="{{ ref }}"></option>{% endfor %}</datalist>
@@ -19,7 +20,7 @@
 {% for line in doc.lines %}{% set i=loop.index0 %}{% set choice=choices[i] %}
 <article class="inbox-line" data-quantity="{{ line.quantity }}"><div class="inbox-original"><small>Faturadaki {{ loop.index }}. kalem</small><h3>{{ line.name }}</h3><dl class="inbox-line-prices">
 <div><dt>Miktar</dt><dd>{{ line.quantity }} {{ 'Adet' if line.unit=='C62' else line.unit }}</dd></div>
-<div><dt>Birim fiyat (KDV hariç)</dt><dd>{{ '₺' ~ (line.net_unit|float|money) if line.net_unit is not none else '—' }}</dd></div>
+<div><dt>Birim fiyat (KDV hariç)</dt><dd>{{ '₺' ~ (line.net_unit|precise_money) if line.net_unit is not none else '—' }}</dd></div>
 <div><dt>Toplam (KDV hariç)</dt><dd>₺{{ line.net|float|money }}</dd></div>
 <div><dt>KDV (%{{ line.rate }})</dt><dd>₺{{ line.tax|float|money }}</dd></div>
 <div><dt>Toplam (KDV dâhil)</dt><dd>₺{{ line.total|float|money }}</dd></div>

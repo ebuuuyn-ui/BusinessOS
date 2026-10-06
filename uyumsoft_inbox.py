@@ -5,7 +5,7 @@ import json
 import re
 import uuid as uuidlib
 from datetime import date,datetime,timedelta,timezone
-from decimal import Decimal,InvalidOperation
+from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
 from flask import request,render_template,redirect,url_for,flash,send_file,abort
@@ -45,22 +45,42 @@ def parse_inbox(root,uid,buyer):
         issued=date.fromisoformat(text('b:IssueDate')).isoformat()
         due=date.fromisoformat(text('a:PaymentTerms/b:PaymentDueDate')).isoformat() if text('a:PaymentTerms/b:PaymentDueDate') else ''
     except ValueError:raise UyumError('Fatura tarihi geçersiz.') from None
-    lines=[]
+    lines=[];has_rounding=False
     for line in root.findall('a:InvoiceLine',N):
         qty=number(line,'b:InvoicedQuantity');net=number(line,'b:LineExtensionAmount')
         if qty>2147483647 or net!=net.quantize(Decimal('.01')):raise UyumError('Kalem miktarı veya tutar hassasiyeti desteklenmiyor.')
         taxes=line.findall('a:TaxTotal/a:TaxSubtotal',N)
         if qty<=0 or len(taxes)!=1 or taxes[0].findtext('a:TaxCategory/a:TaxScheme/b:TaxTypeCode',namespaces=N)!='0015':raise UyumError('Kalemin miktar veya vergi yapısı manuel incelenmelidir.')
         rate=number(taxes[0],'b:Percent');tax=number(taxes[0],'b:TaxAmount')
-        if rate not in (0,1,8,10,18,20) or (net*rate/100).quantize(Decimal('.01'))!=tax:raise UyumError('Kalem KDV tutarı uyuşmuyor.')
+        expected_tax=(net*rate/100).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)
+        if rate not in (0,1,8,10,18,20) or tax!=tax.quantize(Decimal('.01')) or abs(expected_tax-tax)>Decimal('.01'):
+            raise UyumError('Kalem KDV tutarı uyuşmuyor; fark 1 kuruşluk yuvarlama sınırını aşıyor.')
+        has_rounding=has_rounding or expected_tax!=tax
+        price=net/qty
+        source_price=line.find('a:Price/b:PriceAmount',N)
+        if source_price is not None:
+            original_price=number(line,'a:Price/b:PriceAmount')
+            base=number(line,'a:Price/b:BaseQuantity') if line.find('a:Price/b:BaseQuantity',N) is not None else Decimal(1)
+            if base<=0:raise UyumError('Birim fiyat baz miktarı geçersiz.')
+            # Retain the supplier's precise unit price when no discount/charge
+            # changes it; otherwise store the effective net unit price.
+            if not line.findall('a:AllowanceCharge',N) and abs(original_price/base*qty-net)<=Decimal('.01'):
+                price=original_price/base
         unit=line.find('b:InvoicedQuantity',N).get('unitCode','')
         label=line.findtext('a:Item/b:Name',namespaces=N) or ''
         if not label:raise UyumError('Ürün adı eksik.')
-        lines.append(dict(name=label,quantity=str(qty),unit=unit,net=str(net),tax=str(tax),rate=str(rate),net_unit=str(net/qty) if qty else None,total=str(net+tax)))
+        lines.append(dict(name=label,quantity=str(qty),unit=unit,net=str(net),tax=str(tax),rate=str(rate),net_unit=str(price),total=str(net+tax)))
     net=number(root,'a:LegalMonetaryTotal/b:TaxExclusiveAmount');tax=number(root,'a:TaxTotal/b:TaxAmount');total=number(root,'a:LegalMonetaryTotal/b:PayableAmount')
-    if not lines or sum(Decimal(x['net']) for x in lines)!=net or sum(Decimal(x['tax']) for x in lines)!=tax or net+tax!=total:
+    net_rounding=net-sum(Decimal(x['net']) for x in lines)
+    tax_rounding=tax-sum(Decimal(x['tax']) for x in lines)
+    if (not lines or any(x!=x.quantize(Decimal('.01')) for x in (net,tax,total))
+        or abs(net_rounding)>Decimal('.01') or abs(tax_rounding)>Decimal('.01') or net+tax!=total):
         raise UyumError('Fatura toplamları kalemlerle uyuşmuyor; otomatik kayıt yapılamaz.')
-    return dict(uuid=uid,number=no,date=issued,due=due,supplier_id=sid,supplier=name,lines=lines,net=str(net),tax=str(tax),total=str(total))
+    inclusive=root.find('a:LegalMonetaryTotal/b:TaxInclusiveAmount',N)
+    if inclusive is not None and number(root,'a:LegalMonetaryTotal/b:TaxInclusiveAmount')!=total:
+        raise UyumError('Vergiler dahil toplam ile ödenecek tutar uyuşmuyor; manuel kontrol gerekiyor.')
+    return dict(uuid=uid,number=no,date=issued,due=due,supplier_id=sid,supplier=name,lines=lines,net=str(net),tax=str(tax),total=str(total),
+                has_rounding=has_rounding or bool(net_rounding or tax_rounding),rounding=str(net_rounding+tax_rounding))
 
 def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Product,config,access,backup):
     signer=URLSafeTimedSerializer(app.secret_key,salt='uyumsoft-inbox-review-v1')
@@ -151,8 +171,7 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                     if choice['kind']=='stock':
                         product=product_refs.get(choice['product']);qty=Decimal(line['quantity'])
                         if not product or line['unit']!='C62' or qty!=int(qty) or (product.unit or '').casefold() not in ('adet','ad','c62'):raise UyumError('Her ürün için adet birimli aktif stok kartını seçin. Diğer birimler manuel incelenmelidir.')
-                        price=(Decimal(line['net'])/qty).quantize(Decimal('.01'))
-                        if price*qty!=Decimal(line['net']):raise UyumError('Net birim fiyat iki ondalıkla tutarı karşılamıyor; manuel kontrol gerekiyor.')
+                        price=Decimal(line['net_unit']).quantize(Decimal('.00000001'),rounding=ROUND_HALF_UP)
                         prepared.append(dict(product=product,quantity=int(qty),price=price,name=product.name))
                     elif choice['kind']=='expense':
                         from invoice_ssh import allows_nonstock_rows
@@ -161,8 +180,6 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                         if not label or len(label)>160:raise UyumError('Gider açıklaması 1–160 karakter olmalıdır.')
                         prepared.append(dict(product=None,quantity=1,price=Decimal(line['net']),name=label))
                     else:raise UyumError('Geçersiz kalem türü.')
-                if sum(Decimal(x['net'])*Decimal(x['rate'])/100 for x in doc['lines'])!=Decimal(doc['tax']):
-                    raise UyumError('KDV yuvarlama farkı var; BOS toplamıyla birebir eşleşmediği için manuel kontrol gerekiyor.')
                 distribution=validate_distribution(doc,choices,prepared,candidates,customer.id,bool(requested_orders))
                 state=client.inbox_status(uid)
                 if state not in FINAL_STATES:raise UyumError('Bu durumdaki fatura işlenemez: '+state)
@@ -181,7 +198,8 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                         locked_items=OrderItem.query.filter(OrderItem.order_id.in_(selected_ids)).with_for_update().populate_existing().all()
                         distribution=validate_distribution(doc,choices,prepared,{x.id:x for x in locked_items},customer.id,bool(requested_orders))
                     inv=Invoice(invoice_no=doc['number'],invoice_type='Satın Alma',customer_id=customer.id,order_id=None,
-                        invoice_date=date.fromisoformat(doc['date']),due_date=date.fromisoformat(doc['due']) if doc['due'] else None,notes='Uyumsoft gelen fatura ETTN: '+uid)
+                        invoice_date=date.fromisoformat(doc['date']),due_date=date.fromisoformat(doc['due']) if doc['due'] else None,notes='Uyumsoft gelen fatura ETTN: '+uid,
+                        source_net_amount=Decimal(doc['net']),source_vat_amount=Decimal(doc['tax']))
                     db.session.add(inv);db.session.flush();mapping=[]
                     for line,choice,row,assigned in zip(doc['lines'],choices,prepared,distribution):
                         movement=None
@@ -189,6 +207,8 @@ def register_inbox(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Produ
                             movement=StockMovement(product_id=row['product'].id,movement_type='Stok Girişi',quantity=row['quantity'],movement_date=inv.invoice_date,note='Satın Alma faturası · '+inv.invoice_no)
                             db.session.add(movement);db.session.flush()
                         invoice_item=InvoiceItem(invoice_id=inv.id,product_id=row['product'].id if row['product'] else None,product_name=row['name'],unit='Adet',quantity=row['quantity'],unit_price=row['price'],vat_rate=Decimal(line['rate']),discount_rate=0,vat_included=False,stock_movement_id=movement.id if movement else None)
+                        invoice_item.source_net_amount=Decimal(line['net'])
+                        invoice_item.source_vat_amount=Decimal(line['tax'])
                         db.session.add(invoice_item);db.session.flush()
                         for item,qty in assigned:
                             db.session.add(InvoiceOrderAllocation(invoice_id=inv.id,invoice_item_id=invoice_item.id,order_id=item.order_id,order_item_id=item.id,quantity=qty))
