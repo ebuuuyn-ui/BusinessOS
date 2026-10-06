@@ -55,7 +55,7 @@
       <summary>{{ selected_statuses|join(', ') if selected_statuses else 'Tüm durumlar' }}</summary>
       <div class="status-multiselect-options">
         <span class="status-multiselect-hint">Bir veya daha fazla durum seçin</span>
-        {% for status in statuses %}<label><input type="checkbox" name="status" value="{{ status }}" {{ 'checked' if status in selected_statuses }}> {{ status }}</label>{% endfor %}
+        {% for status in statuses if status not in ['Onaylandı', 'Üretimde', 'Paketleniyor'] %}<label><input type="checkbox" name="status" value="{{ status }}" {{ 'checked' if status in selected_statuses }}> {{ status }}</label>{% endfor %}
       </div>
     </details>
     {% endif %}
