@@ -2122,6 +2122,8 @@ def create_app(test_config=None):
     install_web_auth(app, db)
     from price_quotes import register_quotes
     register_quotes(app, db, Product, Customer, PriceQuote, ProductQuoteImage)
+    from packing_lists import register_packing
+    register_packing(app, db, PriceQuote)
     from audit_log import install_audit
     install_audit(app, db)
     from supplier_sheets import register_supplier_sheets

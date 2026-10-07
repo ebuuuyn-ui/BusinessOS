@@ -122,6 +122,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
                     return base64.b64encode(binary).decode() if binary else None
                 clean=validate(data,by_id,choose_image)
                 clean['author']=old_data['author'] if quote else author
+                if quote and old_data.get('packing_list'):clean['packing_list']=old_data['packing_list']
                 Quote.__table__.create(db.engine,checkfirst=True)
                 if quote:
                     changed=Quote.query.filter_by(id=quote.id,version=quote.version).update(dict(payload=json.dumps(clean,ensure_ascii=False),customer_name=clean['customer_name'],version=quote.version+1),synchronize_session=False)
