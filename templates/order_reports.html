@@ -11,7 +11,7 @@
 <label>Sipariş / Ürün<input name="q" value="{{ filters.q }}" placeholder="Sipariş no, ürün adı veya kodu"></label>
 <button class="button" type="submit">Filtrele</button><a class="button" href="{{ url_for('order_reports') }}">Temizle</a>
 </form>
-<table class="compact-table" style="width:100%;margin-top:12px"><thead><tr><th>Rapor</th><th>İçerik</th><th>İşlem</th></tr></thead><tbody>
+<table class="order-report-table" style="width:100%;margin-top:12px;table-layout:fixed;overflow-wrap:anywhere"><thead><tr><th>Rapor</th><th>İçerik</th><th>İşlem</th></tr></thead><tbody>
 <tr><td><strong>Sipariş Listesi</strong></td><td>Her sipariş için bir satır; cari, tarih, durum ve tutar bilgileri.</td><td><a class="button" href="{{ url_for('export_orders_excel', **filters) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">Excel İndir</a></td></tr>
 <tr><td><strong>Kalem Ayrıntıları</strong></td><td>Siparişlerin ürün kalemleri, adetleri ve fiyat bilgileri.</td><td><a class="button" href="{{ url_for('export_orders_detailed_excel', **filters) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">Excel İndir</a></td></tr>
 </tbody></table>

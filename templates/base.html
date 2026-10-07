@@ -46,7 +46,7 @@
         <summary><i class="nav-icon">▤</i><span>Siparişler</span><b class="nav-chevron">⌄</b></summary>
         <div class="nav-sub">
           <a class="{{ 'active' if request.endpoint in ['orders','order_detail','new_order','edit_order','convert_to_purchase'] }}" href="{{ url_for('orders') }}">Tüm Siparişler</a>
-          <a class="{{ 'active' if request.endpoint in ['order_reports','quotes','quote_edit','quote_detail','quote_to_order'] }}" href="{{ url_for('quotes') }}">Fiyat Teklifleri</a>
+          <a class="{{ 'active' if request.endpoint in ['quotes','quote_edit','quote_detail','quote_to_order'] }}" href="{{ url_for('quotes') }}">Fiyat Teklifleri</a>
           <a class="{{ 'active' if request.endpoint in ['invoices','invoice_detail','delete_invoice'] }}" href="{{ url_for('invoices') }}">Faturalar</a>
           <a class="{{ 'active' if request.endpoint == 'order_reports' }}" href="{{ url_for('order_reports') }}">Sipariş Raporları</a>
         </div>
