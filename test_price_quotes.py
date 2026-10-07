@@ -30,6 +30,41 @@ class QuoteTests(unittest.TestCase):
         d['lines'][0].update(mode='price',price='4000');r=self.post(d,q.id,'1');self.assertEqual(r.status_code,302)
         m.db.session.expire_all();self.assertEqual(json.loads(q.payload)['totals']['total'],'17600.00')
         self.assertIn('başka bir oturumda',self.post(d,q.id,'1').text)
+    def test_usd_discount_save_pdf_and_tl_order(self):
+        from pypdf import PdfReader
+        d=self.sample();d.update(currency='USD',exchange_rate='40')
+        self.assertEqual(self.post(d).status_code,302)
+        q=m.PriceQuote.query.one();saved=json.loads(q.payload)
+        row=saved['lines'][0]
+        self.assertEqual(row['source_list_price'],'5100.00')
+        self.assertEqual(row['list_price'],'127.50')
+        self.assertEqual(row['price'],'114.75')
+        self.assertEqual(saved['totals']['total'],'504.90')
+        pdf=self.client.get(f'/fiyat-teklifleri/{q.id}/pdf',base_url=BASE)
+        text=' '.join(page.extract_text() for page in PdfReader(io.BytesIO(pdf.data)).pages)
+        self.assertIn('114,75 USD',text);self.assertIn('1 USD = 40 TL',text)
+        detail=self.client.get(f'/fiyat-teklifleri/{q.id}',base_url=BASE)
+        self.assertIn('USD',detail.text)
+        path=f'/fiyat-teklifleri/{q.id}/siparise-aktar'
+        preview=self.client.get(path,base_url=BASE)
+        self.assertIn('4.590,00',preview.text)
+        self.assertEqual(self.transfer_post(path).status_code,302)
+        order=m.Order.query.filter_by(order_type='Satış').order_by(m.Order.id.desc()).first()
+        self.assertEqual(order.items[0].net_amount,Decimal('18360'))
+        self.assertIn('1 USD = 40 TL',order.notes)
+
+    def test_direct_usd_price_and_bad_rate(self):
+        d=self.sample();d.update(currency='USD',exchange_rate='40.25')
+        d['lines'][0].update(mode='usd',usd_price='100')
+        clean=validate(d,{str(self.p.id):self.p},lambda p,r:None)
+        self.assertEqual(clean['lines'][0]['price'],'100.00')
+        self.assertEqual(clean['lines'][0]['source_price'],'4025.00')
+        self.assertEqual(clean['totals']['total'],'440.00')
+        for bad in ('0','-1','NaN','Infinity',''):
+            d['exchange_rate']=bad
+            with self.assertRaises(ValueError):validate(d,{str(self.p.id):self.p},lambda p,r:None)
+        self.assertEqual(m.PriceQuote.query.count(),0)
+
     def test_validation_and_auth(self):
         d=self.sample();d['lines'][0]['quantity']=1.5
         self.assertIn('pozitif tam sayı',self.post(d).text);self.assertEqual(m.PriceQuote.query.count(),0)

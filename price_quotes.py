@@ -34,6 +34,10 @@ def validate(data,products,image_for):
     lines=data.get('lines',[])
     if not isinstance(lines,list) or not 1<=len(lines)<=100:raise ValueError('Teklife 1 ile 100 arasında ürün kalemi ekleyin.')
     if not isinstance(data.get('conditions',{}),dict):raise ValueError('Teklif koşulları geçersiz.')
+    currency=data.get('currency','TRY')
+    if currency not in ('TRY','USD'):raise ValueError('Para birimi TL veya USD olmalıdır.')
+    rate=amount(data.get('exchange_rate','1')) if currency=='USD' else Decimal(1)
+    if rate<=0:raise ValueError('USD kuru sıfırdan büyük olmalıdır.')
     out=[]
     for row in lines:
         if not isinstance(row,dict):raise ValueError('Ürün kalemi geçersiz.')
@@ -49,16 +53,25 @@ def validate(data,products,image_for):
         elif mode=='price':
             price=rounded(amount(row.get('price')))
             discount=rounded((lp-price)*100/lp) if lp else Decimal(0)
+        elif mode=='usd' and currency=='USD':
+            usd_price=rounded(amount(row.get('usd_price')))
+            price=rounded(usd_price*rate)
+            discount=rounded((lp-price)*100/lp) if lp else Decimal(0)
         else:raise ValueError('Fiyat giriş yöntemini seçin.')
         vat=amount(row.get('vat',10))
         if vat not in (0,1,8,10,18,20):raise ValueError('Geçerli KDV oranı seçin.')
+        source_lp,source_price=lp,price
+        if currency=='USD':
+            lp=rounded(lp/rate)
+            price=usd_price if mode=='usd' else rounded(price/rate)
         net=rounded(price*qty);tax=rounded(net*vat/100)
         name=str(row.get('name','')).strip()
         if not name or len(name)>200:raise ValueError('Ürün adı 1-200 karakter olmalıdır.')
         out.append(dict(product_id=product.id,code=product.code or '',name=name,description=str(row.get('description',''))[:500],unit=product.unit,
-            quantity=int(qty),list_price=str(lp),mode=mode,discount=str(discount),price=str(price),vat=str(vat),total=str(net),tax=str(tax),image=image_for(product,row)))
+            quantity=int(qty),source_list_price=str(source_lp),source_price=str(source_price),usd_price=str(price) if currency=='USD' else '',list_price=str(lp),mode=mode,discount=str(discount),price=str(price),vat=str(vat),total=str(net),tax=str(tax),image=image_for(product,row)))
     clean={k:str(data.get(k,''))[:1000] for k in ('customer_name','customer_code','address','recipient','phone','date')}
     clean['conditions']={k:str(data.get('conditions',{}).get(k,''))[:5000] for k in CONDITIONS}
+    clean['currency']=currency;clean['exchange_rate']=str(rate)
     clean['lines']=out;clean['totals']=totals(out)
     return clean
 
@@ -166,12 +179,16 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
                     product=db.session.get(Product,row['product_id'])
                     if not product or not product.active:raise ValueError(row['name']+': stok kartı silinmiş veya pasif. Önce teklifi güncelleyin.')
                     price=Decimal(row['price']);listed=Decimal(row['list_price']);discount=Decimal(row['discount'])
+                    if data.get('currency')=='USD':
+                        rate=amount(data['exchange_rate'])
+                        if rate<=0:raise ValueError('Teklif kuru geçersiz; önce teklifi güncelleyin.')
+                        price=rounded(price*rate);listed=rounded(listed*rate)
                     # Keep the listed price/discount when they reproduce the agreed rounded unit price exactly.
                     keep_discount=0<=discount<=100 and discount==rounded(discount) and listed*(100-discount)/100==price
                     items.append(OrderItem(product_id=product.id,product_name=row['name'],quantity=row['quantity'],unit=row.get('unit') or 'Adet',
                         unit_price=listed if keep_discount else price,discount_rate=discount if keep_discount else Decimal(0),
                         vat_rate=Decimal(row['vat']),vat_included=False,cost_unit_price=0,description=row.get('description',''),
-                        note='Teklif: '+quote.number+' | Birim fiyatı: '+row['list_price']+' TL | İskonto: %'+row['discount']+' | '+row.get('description','')))
+                        note='Teklif: '+quote.number+' | Birim fiyatı: '+row['list_price']+(' USD' if data.get('currency')=='USD' else ' TL')+' | İskonto: %'+row['discount']+' | '+row.get('description','')))
                 QuoteOrderTransfer.__table__.create(db.engine,checkfirst=True)
                 # Compare-and-swap serializes two submissions of the same version without a second order.
                 changed=Quote.query.filter_by(id=uid,version=quote.version).update({Quote.version:Quote.version+1},synchronize_session=False)
@@ -185,6 +202,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
                 if transfer:
                     db.session.rollback();return existing_response(transfer)
                 notes='Fiyat teklifinden aktarıldı: '+quote.number+'\n'+ '\n'.join(k+': '+v for k,v in data.get('conditions',{}).items() if v)
+                if data.get('currency')=='USD':notes+='\nTeklif Para Birimi: USD | 1 USD = '+data['exchange_rate']+' TL. Sipariş fiyatları bu kurla TL’ye çevrildi.'
                 order=Order(order_no=next_order_no('Satış'),order_type='Satış',customer_id=selected,order_date=order_date,delivery_date=delivery,
                             payment_method=payment,status='Bekliyor',notes=notes,items=items)
                 order.history.append(OrderHistory(status='Bekliyor',note=quote.number+' fiyat teklifinden oluşturuldu'))
@@ -200,7 +218,16 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
                     if transfer:return existing_response(transfer)
                     error='Sipariş oluşturulamadı. Kayıt çakışması nedeniyle işlem geri alındı; tekrar deneyebilirsiniz.'
                 else:error=str(e)
-        return render_template('quote_to_order.html',quote=quote,data=data,customers=customers,selected=selected,error=error,
+        order_data=json.loads(json.dumps(data))
+        if data.get('currency')=='USD':
+            rate=Decimal(data['exchange_rate'])
+            for row in order_data['lines']:
+                row['price']=str(rounded(Decimal(row['price'])*rate))
+                row['list_price']=str(rounded(Decimal(row['list_price'])*rate))
+                row['total']=str(rounded(Decimal(row['price'])*row['quantity']))
+                row['tax']=str(rounded(Decimal(row['total'])*Decimal(row['vat'])/100))
+            order_data['totals']=totals(order_data['lines'])
+        return render_template('quote_to_order.html',quote=quote,data=order_data,customers=customers,selected=selected,error=error,
                                payment_methods=ORDER_PAYMENT_METHODS,today=date.today().isoformat())
     @app.get('/fiyat-teklifleri/<uid>/pdf')
     def quote_pdf(uid):

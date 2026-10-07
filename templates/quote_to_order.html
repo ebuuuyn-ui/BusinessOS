@@ -4,7 +4,7 @@
 {% block content %}
 <a class="button" href="{{ url_for('quote_detail',uid=quote.id) }}">← Teklife Dön</a>
 <section class="panel form-panel">
-<h2>Satış Siparişini Kontrol Et</h2>
+<h2>Satış Siparişini Kontrol Et</h2>{% if data.get('currency')=='USD' %}<p>USD teklifinin fiyatları 1 USD = {{ data.exchange_rate }} TL kuru ile TL’ye çevrildi. Aşağıdaki tutarlar siparişe aktarılacak TL karşılıklarıdır.</p>{% endif %}
 <p>Cariyi ve tarihleri kontrol edip ödeme yöntemini seçin. Onayladığınızda tek bir satış siparişi oluşturulur.</p>
 {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
 <form method="post">

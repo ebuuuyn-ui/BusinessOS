@@ -9,8 +9,10 @@ from reportlab.lib.enums import TA_RIGHT,TA_CENTER
 from reportlab.platypus import SimpleDocTemplate,Paragraph,Table,TableStyle,Spacer,Image,PageBreak,KeepTogether,HRFlowable
 from pdf_fonts import register_pdf_fonts
 
-def money(value):return f'{Decimal(value):,.2f}'.replace(',','X').replace('.',',').replace('X','.')+' TL'
+def money(value,currency='TRY'):return f'{Decimal(value):,.2f}'.replace(',','X').replace('.',',').replace('X','.')+(' USD' if currency=='USD' else ' TL')
 def build_pdf(data,number):
+    currency=data.get('currency','TRY')
+    def display_money(value):return money(value,currency)
     font,bold=register_pdf_fonts();buffer=io.BytesIO();navy=colors.HexColor('#19344D');accent=colors.HexColor('#3578A5');pale=colors.HexColor('#EDF4FA')
     normal=ParagraphStyle('Quote',fontName=font,fontSize=9,leading=13,textColor=navy)
     small=ParagraphStyle('QuoteSmall',parent=normal,fontSize=8,leading=11)
@@ -32,18 +34,20 @@ def build_pdf(data,number):
     if data.get('phone') or author.get('phone'):customer.append(('Telefon',data.get('phone','')));details.append(('Telefon',author.get('phone','')))
     rows=[[p(a,small),p(b,small),p(c,small),p(d,small)] for (a,b),(c,d) in zip(customer,details)]
     meta=Table(rows,colWidths=[72,211,77,171],hAlign='LEFT');meta.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),pale),('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),8),('BOTTOMPADDING',(0,0),(-1,-1),8)]))
-    story=[meta,Spacer(1,20)]
+    story=[meta,Spacer(1,10)]
+    if currency=='USD':story.extend([p('Para Birimi: USD · Kullanılan Kur: 1 USD = '+data['exchange_rate']+' TL',small),Spacer(1,10)])
+    else:story.append(Spacer(1,10))
     header=['Ürün Adı / Kodu','Ürün Görseli','Birim Fiyatı','İskonto','İskontolu Birim Fiyatı','Adet','Toplam'];table_rows=[[p(s,header_style) for s in header]]
     for row in data['lines']:
         name=[p(row['name'],ParagraphStyle('Product',parent=small,fontName=bold)),Spacer(1,6),p(row['code'],small),p(row['description'],small)]
         picture=p('Görsel Yok',centered)
         if row.get('image'):
             picture=Image(io.BytesIO(base64.b64decode(row['image'])),width=70,height=85,kind='proportional')
-        table_rows.append([name,picture,p(money(row['list_price']),right),p('%'+row['discount'],right),p(money(row['price']),right),p(str(row['quantity']),right),p(money(row['total']),right)])
+        table_rows.append([name,picture,p(display_money(row['list_price']),right),p('%'+row['discount'],right),p(display_money(row['price']),right),p(str(row['quantity']),right),p(display_money(row['total']),right)])
     table=Table(table_rows,colWidths=[119,84,79,46,82,31,90],repeatRows=1,hAlign='LEFT')
     table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),navy),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.HexColor('#F8FAFB'),colors.white]),('LINEBEFORE',(0,1),(0,-1),1.5,accent),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),('TOPPADDING',(0,0),(-1,0),10),('BOTTOMPADDING',(0,0),(-1,0),10),('TOPPADDING',(0,1),(-1,-1),14),('BOTTOMPADDING',(0,1),(-1,-1),14),('LINEBELOW',(0,1),(-1,-1),.4,colors.HexColor('#dddddd')),('LINEBELOW',(0,-1),(-1,-1),.8,accent)]))
     story.append(table);story.append(Spacer(1,12));tot=data['totals']
-    summary=Table([[p(k,total_label if v=='total' else small),p(money(tot[v]),total_value if v=='total' else right)] for k,v in [('Liste Toplamı','listed'),('Toplam İskonto','discount'),('Ara Toplam (KDV Hariç)','net'),('KDV Tutarı','tax'),('Genel Toplam','total')]],colWidths=[143,110],hAlign='RIGHT')
+    summary=Table([[p(k,total_label if v=='total' else small),p(display_money(tot[v]),total_value if v=='total' else right)] for k,v in [('Liste Toplamı','listed'),('Toplam İskonto','discount'),('Ara Toplam (KDV Hariç)','net'),('KDV Tutarı','tax'),('Genel Toplam','total')]],colWidths=[143,110],hAlign='RIGHT')
     summary.setStyle(TableStyle([('BOTTOMPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,-1),(-1,-1),12),('BOTTOMPADDING',(0,-1),(-1,-1),12),('BACKGROUND',(0,-1),(-1,-1),navy),('LINEBEFORE',(0,-1),(0,-1),3,accent)]));story.append(KeepTogether([summary,Spacer(1,12),p('Birim fiyatlar ve satır toplamları KDV hariçtir. Teslimat ve diğer teklif koşulları sonraki sayfadadır.',small)]))
     story += [PageBreak(),p('TEKLİF KOŞULLARI',heading),Spacer(1,12)]
     for label,value in data['conditions'].items():
