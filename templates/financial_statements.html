@@ -12,15 +12,16 @@
 
 <div class="statements-layout">
   <section class="panel statement-sheet income-sheet">
-    <div class="panel-head"><div><h2>Gelir Tablosu</h2><p>{{ period_start.strftime('%d.%m.%Y') }} – {{ period_end.strftime('%d.%m.%Y') }}</p></div><span class="sheet-result {{ 'negative' if net_profit < 0 }}">{{ 'Net Zarar' if net_profit < 0 else 'Net Kâr' }} · ₺{{ (net_profit|abs)|money }}</span></div>
+    <div class="panel-head"><div><h2>Gelir Tablosu</h2><p>{{ period_start.strftime('%d.%m.%Y') }} – {{ period_end.strftime('%d.%m.%Y') }}</p></div><span class="sheet-result {{ 'negative' if net_profit < 0 }}">{{ 'Maliyet Eksik · Kesinleşmedi' if fifo_incomplete else ('Net Sonuç · ₺' ~ (net_profit|money)) }}</span></div>
     <div class="statement-lines">
+      <p>Gelir hesabı satış faturaları ve iadeler üzerinden FIFO ile hazırlanır. {% if fifo_incomplete %}<a href="{{ url_for('profitability',period=period,date=selected.isoformat()) }}">Eksik maliyetleri tamamlayın.</a>{% endif %}</p>
       <div><span>Net Satışlar (KDV hariç)</span><b>₺{{ sales_revenue|money }}</b></div>
       <div class="subtraction"><span>Satışların Maliyeti</span><b>− ₺{{ sales_cost|money }}</b></div>
-      <div class="statement-total gross"><span>Brüt Kâr / Zarar</span><strong>₺{{ gross_profit|money }}</strong></div>
+      <div class="statement-total gross"><span>Brüt Kâr / Zarar</span><strong>{{ 'Kesinleşmedi' if fifo_incomplete else ('₺' ~ (gross_profit|money)) }}</strong></div>
       <div class="statement-section-title">Faaliyet Giderleri</div>
       {% for category, amount in expense_by_category %}<div class="detail"><span>{{ category }}</span><b>₺{{ amount|money }}</b></div>{% else %}<div class="detail muted"><span>Bu dönemde masraf kaydı yok</span><b>₺0,00</b></div>{% endfor %}
       <div class="statement-total expense-total"><span>Toplam Faaliyet Gideri</span><strong>− ₺{{ operating_expenses|money }}</strong></div>
-      <div class="statement-grand {{ 'negative' if net_profit < 0 }}"><span>Dönem Net {{ 'Zararı' if net_profit < 0 else 'Kârı' }}</span><strong>₺{{ (net_profit|abs)|money }}</strong></div>
+      <div class="statement-grand {{ 'negative' if net_profit < 0 }}"><span>Dönem Net {{ 'Zararı' if net_profit < 0 else 'Kârı' }}</span><strong>{{ 'Kesinleşmedi' if fifo_incomplete else ('₺' ~ ((net_profit|abs)|money)) }}</strong></div>
     </div>
   </section>
 

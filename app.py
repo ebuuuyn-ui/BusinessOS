@@ -2140,6 +2140,8 @@ def create_app(test_config=None):
     app.jinja_env.filters["precise_money"] = precise_money
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
+    from invoice_profitability import register_profitability
+    register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense)
 
     @app.before_request
     def scheduled_database_backup():
@@ -3004,73 +3006,6 @@ def create_app(test_config=None):
             return "Yedek bulunamadı", 404
         return send_file(backup_path, as_attachment=True, download_name=safe_name)
 
-    @app.get("/kar-zarar")
-    def profitability():
-        today = date.today()
-        period = request.args.get("period", "month")
-        if period not in {"day", "month", "year"}:
-            period = "month"
-        selected = parse_date(request.args.get("date")) or today
-        if period == "day":
-            start = end = selected
-            title = selected.strftime("%d.%m.%Y")
-        elif period == "year":
-            start, end = date(selected.year, 1, 1), date(selected.year, 12, 31)
-            title = str(selected.year)
-        else:
-            start = date(selected.year, selected.month, 1)
-            end = date(selected.year, selected.month, calendar.monthrange(selected.year, selected.month)[1])
-            title = start.strftime("%m.%Y")
-
-        realized_sales = Order.query.options(selectinload(Order.history)).filter(
-            Order.order_type == "Satış", Order.status.in_(FINANCIAL_ORDER_STATUSES)).all()
-        realized_dates = {order.id: order_realization_date(order) for order in realized_sales}
-        sale_ids = [order.id for order in realized_sales if start <= realized_dates[order.id] <= end]
-        sales = []
-        for offset in range(0, len(sale_ids), 500):
-            sales.extend(Order.query.options(selectinload(Order.items), joinedload(Order.customer)).filter(
-                Order.id.in_(sale_ids[offset:offset + 500])).order_by(Order.id).all())
-        item_costs = sales_item_costs_for_report(sales, realized_dates)
-        order_costs = {order.id: sum((item_costs[item.id] * item.quantity for item in order.items), Decimal("0")) for order in sales}
-        revenue = sum((order.net_amount for order in sales), Decimal("0"))
-        cost = sum(order_costs.values(), Decimal("0"))
-        gross_profit = revenue - cost
-        expenses = Expense.query.filter(Expense.expense_date >= start, Expense.expense_date <= end).all()
-        expenses_total = sum((item.amount for item in expenses), Decimal("0"))
-        net_profit = gross_profit - expenses_total
-        markup = (gross_profit / cost * 100) if cost else None
-        missing_cost_items = sum(1 for order in sales for item in order.items if not item_costs[item.id])
-
-        buckets = {}
-        if period == "year":
-            for month in range(1, 13):
-                buckets[(selected.year, month)] = {"label": f"{month:02d}.{selected.year}", "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
-        elif period == "month":
-            for day_no in range(1, end.day + 1):
-                day_value = date(selected.year, selected.month, day_no)
-                buckets[day_value] = {"label": day_value.strftime("%d.%m"), "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
-        else:
-            buckets[selected] = {"label": selected.strftime("%d.%m.%Y"), "revenue": Decimal("0"), "cost": Decimal("0"), "expense": Decimal("0")}
-        for order in sales:
-            realized = realized_dates[order.id]
-            key = (realized.year, realized.month) if period == "year" else realized
-            buckets[key]["revenue"] += order.net_amount
-            buckets[key]["cost"] += order_costs[order.id]
-        for expense in expenses:
-            key = (expense.expense_date.year, expense.expense_date.month) if period == "year" else expense.expense_date
-            buckets[key]["expense"] += expense.amount
-        timeline = []
-        for bucket in buckets.values():
-            bucket["gross"] = bucket["revenue"] - bucket["cost"]
-            bucket["net"] = bucket["gross"] - bucket["expense"]
-            timeline.append(bucket)
-        chart_max = max((max(abs(item["revenue"]), abs(item["cost"]), abs(item["net"])) for item in timeline), default=Decimal("1")) or Decimal("1")
-        sales.sort(key=lambda order: realized_dates[order.id], reverse=True)
-        return render_template("profitability.html", period=period, selected=selected, start=start, end=end, title=title,
-            revenue=revenue, cost=cost, gross_profit=gross_profit, expenses_total=expenses_total, net_profit=net_profit,
-            markup=markup, missing_cost_items=missing_cost_items, sales=sales, timeline=timeline, chart_max=chart_max,
-            realized_dates=realized_dates, order_costs=order_costs)
-
     @app.get("/mali-tablolar")
     def financial_statements():
         today = date.today()
@@ -3087,15 +3022,20 @@ def create_app(test_config=None):
         period_end = selected
 
         realized_orders = Order.query.filter(Order.status.in_(FINANCIAL_ORDER_STATUSES)).all()
-        period_sales = [order for order in realized_orders if order.order_type == "Satış" and period_start <= order_realization_date(order) <= period_end]
-        sales_revenue = sum((order.net_amount for order in period_sales), Decimal("0"))
-        sales_cost = sum((sum((effective_sales_item_cost(item, order_realization_date(order)) * item.quantity for item in order.items), Decimal("0")) for order in period_sales), Decimal("0"))
+        from invoice_profitability import cents
+        documents, fifo_items, fifo_results, _ = app.extensions['invoice_fifo']['load'](period_end)
+        period_sales = [doc for doc in documents if doc.invoice_type in {'Satış', 'Satış İadesi'}
+                        and period_start <= doc.invoice_date <= period_end]
+        sales_revenue = sum(((1 if doc.invoice_type == 'Satış' else -1) * cents(doc.net_amount)
+                             for doc in period_sales), Decimal('0'))
+        sales_cost = sum((fifo_results[item.id]['cost'] for doc in period_sales for item in doc.items), Decimal('0'))
+        fifo_incomplete = any(fifo_results[item.id]['missing_quantity'] for doc in period_sales for item in doc.items)
         gross_profit = sales_revenue - sales_cost
         period_expenses = Expense.query.filter(Expense.expense_date >= period_start, Expense.expense_date <= period_end).all()
         expense_by_category = {}
         for expense in period_expenses:
             expense_by_category.setdefault(expense.category, Decimal("0"))
-            expense_by_category[expense.category] += expense.amount
+            expense_by_category[expense.category] += cents(expense.amount)
         operating_expenses = sum(expense_by_category.values(), Decimal("0"))
         net_profit = gross_profit - operating_expenses
 
@@ -3123,7 +3063,7 @@ def create_app(test_config=None):
         calculated_equity = total_assets - total_liabilities
         return render_template("financial_statements.html", selected=selected, period=period, period_start=period_start,
             period_end=period_end, period_title=period_title, sales_revenue=sales_revenue, sales_cost=sales_cost,
-            gross_profit=gross_profit, expense_by_category=sorted(expense_by_category.items()), operating_expenses=operating_expenses,
+            fifo_incomplete=fifo_incomplete, gross_profit=gross_profit, expense_by_category=sorted(expense_by_category.items()), operating_expenses=operating_expenses,
             net_profit=net_profit, cash_balance=cash_balance, receivables=receivables, incoming_checks=incoming_checks,
             payables=payables, outgoing_checks=outgoing_checks, total_assets=total_assets,
             total_liabilities=total_liabilities, calculated_equity=calculated_equity)
