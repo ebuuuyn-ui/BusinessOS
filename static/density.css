@@ -333,3 +333,9 @@ body.bos-ui .ui-new-customer:not([open]),body.bos-ui #stock-movement-entry:not([
   body.bos-ui .customer-cards .record-card{padding:10px 0;gap:8px;border-bottom-color:var(--row-line)}
   body.bos-ui .customer-cards .record-card b{font-size:13px}
 }
+
+/* Shared list refresh: visible, compact, and beside the existing screen actions. */
+body.bos-ui .topbar .list-header-actions{align-items:center;flex:0 1 auto;margin-left:auto}
+body.bos-ui .topbar .list-header-actions>.header-actions{margin:0;flex:0 1 auto;width:auto}
+body.bos-ui .topbar .list-header-actions>.list-refresh{flex:0 0 auto;width:auto;min-width:76px;align-self:center;white-space:nowrap}
+body.bos-ui .topbar .list-header-actions:empty{display:none}

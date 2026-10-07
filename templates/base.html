@@ -35,7 +35,7 @@
 <script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static',filename='mobile.css',v='20261006-1') }}">
 <script defer src="{{ url_for('static',filename='mobile.js',v='20261006-2') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261006-9') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261007-refresh-1') }}">
 </head>
 <body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}{% block body_class %}{% endblock %}">
   <aside class="sidebar" id="main-sidebar" aria-label="Ana menü"><button type="button" class="mobile-nav-close" aria-label="Menüyü kapat" data-mobile-menu-close>×</button>
@@ -81,7 +81,7 @@
   </aside>
   <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="main-sidebar" aria-expanded="true" aria-label="Menüyü kapat" title="Menüyü kapat">☰</button>
   <main>
-    <header class="topbar"><button type="button" class="menu" data-mobile-menu aria-controls="main-sidebar" aria-expanded="false" aria-label="Menüyü aç">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div>{% block header_action %}{% endblock %}</header>
+    <header class="topbar"><button type="button" class="menu" data-mobile-menu aria-controls="main-sidebar" aria-expanded="false" aria-label="Menüyü aç">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div><div class="header-actions list-header-actions">{% block header_action %}{% endblock %}{% if request.endpoint in ['dashboard','orders','invoices','quotes','customers','customer_account','customer_detail','customer_total_movements','products','stock_archive','collection_tracking','collection_tracking_detail','expenses','profitability','financial_statements','treasury','personal_finance','backups','web_users','telegram_documents','earchive_documents','uyumsoft_inbox','product_catalog','product_price_list','quick_collection','quick_payment'] and not (request.endpoint == 'invoices' and request.args.get('entry') == '1') %}<button type="button" class="button list-refresh" data-workspace-reload title="Bu ekranı güncel kayıtlarla yeniden yükle">↻ Yenile</button>{% endif %}</div></header>
     <div class="workspace-tabs" id="workspace-tabs" aria-label="Açık çalışma sekmeleri" hidden></div>
     <div class="workspace-stage" id="workspace-stage" hidden></div>
     <section class="content" id="workspace-source">
@@ -149,6 +149,19 @@
         url.searchParams.delete(workspaceParam);
         return url.pathname+url.search+url.hash;
       };
+      // Reload the current document, including its current filters and page number.
+      // A frame reload updates only that work tab; direct/mobile pages use the same action.
+      let refreshHasUnsavedChanges=false;
+      document.addEventListener('input',event=>{
+        const field=event.target;
+        if(field.name && field.form?.method.toLowerCase()==='post') refreshHasUnsavedChanges=true;
+      });
+      document.addEventListener('click',event=>{
+        if(!event.target.closest('[data-workspace-reload]')) return;
+        event.preventDefault();event.stopImmediatePropagation();
+        if(refreshHasUnsavedChanges && !window.confirm('Kaydedilmemiş değişiklikler var. Yenilerseniz bu değişiklikler kaybolacak. Devam edilsin mi?')) return;
+        window.location.reload();
+      },true);
       if(inWorkspaceFrame){
         document.body.classList.add('workspace-embedded');
         if(isWebApp) document.body.classList.add('workspace-web-frame');
@@ -172,12 +185,6 @@
           window.parent.postMessage({type:'businessos-workspace-native',kind,requestId,path:link.pathname+link.search,name:link.dataset.exportName||'Business-OS-dosya'},window.location.origin);
         },true);
         document.addEventListener('click',event=>{
-          const reloadButton=event.target.closest('[data-workspace-reload]');
-          if(reloadButton){
-            event.preventDefault(); event.stopImmediatePropagation();
-            window.parent.postMessage({type:'businessos-workspace-reload'},window.location.origin);
-            return;
-          }
           const closeButton=event.target.closest('[data-workspace-close]');
           if(closeButton){
             event.preventDefault(); event.stopImmediatePropagation();
@@ -286,8 +293,6 @@
         }
       });
       document.addEventListener('click',event=>{
-        const reloadButton=event.target.closest('[data-workspace-reload]');
-        if(reloadButton){event.preventDefault();window.location.reload();return;}
         const closeButton=event.target.closest('[data-workspace-close]');
         if(closeButton){
           event.preventDefault();
