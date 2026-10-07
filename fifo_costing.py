@@ -17,6 +17,8 @@ def calculate_fifo(events):
     for event in sorted(events, key=lambda e: (e['date'], e['priority'], e['id'])):
         quantity = Decimal(str(event['quantity']))
         if quantity <= 0:
+            results[event['id']] = dict(cost=Decimal('0'), missing_quantity=Decimal('0'),
+                raw_missing=Decimal('0'), quantity=quantity, allocations=[], manual_applied=False)
             continue
         queue = layers[event['key']]
         if event['direction'] == 'return':

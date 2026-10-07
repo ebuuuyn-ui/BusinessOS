@@ -161,14 +161,14 @@ def register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense
             row = dict(invoice=doc, revenue=sign*cents(doc.net_amount), cost=cost, missing=unknown)
             row['profit'] = row['revenue'] - cost
             rows.append(row)
-            for item in doc.items:
+            for line_no, item in enumerate(doc.items, 1):
                 result = results[item.id]
                 if result['missing_quantity']:
-                    missing.append(dict(item=item, quantity=result['missing_quantity'],
+                    missing.append(dict(item=item, line_no=line_no, quantity=result['missing_quantity'],
                                         editable=doc.invoice_type=='Satış', source=items.get(results[item.id].get('source_id'))))
                 if doc.invoice_type=='Satış' and result.get('raw_missing'):
                     current = manual.get(item.id)
-                    adjustments.append(dict(item=item, quantity=result['raw_missing'],
+                    adjustments.append(dict(item=item, line_no=line_no, quantity=result['raw_missing'],
                         applied=result['manual_applied'], manual=current,
                         confirmation=signer.dumps(dict(item_id=item.id, signature=signature(item),
                             quantity=str(result['raw_missing']), revision=current['id'] if current else None))))
