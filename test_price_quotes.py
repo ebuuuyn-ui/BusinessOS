@@ -55,7 +55,7 @@ class QuoteTests(unittest.TestCase):
 
     def test_english_document_labels_currency_and_preserved_custom_text(self):
         from pypdf import PdfReader
-        d=self.sample();d.update(language='en',currency='USD',exchange_rate='40')
+        d=self.sample();d.update(language='en',currency='USD',exchange_rate='40',document_type='quotation')
         self.assertEqual(self.post(d).status_code,302)
         q=m.PriceQuote.query.one();saved=json.loads(q.payload)
         self.assertEqual(saved['language'],'en')
@@ -67,6 +67,26 @@ class QuoteTests(unittest.TestCase):
         self.assertNotIn('FİYAT TEKLİFİ',text)
         d['language']='invalid'
         with self.assertRaises(ValueError):validate(d,{str(self.p.id):self.p},lambda p,r:None)
+
+    def test_export_proforma_hides_discount_but_keeps_calculation(self):
+        from pypdf import PdfReader
+        d=self.sample();d.update(language='en',currency='USD',exchange_rate='40',document_type='proforma')
+        self.assertEqual(self.post(d).status_code,302)
+        q=m.PriceQuote.query.one();saved=json.loads(q.payload)
+        self.assertEqual(saved['lines'][0]['discount'],'10')
+        self.assertEqual(saved['lines'][0]['price'],'114.75')
+        response=self.client.get(f'/fiyat-teklifleri/{q.id}/pdf',base_url=BASE)
+        text=' '.join(p.extract_text() for p in PdfReader(io.BytesIO(response.data)).pages)
+        self.assertIn('PROFORMA INVOICE',text);self.assertIn('114.75 USD',text)
+        for hidden in ('Discount','List Total','127.50 USD','10%'):
+            self.assertNotIn(hidden,text)
+        detail=self.client.get(f'/fiyat-teklifleri/{q.id}',base_url=BASE)
+        self.assertIn('PROFORMA INVOICE',detail.text)
+        self.assertNotIn('<td>%10</td>',detail.text)
+        saved.pop('document_type')
+        legacy=' '.join(p.extract_text() for p in PdfReader(build_pdf(saved,q.number)).pages)
+        self.assertIn('PROFORMA INVOICE',legacy)
+        self.assertNotIn('Discount',legacy)
 
     def test_direct_usd_price_and_bad_rate(self):
         d=self.sample();d.update(currency='USD',exchange_rate='40.25')

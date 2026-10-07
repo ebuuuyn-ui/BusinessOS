@@ -41,3 +41,8 @@ def label(text,lang='tr'):return LABELS.get(text,text) if lang=='en' else text
 
 for _term in ("Teslimat","Ödeme","Süre","Garanti","İade","Teklif Geçerlilik Süresi"):
     LABELS[_term+" koşullarını yazın"]="Enter "+LABELS[_term].lower()+" terms"
+
+def document_type(data):
+    return data.get("document_type", "proforma" if data.get("language")=="en" and data.get("currency")=="USD" else "quotation")
+
+LABELS.update({"Teklif Türü":"Document Type","Yurt İçi Fiyat Teklifi":"Domestic Quotation","Yurtdışı / Proforma Invoice":"Export / Proforma Invoice"})

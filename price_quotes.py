@@ -1,6 +1,6 @@
 """Versioned quotations and explicit, idempotent conversion to sales orders."""
 import base64, io, json, uuid
-from document_language import LABELS,label as document_label
+from document_language import LABELS,document_type,label as document_label
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -74,6 +74,8 @@ def validate(data,products,image_for):
     clean['conditions']={k:str(data.get('conditions',{}).get(k,''))[:5000] for k in CONDITIONS}
     from document_language import language
     clean['language']=language(data.get('language','tr'))
+    clean['document_type']=document_type(data)
+    if clean['document_type'] not in ('quotation','proforma'):raise ValueError('Teklif türü geçersiz.')
     clean['currency']=currency;clean['exchange_rate']=str(rate)
     clean['lines']=out;clean['totals']=totals(out)
     return clean
@@ -142,14 +144,14 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
                 if not isinstance(data,dict) or not isinstance(data.get('lines',[]),list):data={'date':date.today().isoformat(),'lines':[],'conditions':{}}
         product_data=[dict(id=x.id,name=x.name,code=x.code or '',price=str(x.unit_price),description=x.default_variant or '',image=url_for('quote_product_image',pid=x.id)) for x in by_id.values()]
         customers=[dict(id=x.id,name=x.name,code=x.code or '',address=x.address or '',recipient=x.contact_name or '',phone=x.phone or x.mobile or '') for x in Customer.query.order_by(Customer.name).all()]
-        return render_template('quote_edit.html',quote=quote,data=data,author=author,error=error,products=product_data,customers=customers,conditions=CONDITIONS,creation_id=creation_id,language_labels=LABELS,english=request.args.get('english')=='1')
+        return render_template('quote_edit.html',quote=quote,data=data,author=author,error=error,products=product_data,customers=customers,conditions=CONDITIONS,creation_id=creation_id,language_labels=LABELS,english=request.args.get('english')=='1',document_type=document_type(data))
     @app.get('/fiyat-teklifleri/<uid>')
     def quote_detail(uid):
         quote=get_quote(uid);data=json.loads(quote.payload)
         from app import QuoteOrderTransfer, Order
         transfer=db.session.get(QuoteOrderTransfer,uid) if ready(QuoteOrderTransfer) else None
         linked_order=db.session.get(Order,transfer.order_id) if transfer else None
-        return render_template('quote_detail.html',quote=quote,data=data,transfer=transfer,linked_order=linked_order,t=lambda s:document_label(s,data.get('language','tr')))
+        return render_template('quote_detail.html',quote=quote,data=data,transfer=transfer,linked_order=linked_order,t=lambda s:document_label(s,data.get('language','tr')),proforma=document_type(data)=='proforma')
     @app.route('/fiyat-teklifleri/<uid>/siparise-aktar',methods=['GET','POST'])
     def quote_to_order(uid):
         from app import QuoteOrderTransfer, Order, OrderItem, OrderHistory, next_order_no, ORDER_PAYMENT_METHODS, normalize_search_text
