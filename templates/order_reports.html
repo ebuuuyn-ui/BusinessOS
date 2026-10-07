@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Sipariş Raporları · Business OS{% endblock %}
+{% block heading %}Sipariş Raporları{% endblock %}
+{% block subheading %}Sipariş listesini ve ürün kalemlerini Excel olarak alın{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+<h2>Rapor Seçimi</h2>
+<form method="get" class="filters">
+<label>Sipariş Türü<select name="type"><option value="">Tüm Siparişler</option>{% for kind in order_types %}<option value="{{ kind }}" {{ 'selected' if filters.type == kind }}>{{ kind }}</option>{% endfor %}</select></label>
+<label>Cari<input name="customer_q" value="{{ filters.customer_q }}" placeholder="Cari adı veya kodu"></label>
+<label>Sipariş / Ürün<input name="q" value="{{ filters.q }}" placeholder="Sipariş no, ürün adı veya kodu"></label>
+<button class="button" type="submit">Filtrele</button><a class="button" href="{{ url_for('order_reports') }}">Temizle</a>
+</form>
+<table class="compact-table" style="width:100%;margin-top:12px"><thead><tr><th>Rapor</th><th>İçerik</th><th>İşlem</th></tr></thead><tbody>
+<tr><td><strong>Sipariş Listesi</strong></td><td>Her sipariş için bir satır; cari, tarih, durum ve tutar bilgileri.</td><td><a class="button" href="{{ url_for('export_orders_excel', **filters) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">Excel İndir</a></td></tr>
+<tr><td><strong>Kalem Ayrıntıları</strong></td><td>Siparişlerin ürün kalemleri, adetleri ve fiyat bilgileri.</td><td><a class="button" href="{{ url_for('export_orders_detailed_excel', **filters) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">Excel İndir</a></td></tr>
+</tbody></table>
+<div class="detail-navigation" style="margin-top:12px"><a class="button" href="{{ url_for('orders', **filters) }}">Siparişleri Görüntüle</a></div>
+</section>
+{% endblock %}

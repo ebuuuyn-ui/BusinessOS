@@ -4464,6 +4464,13 @@ def create_app(test_config=None):
         page_args.pop("page", None)
         return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, invoice_progress=invoice_progress, source_orders_by_id=source_orders_by_id, export_args=export_args, page=page, total_pages=total_pages, total_count=total_count, page_args=page_args)
 
+    @app.get("/siparisler/raporlar")
+    def order_reports():
+        filters = {key: request.args.get(key, "").strip() for key in ("q", "customer_q", "type")}
+        if filters["type"] not in ORDER_TYPES:
+            filters["type"] = ""
+        return render_template("order_reports.html", filters=filters, order_types=ORDER_TYPES)
+
     @app.get("/siparisler/excel")
     def export_orders_excel():
         """Export the visible order list, including status, to a single Excel file."""
