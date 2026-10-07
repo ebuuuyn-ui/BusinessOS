@@ -133,7 +133,7 @@ def register_packing(app,db,Quote):
             except (ValueError,TypeError,KeyError) as e:
                 db.session.rollback();error=str(e)
                 if not isinstance(data,dict) or not isinstance(data.get('rows',[]),list):data=defaults(q,source)
-        return render_template('packing_edit.html',quote=q,source=source,data=data,error=error,saved=bool(source.get('packing_list')),meta=META)
+        return render_template('packing_edit.html',quote=q,source=source,data=data,error=error,saved=bool(source.get('packing_list')),meta=META,products=[{k:r[k] for k in ('product_id','code','name','description','quantity')} for r in source['lines']])
     @app.get('/fiyat-teklifleri/<uid>/packing-list/<kind>')
     def packing_export(uid,kind):
         q,source=load(uid)
