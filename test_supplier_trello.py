@@ -125,7 +125,7 @@ class TrelloTests(SupplierRouteTests):
         r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
         self.assertEqual(r.status_code,409);self.assertEqual(r.json['completed'],0)
         desc=self.mock.call.call_args.kwargs['desc'];self.assertIn('Teslim ili: İstanbul',desc)
-        self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':desc}]
+        self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':desc,**t.location('İstanbul')}]
         r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
         self.assertEqual(r.json['completed'],1);self.mock.call.assert_called_once()
         self.assertTrue(self.mock.attach_form.call_args.args[2].startswith(b'%PDF-'))
@@ -137,7 +137,7 @@ class TrelloTests(SupplierRouteTests):
         with m.db.engine.begin() as c: c.execute(insert(t.deliveries).values(key=row[0],card_id='old',card_url='https://trello.com/c/old'))
         self.mock.cards.return_value=[{'id':'old','url':'https://trello.com/c/old','desc':'Merve üretim notu'}]
         self.post({'confirm':self.token()})
-        self.mock.call.assert_called_once_with('PUT','cards/old',desc='Merve üretim notu\n\nTeslim ili: Edirne')
+        self.mock.call.assert_called_once_with('PUT','cards/old',desc='Merve üretim notu\n\nTeslim ili: Edirne',**t.location('Edirne'))
         self.mock.attach_form.assert_called_once()
 
     def test_upload_reconciles_existing_attachment(self):
@@ -175,3 +175,30 @@ class TrelloTests(SupplierRouteTests):
         self.chat_service.media().upload.assert_called_once()
         calls=self.chat_service.spaces().messages().create.call_args_list
         self.assertEqual(calls[0],calls[1])
+
+    def test_delivery_location_not_supplier_city_and_normalized(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        order.customer.city='Ankara'
+        order.delivery_city='  İSTANBUL  '
+        m.db.session.commit()
+        self.post({'confirm':self.token()})
+        values=self.mock.call.call_args.kwargs
+        self.assertEqual(values['locationName'],'İstanbul')
+        self.assertEqual(values['address'],'İstanbul, Türkiye')
+        self.assertIn('coordinates[latitude]',values)
+        self.assertEqual(t.location('istanbul'),t.location('İSTANBUL'))
+        self.assertEqual(t.location('ŞANLIURFA'),t.location('sanliurfa'))
+        self.assertEqual(len(t.location('')),0)
+        self.assertEqual(len(t.location('unknown city')),0)
+        order.delivery_city=''
+        self.assertNotIn('locationName',t.payload(t.order_rows(order,'test')[0]))
+
+    def test_location_request_uses_form_coordinates(self):
+        client=self.p.temp_original({'key':'x','token':'y'})
+        with patch('supplier_trello.requests.request') as request:
+            request.return_value.ok=True
+            request.return_value.json.return_value={'id':'card'}
+            client.call('POST','cards',name='Test',idList='list',**t.location('İstanbul'))
+            values=request.call_args.kwargs
+            self.assertIsNone(values['json'])
+            self.assertEqual(values['data']['coordinates[latitude]'],'41.00638100')

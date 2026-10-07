@@ -12,6 +12,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature
 from sqlalchemy import MetaData, Table, Column, Integer, Text, String, select, insert, update, inspect
 from sqlalchemy.exc import IntegrityError
 from supplier_sheets import allowed_order, order_rows, fingerprint
+from trello_locations import location
 
 BOARD = '6abd5e01fddae7338973fe6b'
 BOARD_URL = 'https://trello.com/b/zGa5gdZO'
@@ -70,7 +71,7 @@ def payload(row):
     desc += [f'BOS kayıt: {row[0]}']
     match = re.fullmatch(r'SA-\d{4}-(\d+)', str(row[1]))
     number = str(int(match.group(1))) if match else row[1]
-    return {'name':f'{number} · {row[13]} · {row[18]} {row[19]}', 'desc':'\n\n'.join(desc)}
+    return {'name':f'{number} · {row[13]} · {row[18]} {row[19]}', 'desc':'\n\n'.join(desc), **location(row[7])}
 
 class Client:
     def __init__(self, config): self.config=config
@@ -78,9 +79,11 @@ class Client:
         # Credentials in headers, never URLs or error text.
         headers={'Authorization': 'OAuth oauth_consumer_key="'+self.config['key']+'", oauth_token="'+self.config['token']+'"'}
         try:
+            # Trello's coordinate parameters use form bracket notation.
+            form_encoded=bool(files) or 'coordinates[latitude]' in values
             r=requests.request(method,'https://api.trello.com/1/'+path,headers=headers,
-                params=values if method=='GET' else None,json=values if method!='GET' and not files else None,
-                data=values if files else None,files=files,timeout=12)
+                params=values if method=='GET' else None,json=values if method!='GET' and not form_encoded else None,
+                data=values if form_encoded else None,files=files,timeout=12)
             if not r.ok: raise TrelloError('Trello işlemi tamamlanamadı. Bağlantı ve izinleri kontrol edin.')
             return r.json()
         except (requests.RequestException, ValueError):
@@ -92,7 +95,7 @@ class Client:
                       files={'file':(filename,pdf,'application/pdf')})
 
     def lists(self): return self.call('GET',f'boards/{BOARD}/lists',filter='open',fields='name,closed')
-    def cards(self): return self.call('GET',f'boards/{BOARD}/cards',filter='all',fields='id,desc,url')
+    def cards(self): return self.call('GET',f'boards/{BOARD}/cards',filter='all',fields='id,desc,url,locationName,address,coordinates')
 
 def register_supplier_trello(app, db, Order):
     def cipher():
@@ -240,9 +243,16 @@ def register_supplier_trello(app, db, Order):
                         if order.delivery_date: data['due']=order.delivery_date.isoformat()+'T09:00:00+03:00'
                         card=client.call('POST','cards',idList=cfg['list_id'],**data)
                         card['desc']=data['desc']
+                        card['locationName']=data.get('locationName')
+                        card['address']=data.get('address')
                         with db.engine.begin() as c: c.execute(update(deliveries).where(deliveries.c.key==row[0]).values(card_id=card['id'],card_url=card['url']))
+                    updates={}
+                    place=location(row[7])
+                    if place and (card.get('locationName')!=place['locationName'] or card.get('address')!=place['address']):
+                        updates.update(place)
                     if row[7] and f'Teslim ili: {row[7]}' not in card.get('desc','').split('\n\n'):
-                        client.call('PUT',f'cards/{card["id"]}',desc=card.get('desc','')+'\n\nTeslim ili: '+str(row[7]))
+                        updates['desc']=card.get('desc','')+'\n\nTeslim ili: '+str(row[7])
+                    if updates: client.call('PUT',f'cards/{card["id"]}',**updates)
                     client.attach_form(card['id'],filename,pdf)
                     with db.engine.begin() as c:
                         if done: c.execute(update(extras).where(extras.c.key==row[0]).values(card_id=card['id']))
