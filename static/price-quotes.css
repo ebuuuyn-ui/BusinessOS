@@ -6,3 +6,5 @@
 #quote-customer-results button{display:block;width:100%;text-align:left;white-space:normal;height:auto;min-height:44px;background:transparent;border:0;box-shadow:none;border-radius:8px;padding:12px;color:#18243b;cursor:pointer}
 #quote-customer-results button:hover,#quote-customer-results button[aria-selected=true]{background:#eaf2ff;color:#1368d4}
 #quote-customer-status{font-size:12px;font-weight:400;color:#657188}
+
+.quote-image [hidden], .quote-meta [hidden] { display: none !important; }
