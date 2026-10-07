@@ -53,6 +53,21 @@ class QuoteTests(unittest.TestCase):
         self.assertEqual(order.items[0].net_amount,Decimal('18360'))
         self.assertIn('1 USD = 40 TL',order.notes)
 
+    def test_english_document_labels_currency_and_preserved_custom_text(self):
+        from pypdf import PdfReader
+        d=self.sample();d.update(language='en',currency='USD',exchange_rate='40')
+        self.assertEqual(self.post(d).status_code,302)
+        q=m.PriceQuote.query.one();saved=json.loads(q.payload)
+        self.assertEqual(saved['language'],'en')
+        self.assertEqual(saved['conditions']['Ödeme'],'Peşin')
+        response=self.client.get(f'/fiyat-teklifleri/{q.id}/pdf',base_url=BASE)
+        text=' '.join(p.extract_text() for p in PdfReader(io.BytesIO(response.data)).pages)
+        for expected in ('PRICE QUOTATION','QUOTATION TERMS','Payment','Grand Total','114.75 USD','Peşin'):
+            self.assertIn(expected,text)
+        self.assertNotIn('FİYAT TEKLİFİ',text)
+        d['language']='invalid'
+        with self.assertRaises(ValueError):validate(d,{str(self.p.id):self.p},lambda p,r:None)
+
     def test_direct_usd_price_and_bad_rate(self):
         d=self.sample();d.update(currency='USD',exchange_rate='40.25')
         d['lines'][0].update(mode='usd',usd_price='100')

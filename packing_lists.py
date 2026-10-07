@@ -1,5 +1,6 @@
 """Quotation-linked packing lists, with no stock or accounting side effects."""
 import io,json
+from document_language import LABELS
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
@@ -22,7 +23,9 @@ def defaults(quote,source):
                 date=date.today().isoformat(),container='',seal='',notes='',rows=[dict(product_id=r['product_id'],model=r['code'],name=r['name'],hs='',origin='',description=r.get('description',''),marks='',quantity=r['quantity'],cartons='',gross='',net='',cbm='',length='',width='',height='') for r in source['lines']])
 def validate(data,source):
     if not isinstance(data,dict):raise ValueError('Packing list verisi geçersiz.')
+    from document_language import language
     clean={k:str(data.get(k,''))[:1000].strip() for k in META}
+    clean['language']=language(data.get('language','tr'))
     if not clean['sender'] or not clean['recipient']:raise ValueError('Gönderici ve alıcı adı zorunludur.')
     try:date.fromisoformat(clean['date'])
     except ValueError:raise ValueError('Belge tarihini kontrol edin.')
@@ -133,7 +136,7 @@ def register_packing(app,db,Quote):
             except (ValueError,TypeError,KeyError) as e:
                 db.session.rollback();error=str(e)
                 if not isinstance(data,dict) or not isinstance(data.get('rows',[]),list):data=defaults(q,source)
-        return render_template('packing_edit.html',quote=q,source=source,data=data,error=error,saved=bool(source.get('packing_list')),meta=META,products=[{k:r[k] for k in ('product_id','code','name','description','quantity')} for r in source['lines']])
+        return render_template('packing_edit.html',quote=q,source=source,data=data,error=error,saved=bool(source.get('packing_list')),meta=META,language_labels=LABELS,products=[{k:r[k] for k in ('product_id','code','name','description','quantity')} for r in source['lines']])
     @app.get('/fiyat-teklifleri/<uid>/packing-list/<kind>')
     def packing_export(uid,kind):
         q,source=load(uid)

@@ -1,4 +1,4 @@
-(()=>{'use strict';const cfg=JSON.parse(document.getElementById('quote-config').textContent),form=document.getElementById('quote-form'),container=document.getElementById('quote-lines'),err=document.getElementById('quote-error');const money=x=>Number(x).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+(document.getElementById('quote-currency').value==='USD'?' USD':' ₺');const round=x=>Math.round((x+Number.EPSILON)*100)/100;const normalize=x=>String(x).toLocaleLowerCase('tr-TR').replaceAll('ı','i');let lines=[];
+(()=>{'use strict';const cfg=JSON.parse(document.getElementById('quote-config').textContent),form=document.getElementById('quote-form'),container=document.getElementById('quote-lines'),err=document.getElementById('quote-error');const en=()=>document.getElementById('document-language')?.value==='en';const money=x=>Number(x).toLocaleString(en()?'en-US':'tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+(document.getElementById('quote-currency').value==='USD'?' USD':' ₺');const round=x=>Math.round((x+Number.EPSILON)*100)/100;const normalize=x=>String(x).toLocaleLowerCase('tr-TR').replaceAll('ı','i');let lines=[];
 function image(el,row){const img=el.querySelector('img'),missing=el.querySelector('.image-missing');img.hidden=false;missing.hidden=true;img.onload=()=>{img.hidden=false;missing.hidden=true};img.onerror=()=>{img.hidden=true;missing.hidden=false};img.src=row.image?'data:image/jpeg;base64,'+row.image:'/fiyat-teklifleri/urun/'+row.product_id+'/gorsel?v='+Date.now();}
 function recalc(){
  const currency=document.getElementById('quote-currency').value,rateInput=document.getElementById('quote-rate'),rate=currency==='USD'?quoteNumber(rateInput.value):1;
@@ -21,7 +21,7 @@ function recalc(){
   priceInput.disabled=row.mode!=='price';discountInput.disabled=row.mode!=='discount';usdInput.disabled=row.mode!=='usd';
   for(const input of [priceInput,discountInput,usdInput])if(input.disabled)input.setCustomValidity('');
   if(!rateValid||(row.mode==='usd'&&currency!=='USD'))rowValid=false;
-  if(!rowValid){valid=false;el.querySelector('.line-total').textContent='Fiyat, adet veya oran alanını kontrol edin.';continue;}
+  if(!rowValid){valid=false;el.querySelector('.line-total').textContent=en()?'Check the price, quantity, tax and exchange rate fields.':'Fiyat, adet veya oran alanını kontrol edin.';continue;}
   const lp=Number(row.list_price),q=Number(row.quantity);
   if(row.mode==='discount'){row.price=round(lp*(1-Number(row.discount)/100)).toFixed(2);priceInput.value=row.price;}
   else if(row.mode==='usd'){row.price=round(Number(row.usd_price)*rate).toFixed(2);priceInput.value=row.price;row.discount=lp?round((lp-Number(row.price))*100/lp).toFixed(2):'0';discountInput.value=row.discount;}
@@ -29,11 +29,11 @@ function recalc(){
   if(row.mode!=='usd'){row.usd_price=currency==='USD'?round(Number(row.price)/rate).toFixed(2):'';usdInput.value=row.usd_price;}
   const effectivePrice=currency==='USD'?Number(row.usd_price):Number(row.price);
   const total=round(effectivePrice*q),vat=round(total*Number(row.vat)/100);net+=total;tax+=vat;
-  el.querySelector('.line-total').textContent='KDV Hariç '+money(total)+' · KDV '+money(vat)+' · Toplam '+money(total+vat);
+  el.querySelector('.line-total').textContent=(en()?'Excl. VAT ':'KDV Hariç ')+money(total)+(en()?' · VAT ':' · KDV ')+money(vat)+(en()?' · Total ':' · Toplam ')+money(total+vat);
  }
  const box=document.getElementById('quote-totals');
- if(!valid){box.textContent='Toplam hesaplanamadı. İşaretli sayı alanlarını düzeltin.';return false;}
- box.textContent='Ara Toplam '+money(net)+' · KDV '+money(tax);const strong=document.createElement('strong');strong.textContent='Genel Toplam '+money(net+tax);box.append(strong);return true;
+ if(!valid){box.textContent=en()?'Enter a valid USD exchange rate and check the marked number fields.':'Toplam hesaplanamadı. İşaretli sayı alanlarını düzeltin.';return false;}
+ box.textContent=(en()?'Subtotal ':'Ara Toplam ')+money(net)+(en()?' · VAT ':' · KDV ')+money(tax);const strong=document.createElement('strong');strong.textContent=(en()?'Grand Total ':'Genel Toplam ')+money(net+tax);box.append(strong);return true;
 }
 function add(source={}){if(cfg.data.currency==='USD'&&source.source_list_price!==undefined)source={...source,list_price:source.source_list_price,price:source.source_price};const row={quantity:1,list_price:'0',price:'0',discount:'0',mode:'discount',vat:'10',name:'',description:'',...source};const el=document.getElementById('quote-line-template').content.firstElementChild.cloneNode(true);container.append(el);lines.push({row,el});el.querySelectorAll('[data-line]').forEach(x=>x.value=row[x.dataset.line]??'');const picker=el.querySelector('.product-picker');const p=cfg.products.find(p=>p.id===Number(row.product_id));if(p){picker.value=p.id+' · '+p.code+' · '+p.name;image(el,row);}else{el.querySelector('img').hidden=true;}
 picker.addEventListener('input',()=>{const v=picker.value;const found=cfg.products.find(p=>v===p.id+' · '+p.code+' · '+p.name);if(found){row.product_id=found.id;row.refresh_image=true;row.image=null;for(const [k,v]of Object.entries({name:found.name,description:found.description,list_price:found.price})){row[k]=v;el.querySelector('[data-line='+k+']').value=v;}picker.setCustomValidity('');image(el,row);recalc();}else{row.product_id=null;picker.setCustomValidity('Listeden bir stok kartı seçin.');}});

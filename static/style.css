@@ -1305,3 +1305,5 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
   .sidebar-toggle:focus-visible{outline:3px solid #8ebcff;outline-offset:2px}
 }
 @media print{.sidebar-toggle{display:none!important}}
+
+#document-english[hidden],#document-turkish[hidden]{display:none!important}
