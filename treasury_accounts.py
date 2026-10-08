@@ -183,6 +183,47 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
     def locked(error):
         db.session.rollback();flash(str(error),'error');return redirect(url_for('treasury_accounts_page'))
 
+    @app.route('/musteriler/<int:customer_id>/cari-hesap/hareket/<int:transaction_id>/duzenle',methods=['GET','POST'])
+    def edit_account_transaction(customer_id,transaction_id):
+        tx=db.session.execute(select(Transaction).where(Transaction.id==transaction_id,Transaction.customer_id==customer_id).with_for_update()).scalar_one_or_none()
+        if not tx or tx.transaction_type not in ('Tahsilat','Ödeme'): abort(404)
+        partner=db.session.execute(select(Transaction).where(Transaction.id==tx.linked_transaction_id).with_for_update()).scalar_one_or_none() if tx.linked_transaction_id else None
+        if request.method=='POST':
+            note=request.form.get('description','').strip()
+            if not note or len(note)>240:
+                flash('Açıklama 1–240 karakter olmalıdır.','error')
+            elif request.form.get('original_description') != tx.description:
+                flash('Bu kayıt değişmiş. Güncel açıklamayı kontrol edip yeniden kaydedin.','error')
+            else:
+                changes=[(tx,tx.description,note)]
+                if partner and partner.linked_transaction_id==tx.id and tx.transaction_type=='Tahsilat':
+                    suffix=' · '+tx.description
+                    if (partner.description or '').endswith(suffix): changes.append((partner,partner.description,partner.description[:-len(suffix)]+' · '+note))
+                if any(len(new)>240 for _,_,new in changes):
+                    flash('Bağlı ödeme açıklaması çok uzun olacak. Lütfen daha kısa bir açıklama yazın.','error')
+                    return render_template('account_transaction_edit.html',transaction=tx,partner=partner)
+                backup()
+                db.session.info['treasury_internal']=True
+                try:
+                    for item,old,new in changes:
+                        item.description=new
+                        if ready():
+                            p=posted('tx:'+str(item.id))
+                            if p:
+                                db.session.execute(postings.update().where(postings.c.id==p['id']).values(description=new[:500]))
+                                if p['mirror_id']:
+                                    mirror=db.session.get(Transaction,p['mirror_id'])
+                                    if mirror: mirror.description=(account(p['account_id'])['name']+' · '+new)[:240]
+                            import json
+                            log('edit_description',json.dumps(dict(source='tx:'+str(item.id),old=old,new=new),ensure_ascii=False))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback();raise
+                finally: db.session.info.pop('treasury_internal',None)
+                flash('Açıklama güncellendi. Tutar ve hesap bağlantıları korundu.','success')
+                return redirect(url_for('customer_account',customer_id=customer_id))
+        return render_template('account_transaction_edit.html',transaction=tx,partner=partner)
+
     @app.route('/kasa-cek/kasalar',methods=['GET','POST'])
     def treasury_accounts_page():
         if request.method=='POST':

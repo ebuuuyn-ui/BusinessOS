@@ -992,6 +992,7 @@ def build_account_statement(customer):
             "order_id": None,
             "order": None,
             "transaction_id": transaction.id,
+            "editable_description": transaction.transaction_type in ("Tahsilat", "Ödeme"),
             "payment_method": transaction.payment_method,
             "check_no": transaction.check_no,
             "check_bank": transaction.check_bank,
@@ -3444,7 +3445,7 @@ def create_app(test_config=None):
                 "status": transaction.check_status if is_check else "Gerçekleşti",
                 "amount": transaction.credit if incoming else transaction.debit,
                 "customer_id": transaction.customer_id, "sort_time": transaction.created_at,
-                "source": transaction.transaction_type, "manual_id": None,
+                "source": transaction.transaction_type, "manual_id": None, "edit_url": url_for("edit_account_transaction",customer_id=transaction.customer_id,transaction_id=transaction.id),
                 "check_id": transaction.id if is_check else None,
             })
         for expense in Expense.query.all():

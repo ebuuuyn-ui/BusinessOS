@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Hareket Açıklamasını Düzenle · Business OS{% endblock %}
+{% block heading %}Hareket Açıklamasını Düzenle{% endblock %}
+{% block subheading %}{{ transaction.customer.name }}{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('customer_account',customer_id=transaction.customer_id) }}">Cari Hesaba Dön</a>{% endblock %}
+{% block content %}<form method="post" class="panel form-panel">
+<p>{{ transaction.transaction_date.strftime('%d.%m.%Y') }} · {{ transaction.transaction_type }} · {{ transaction.payment_method }} · ₺{{ (transaction.credit or transaction.debit)|money }}</p>
+{% if partner %}<p>Bağlı {{ partner.transaction_type|lower }}: <b>{{ partner.customer.name }}</b> · ₺{{ (partner.credit or partner.debit)|money }}. Tutar ve cari bağlantısı bu ekranda değişmez.</p>{% endif %}
+<input type="hidden" name="original_description" value="{{ transaction.description }}">
+<label>Açıklama<input name="description" value="{{ request.form.get('description',transaction.description) }}" maxlength="240" required></label>
+<p>Yalnızca açıklama güncellenir. Bağlı ödemenin açıklamasındaki aynı not da güncellenir; yeni tahsilat veya ödeme oluşturulmaz.</p>
+<div class="actions"><a class="button" href="{{ url_for('customer_account',customer_id=transaction.customer_id) }}">Vazgeç</a><button class="button primary">Açıklamayı Kaydet</button></div></form>{% endblock %}

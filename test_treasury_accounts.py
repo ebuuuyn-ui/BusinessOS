@@ -31,6 +31,33 @@ class FundTests(unittest.TestCase):
     def link(self):self.post(action='link',account_id=self.ids['ahmet'],customer_id=self.ahmet.id)
     def count(self):return len(m.db.session.execute(select(self.postings)).all())
     def balances(self):return {a['slug']:a['balance'] for a in self.context()['accounts']}
+    def test_edit_description_preserves_assigned_pair_and_balances(self):
+        a,b=m.add_direct_card_collection_pair(self.buyer,self.supplier,Decimal('113850'),date.today(),'','Abikadan çekildi',{'card_installments':2});m.db.session.commit()
+        self.post(action='assign',source_key='tx:'+str(a.id),account_id=self.ids['direct'])
+        before=self.balances();count=m.AccountTransaction.query.count()
+        route=f'/musteriler/{a.customer_id}/cari-hesap/hareket/{a.id}/duzenle'
+        self.assertEqual(self.client.get(route).status_code,200)
+        r=self.client.post(route,data=dict(original_description=a.description,description="Decofis’ten çekildi"))
+        self.assertEqual(r.status_code,302)
+        self.assertEqual(a.description,"Decofis’ten çekildi")
+        self.assertTrue(b.description.endswith(' · Decofis’ten çekildi'))
+        self.assertEqual(a.credit,Decimal('113850'));self.assertEqual(b.debit,Decimal('113850'))
+        self.assertEqual(a.linked_transaction_id,b.id);self.assertEqual(b.linked_transaction_id,a.id)
+        self.assertEqual(m.AccountTransaction.query.count(),count);self.assertEqual(self.balances(),before)
+        self.assertTrue(all('Decofis’ten çekildi' in p['description'] for p in m.db.session.execute(select(self.postings)).mappings()))
+        self.client.post(route,data=dict(original_description='stale',description='Wrong'))
+        self.assertEqual(a.description,"Decofis’ten çekildi")
+
+    def test_edit_description_updates_mirror_without_balance_change(self):
+        self.link();t=self.tx();self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['ahmet'])
+        p=m.db.session.execute(select(self.postings)).mappings().first();mirror=m.db.session.get(m.AccountTransaction,p['mirror_id'])
+        route=f'/musteriler/{t.customer_id}/cari-hesap/hareket/{t.id}/duzenle'
+        self.client.post(route,data=dict(original_description=t.description,description='Yeni not'))
+        self.assertTrue(mirror.description.endswith('Yeni not'));self.assertEqual(self.ahmet.balance,80)
+        self.assertEqual(self.client.get(f'/musteriler/{mirror.customer_id}/cari-hesap/hareket/{mirror.id}/duzenle').status_code,404)
+        self.client.post(route,data=dict(original_description=t.description,description=''))
+        self.assertEqual(t.description,'Yeni not')
+
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):
         self.tx();self.post(action='setup')
         self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),0)

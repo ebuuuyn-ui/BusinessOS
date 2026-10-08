@@ -44,7 +44,7 @@
 <td data-label="Vade">{{ movement.due_date.strftime('%d.%m.%Y') if movement.due_date else '—' }}</td>
 <td data-label="Durum">{% if movement.check_id %}<form method="post" action="{{ url_for('update_check_status', transaction_id=movement.check_id) }}" class="treasury-check-status"><select name="check_status" aria-label="{{ movement.reference }} çek durumu">{% for status in check_statuses %}<option {{ 'selected' if movement.status == status }}>{{ status }}</option>{% endfor %}</select><button title="Çek durumunu kaydet">Kaydet</button></form>{% else %}{{ movement.status }}{% endif %}</td>
 <td data-label="Tutar" class="number-cell {{ 'credit-text' if movement.direction == 'Giriş' else 'debit-text' }}"><b>₺{{ movement.amount|money }}</b></td>
-<td data-label="İşlem">{% if movement.manual_id %}<form method="post" action="{{ url_for('delete_cash_movement', movement_id=movement.manual_id) }}" onsubmit="return confirm('Bu manuel kasa hareketi silinsin mi?')"><button class="row-delete">Sil</button></form>{% else %}—{% endif %}</td>
+<td data-label="İşlem">{% if movement.edit_url %}<a class="button small" href="{{ movement.edit_url }}">Açıklama</a>{% elif movement.manual_id %}<form method="post" action="{{ url_for('delete_cash_movement', movement_id=movement.manual_id) }}" onsubmit="return confirm('Bu manuel kasa hareketi silinsin mi?')"><button class="row-delete">Sil</button></form>{% else %}—{% endif %}</td>
 </tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty compact">Bu filtrelere uygun hareket bulunamadı.</div>{% endif %}
 </div></div>
 {% endblock %}
