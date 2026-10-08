@@ -36,18 +36,19 @@
 <tr class="account-movement-row {{ 'order-movement-row' if entry.order else 'invoice-movement-row' if entry.invoice else '' }}">
   <td>{{ entry.date.strftime('%d.%m.%Y') }}</td>
   <td>{% if entry.order_id %}<a href="{{ url_for('order_detail', order_id=entry.order_id) }}">{{ entry.reference }}</a>{% elif entry.invoice_id %}<a data-workspace-new-tab href="{{ url_for('invoice_detail', invoice_id=entry.invoice_id) }}">{{ entry.reference }}</a>{% else %}{{ entry.reference }}{% endif %}</td>
-  <td class="account-description">
+  <td class="account-description"><div class="description-with-edit">
     {% if entry.invoice %}<span>{{ entry.description }}</span>{% else %}
     <details class="statement-description"{% if entry.order %} data-order-detail="statement-order-{{ loop.index }}"{% endif %}>
       <summary title="{{ entry.description }} — Ayrıntıları aç/kapat"><span>{{ entry.description }}</span></summary>
       {% if entry.payment_method %}<small class="block">{{ entry.payment_method }}{% if entry.check_no %} · Çek: {{ entry.check_no }} · Vade: {{ entry.check_due_date.strftime('%d.%m.%Y') }} · {{ entry.check_status }}{% elif entry.payment_method == 'Kredi Kartı' %} · {{ entry.card_installments }} taksit · {{ entry.card_owner_type }}{% if entry.card_customer_name %}: {{ entry.card_customer_name }}{% endif %}{% endif %}</small>{% endif %}
     </details>
     {% endif %}
-  </td>
+    {% if entry.editable_description %}<a class="description-edit no-print" href="{{ url_for('edit_account_transaction',customer_id=customer.id,transaction_id=entry.transaction_id) }}" title="Açıklamayı düzenle" aria-label="Açıklamayı düzenle">✎ <span>Düzenle</span></a>{% endif %}
+  </div></td>
   <td class="money debit-text">{{ '₺' + (entry.debit|money) if entry.debit else '—' }}</td>
   <td class="money credit-text">{{ '₺' + (entry.credit|money) if entry.credit else '—' }}</td>
   <td class="money"><b>₺{{ entry.balance|money }}</b></td>
-  <td class="row-action-cell no-print">{% if entry.transaction_id %}{% if entry.editable_description %}<a class="button small" href="{{ url_for('edit_account_transaction',customer_id=customer.id,transaction_id=entry.transaction_id) }}">Açıklama</a>{% endif %}<form method="post" action="{{ url_for('delete_account_transaction', customer_id=customer.id, transaction_id=entry.transaction_id) }}" onsubmit="return confirm('Bu cari hesap hareketini silmek istediğinize emin misiniz?')"><button class="row-delete" title="Hareketi sil" aria-label="Hareketi sil">×</button></form>{% endif %}</td>
+  <td class="row-action-cell no-print">{% if entry.transaction_id %}<form method="post" action="{{ url_for('delete_account_transaction', customer_id=customer.id, transaction_id=entry.transaction_id) }}" onsubmit="return confirm('Bu cari hesap hareketini silmek istediğinize emin misiniz?')"><button class="row-delete" title="Hareketi sil" aria-label="Hareketi sil">×</button></form>{% endif %}</td>
 </tr>
 {% if entry.order %}<tr class="order-items-detail" id="statement-order-{{ loop.index }}"><td colspan="7"><div class="statement-order-detail"><div class="statement-order-head"><b>Sipariş Ayrıntısı</b><span>{{ entry.order.items|length }} kalem · {{ entry.order.total_quantity }} {{ 'adet' if entry.order.total_quantity != 1 else 'adet' }} · KDV dâhil ₺{{ entry.order.total_amount|money }}</span></div><table><thead><tr><th>Ürün</th><th>Ayrıntılar</th><th>Adet</th><th>Birim Fiyat</th><th>KDV</th><th>Toplam</th></tr></thead><tbody>{% for item in entry.order.items %}<tr><td><b>{{ item.product_name }}</b>{% if item.note %}<small>{{ item.note }}</small>{% endif %}</td><td>{{ [item.variant, item.detail_2, item.detail_3]|select|join(' · ') or '—' }}</td><td>{{ item.quantity }} {{ item.unit }}</td><td class="money">₺{{ item.unit_price|money }}</td><td class="money">%{{ item.vat_rate|money }}<small>₺{{ item.vat_amount|money }}</small></td><td class="money"><b>₺{{ item.total_amount|money }}</b></td></tr>{% endfor %}</tbody></table></div></td></tr>{% endif %}
 {% endfor %}

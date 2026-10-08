@@ -1307,3 +1307,12 @@ th{padding:12px 17px;background:rgba(246,248,252,.82);color:#7b8495;font-size:9p
 @media print{.sidebar-toggle{display:none!important}}
 
 #document-english[hidden],#document-turkish[hidden]{display:none!important}
+
+/* Keep note editing beside its text, outside the narrow delete column. */
+.description-with-edit{display:flex;align-items:flex-start;gap:8px;min-width:0;width:100%}
+.description-with-edit>details,.description-with-edit>span{flex:1 1 0;min-width:0;overflow:hidden}
+a.description-edit{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex:0 0 auto;box-sizing:border-box;min-height:26px;padding:2px 6px;border:1px solid #a8c4e8;border-radius:4px;background:#edf5ff;color:#155ca8;font-size:12px;line-height:20px;font-weight:600;white-space:nowrap;text-decoration:none}
+a.description-edit:hover{background:#dbeafe;border-color:#4584c9}
+a.description-edit:focus-visible{outline:2px solid #155ca8;outline-offset:2px}
+@media(pointer:coarse){a.description-edit{min-height:36px}}
+@media print{.description-with-edit>.no-print{display:none!important}}
