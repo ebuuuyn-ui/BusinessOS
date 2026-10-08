@@ -35,7 +35,7 @@
 <script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static',filename='mobile.css',v='20261006-1') }}">
 <script defer src="{{ url_for('static',filename='mobile.js',v='20261006-2') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261008-treasury-1') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261008-accounts-1') }}">
 </head>
 <body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}{% block body_class %}{% endblock %}">
   <aside class="sidebar" id="main-sidebar" aria-label="Ana menü"><button type="button" class="mobile-nav-close" aria-label="Menüyü kapat" data-mobile-menu-close>×</button>
@@ -60,7 +60,7 @@
         </div>
       </details>
       <a class="{{ 'active' if request.endpoint in ['products','edit_product','toggle_product_selection','import_products','product_catalog','product_price_list'] }}" href="{{ url_for('products') }}"><i class="nav-icon">□</i><span>Stoklar</span></a>
-      <details class="nav-group {{ 'has-active' if request.endpoint in ['expenses','edit_expense','profitability','financial_statements','treasury'] }}" {{ 'open' if request.endpoint in ['expenses','edit_expense','profitability','financial_statements','treasury'] }}>
+      <details class="nav-group {{ 'has-active' if request.endpoint in ['expenses','edit_expense','profitability','financial_statements','treasury','treasury_accounts_page'] }}" {{ 'open' if request.endpoint in ['expenses','edit_expense','profitability','financial_statements','treasury','treasury_accounts_page'] }}>
         <summary><i class="nav-icon">₺</i><span>Finans</span><b class="nav-chevron">⌄</b></summary>
         <div class="nav-sub">
           <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}">Masraflar</a>
@@ -80,7 +80,7 @@
   </aside>
   <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-controls="main-sidebar" aria-expanded="true" aria-label="Menüyü kapat" title="Menüyü kapat">☰</button>
   <main>
-    <header class="topbar"><button type="button" class="menu" data-mobile-menu aria-controls="main-sidebar" aria-expanded="false" aria-label="Menüyü aç">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div><div class="header-actions list-header-actions">{% block header_action %}{% endblock %}{% if request.endpoint in ['dashboard','orders','order_reports','invoices','quotes','customers','customer_account','customer_detail','customer_total_movements','products','stock_archive','collection_tracking','collection_tracking_detail','expenses','profitability','financial_statements','treasury','personal_finance','backups','web_users','telegram_documents','earchive_documents','uyumsoft_inbox','product_catalog','product_price_list','quick_collection','quick_payment'] and not (request.endpoint == 'invoices' and request.args.get('entry') == '1') %}<button type="button" class="button list-refresh" data-workspace-reload title="Bu ekranı güncel kayıtlarla yeniden yükle">↻ Yenile</button>{% endif %}</div></header>
+    <header class="topbar"><button type="button" class="menu" data-mobile-menu aria-controls="main-sidebar" aria-expanded="false" aria-label="Menüyü aç">☰</button><div><b>{% block heading %}Business OS{% endblock %}</b><small>{% block subheading %}{% endblock %}</small></div><div class="header-actions list-header-actions">{% block header_action %}{% endblock %}{% if request.endpoint in ['dashboard','orders','order_reports','invoices','quotes','customers','customer_account','customer_detail','customer_total_movements','products','stock_archive','collection_tracking','collection_tracking_detail','expenses','profitability','financial_statements','treasury','treasury_accounts_page','personal_finance','backups','web_users','telegram_documents','earchive_documents','uyumsoft_inbox','product_catalog','product_price_list','quick_collection','quick_payment'] and not (request.endpoint == 'invoices' and request.args.get('entry') == '1') %}<button type="button" class="button list-refresh" data-workspace-reload title="Bu ekranı güncel kayıtlarla yeniden yükle">↻ Yenile</button>{% endif %}</div></header>
     <div class="workspace-tabs" id="workspace-tabs" aria-label="Açık çalışma sekmeleri" hidden></div>
     <div class="workspace-stage" id="workspace-stage" hidden></div>
     <section class="content" id="workspace-source">

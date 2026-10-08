@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, abort, flash, make_response, redirect, render_template, request, send_file, url_for
+from flask import Flask, current_app, abort, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Numeric, case, cast, event, func, inspect, text
 from sqlalchemy.engine import Engine
@@ -950,7 +950,7 @@ def calculate_treasury(today=None):
     due_soon = [item for item in open_checks if item.check_due_date and today <= item.check_due_date <= today + timedelta(days=30)]
     overdue_checks = [item for item in open_checks if item.check_due_date and item.check_due_date < today]
     return {
-        "cash_balance": cash_collections + manual_in - cash_payments - cash_expenses - manual_out,
+        "cash_balance": cash_collections + manual_in - cash_payments - cash_expenses - manual_out + current_app.extensions["treasury_accounts"]["liquid_transfer"](),
         "cash_collections": cash_collections,
         "cash_payments": cash_payments,
         "cash_expenses": cash_expenses,
@@ -2140,6 +2140,9 @@ def create_app(test_config=None):
     app.jinja_env.filters["precise_money"] = precise_money
     from invoice_returns import register_invoice_returns
     register_invoice_returns(app, db, Invoice, InvoiceItem, StockMovement)
+    from treasury_accounts import register_accounts
+    register_accounts(app, db, Customer, AccountTransaction, Expense, CashMovement,
+                      lambda: create_database_backup(app, "before_treasury_account_change"))
     from invoice_profitability import register_profitability
     register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense)
 
@@ -3054,7 +3057,7 @@ def create_app(test_config=None):
         cash_expenses = sum((item.amount for item in Expense.query.filter(Expense.expense_date <= selected, Expense.payment_method == "Nakit").all()), Decimal("0"))
         cash_movements = CashMovement.query.filter(CashMovement.movement_date <= selected).all()
         manual_cash = sum((item.amount if item.movement_type == "Giriş" else -item.amount for item in cash_movements), Decimal("0"))
-        cash_balance = cash_collections - cash_payments - cash_expenses + manual_cash
+        cash_balance = cash_collections - cash_payments - cash_expenses + manual_cash + app.extensions["treasury_accounts"]["liquid_transfer"](selected)
         pending_checks = [item for item in transactions if item.payment_method == "Çek" and item.check_status == "Bekliyor"]
         incoming_checks = sum((item.credit or Decimal("0") for item in pending_checks if item.transaction_type == "Tahsilat"), Decimal("0"))
         outgoing_checks = sum((item.debit or Decimal("0") for item in pending_checks if item.transaction_type == "Ödeme"), Decimal("0"))
@@ -3099,7 +3102,7 @@ def create_app(test_config=None):
                 reference_no = request.form.get("reference_no", "").strip()
                 description = request.form.get("description", "").strip()
                 if direct_supplier:
-                    add_direct_card_collection_pair(customer, direct_supplier, amount, transaction_date, reference_no, description, card_details)
+                    direct_pair = add_direct_card_collection_pair(customer, direct_supplier, amount, transaction_date, reference_no, description, card_details)
                 else:
                     transaction = AccountTransaction(customer=customer, transaction_date=transaction_date,
                         transaction_type="Tahsilat", reference_no=reference_no, description=description or "Tahsilat",
@@ -3109,6 +3112,8 @@ def create_app(test_config=None):
                         check_due_date=check_due_date if payment_method == "Çek" else None,
                         check_status="Bekliyor" if payment_method == "Çek" else None, **card_details)
                     db.session.add(transaction)
+                new_treasury_transactions = [obj for obj in db.session.new if isinstance(obj, AccountTransaction) and obj.transaction_type in ("Tahsilat", "Ödeme")]
+                app.extensions["treasury_accounts"]["finish"]((list(direct_pair) if direct_supplier else new_treasury_transactions))
                 db.session.commit()
                 if direct_supplier:
                     flash(f"{customer.name} tahsilatı ve {direct_supplier.name} ödemesi birlikte kaydedildi.", "success")
@@ -3155,6 +3160,8 @@ def create_app(test_config=None):
                     **card_details,
                 )
                 db.session.add(transaction)
+                new_treasury_transactions = [obj for obj in db.session.new if isinstance(obj, AccountTransaction) and obj.transaction_type in ("Tahsilat", "Ödeme")]
+                app.extensions["treasury_accounts"]["finish"](new_treasury_transactions)
                 db.session.commit()
                 flash(f"{customer.name} için ₺{amount:,.2f} ödeme kaydedildi.", "success")
                 return redirect(url_for("dashboard"))
@@ -3393,10 +3400,12 @@ def create_app(test_config=None):
             reference_no = request.form.get("reference_no", "").strip()
             description = request.form.get("description", "").strip()
             if direct_supplier:
-                add_direct_card_collection_pair(customer, direct_supplier, amount, transaction_date, reference_no, description, card_details)
+                direct_pair = add_direct_card_collection_pair(customer, direct_supplier, amount, transaction_date, reference_no, description, card_details)
             else:
                 transaction = AccountTransaction(customer=customer, transaction_date=transaction_date, transaction_type=transaction_type, reference_no=reference_no, description=description or transaction_type, debit=amount if transaction_type in debit_types else 0, credit=amount if transaction_type in credit_types else 0, payment_method=payment_method, check_no=request.form.get("check_no", "").strip() if payment_method == "Çek" else None, check_bank=request.form.get("check_bank", "").strip() if payment_method == "Çek" else None, check_due_date=check_due_date if payment_method == "Çek" else None, check_status="Bekliyor" if payment_method == "Çek" else None, **card_details)
                 db.session.add(transaction)
+            new_treasury_transactions = [obj for obj in db.session.new if isinstance(obj, AccountTransaction) and obj.transaction_type in ("Tahsilat", "Ödeme")]
+            app.extensions["treasury_accounts"]["finish"](list(direct_pair) if direct_supplier else new_treasury_transactions)
             db.session.commit()
             flash(f"{transaction_type} hareketi" + (f" ve {direct_supplier.name} ödemesi" if direct_supplier else "") + " cari hesaba kaydedildi.", "success")
         return redirect(url_for("customer_account", customer_id=customer.id))
@@ -3425,7 +3434,7 @@ def create_app(test_config=None):
             if is_check and transaction.check_bank:
                 details.append(transaction.check_bank)
             movements.append({
-                "date": transaction.transaction_date,
+                "source_key": "tx:"+str(transaction.id), "date": transaction.transaction_date,
                 "kind": kinds.get(transaction.payment_method, transaction.payment_method or "Belirtilmemiş"),
                 "direction": "Giriş" if incoming else "Çıkış",
                 "description": transaction.description, "details": " · ".join(details),
@@ -3439,9 +3448,13 @@ def create_app(test_config=None):
                 "check_id": transaction.id if is_check else None,
             })
         for expense in Expense.query.all():
-            movements.append({"date": expense.expense_date, "kind": kinds.get(expense.payment_method, expense.payment_method), "direction": "Çıkış", "description": expense.description, "details": expense.category, "party": expense.payee or expense.category, "reference": expense.document_no, "due_date": None, "status": "Gerçekleşti", "amount": expense.amount, "customer_id": None, "sort_time": expense.created_at, "source": "Masraf", "manual_id": None, "check_id": None})
+            movements.append({"source_key": "expense:"+str(expense.id), "date": expense.expense_date, "kind": kinds.get(expense.payment_method, expense.payment_method), "direction": "Çıkış", "description": expense.description, "details": expense.category, "party": expense.payee or expense.category, "reference": expense.document_no, "due_date": None, "status": "Gerçekleşti", "amount": expense.amount, "customer_id": None, "sort_time": expense.created_at, "source": "Masraf", "manual_id": None, "check_id": None})
         for movement in CashMovement.query.all():
-            movements.append({"date": movement.movement_date, "kind": "Kasa", "direction": movement.movement_type, "description": movement.description, "details": "", "party": "Kasa", "reference": None, "due_date": None, "status": "Gerçekleşti", "amount": movement.amount, "customer_id": None, "sort_time": movement.created_at, "source": "Manuel", "manual_id": movement.id, "check_id": None})
+            movements.append({"source_key": "cash:"+str(movement.id), "date": movement.movement_date, "kind": "Kasa", "direction": movement.movement_type, "description": movement.description, "details": "", "party": "Kasa", "reference": None, "due_date": None, "status": "Gerçekleşti", "amount": movement.amount, "customer_id": None, "sort_time": movement.created_at, "source": "Manuel", "manual_id": movement.id, "check_id": None})
+        movements = app.extensions["treasury_accounts"]["enrich"](movements)
+        selected_account = request.args.get("account", "")
+        if selected_account == "unassigned": movements = [m for m in movements if not m['account_id']]
+        elif selected_account.isdigit(): movements = [m for m in movements if m['account_id'] == int(selected_account)]
         movement_filter = request.args.get("movement", "all")
         direction_filter = request.args.get("direction", "all")
         status_filter = request.args.get("status", "all")
@@ -3471,7 +3484,7 @@ def create_app(test_config=None):
         movements.sort(key=lambda movement: (movement["date"], movement["sort_time"]), reverse=True)
         filtered_in = sum((movement["amount"] or 0 for movement in movements if movement["direction"] in {"Giriş", "Alınan"}), Decimal("0"))
         filtered_out = sum((movement["amount"] or 0 for movement in movements if movement["direction"] in {"Çıkış", "Verilen"}), Decimal("0"))
-        return render_template("treasury.html", summary=summary, movements=movements, filtered_in=filtered_in, filtered_out=filtered_out, today=today.isoformat(), check_statuses=CHECK_STATUSES, movement_filter=movement_filter, direction_filter=direction_filter, status_filter=status_filter, query=query, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""))
+        return render_template("treasury.html", summary=summary, selected_account=selected_account, movements=movements, filtered_in=filtered_in, filtered_out=filtered_out, today=today.isoformat(), check_statuses=CHECK_STATUSES, movement_filter=movement_filter, direction_filter=direction_filter, status_filter=status_filter, query=query, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""))
 
     @app.post("/kasa-cek/kasa-hareketi")
     def add_cash_movement():

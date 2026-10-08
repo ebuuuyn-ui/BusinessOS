@@ -14,6 +14,24 @@ from database_export import PACKAGE_FORMAT, create_sqlite_transfer_package
 
 
 class SQLiteTransferPackageTests(unittest.TestCase):
+    def test_registered_optional_tables_can_be_absent_without_exporting_auth(self):
+        source = create_engine("sqlite:///:memory:")
+        metadata = MetaData()
+        customer = Table("customer", metadata, Column("id", Integer, primary_key=True))
+        customer.create(source)
+        Table("optional_account", metadata, Column("id", Integer, primary_key=True),
+              Column("customer_id", Integer, ForeignKey("customer.id")))
+        private = MetaData()
+        Table("web_user", private, Column("id", Integer, primary_key=True)).create(source)
+        with source.begin() as connection:
+            connection.execute(customer.insert().values(id=42))
+        with tempfile.TemporaryDirectory() as folder:
+            manifest = create_sqlite_transfer_package(source, Path(folder) / "backup.zip", metadata=metadata)
+        self.assertEqual(set(manifest["database"]["tables"]), {"customer"})
+        self.assertEqual(manifest["database"]["tables"]["customer"]["rows"], 1)
+        from sqlalchemy import inspect
+        self.assertEqual(set(inspect(source).get_table_names()), {"customer", "web_user"})
+
     def test_preserves_rows_ids_money_binary_files_and_relationships(self):
         source = create_engine("sqlite:///:memory:")
         metadata = MetaData()

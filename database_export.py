@@ -159,9 +159,16 @@ def create_sqlite_transfer_package(source_engine, output_path, instance_path: st
         sqlite_path = temporary_path / "business_os.db"
         documents_zip = temporary_path / "documents.zip"
         with _read_only_source(source_engine) as source:
-            transfer_metadata = metadata or MetaData()
+            transfer_metadata = MetaData()
             if metadata is None:
                 transfer_metadata.reflect(bind=source)
+            else:
+                # Optional modules may be registered before their tables exist.
+                # Retain the application's export allowlist (not auth tables).
+                existing = set(inspect(source).get_table_names())
+                for table in metadata.sorted_tables:
+                    if table.name in existing:
+                        table.to_metadata(transfer_metadata)
             if not transfer_metadata.tables:
                 raise RuntimeError("Aktarılacak veritabanı tablosu bulunamadı.")
             source_metrics = _table_metrics(source, transfer_metadata)

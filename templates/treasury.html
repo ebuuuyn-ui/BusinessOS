@@ -2,7 +2,7 @@
 {% block title %}Kasa, Banka ve Çekler · Business OS{% endblock %}
 {% block heading %}Kasa, Banka ve Çekler{% endblock %}
 {% block subheading %}Nakit, banka, kredi kartı ve çek işlemleri{% endblock %}
-{% block header_action %}<a class="button" href="{{ url_for('quick_collection') }}">+ Tahsilat</a><a class="button" href="{{ url_for('quick_payment') }}">+ Ödeme</a>{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('treasury_accounts_page') }}">Kasalar</a><a class="button" href="{{ url_for('quick_collection') }}">+ Tahsilat</a><a class="button" href="{{ url_for('quick_payment') }}">+ Ödeme</a>{% endblock %}
 {% block content %}
 <div class="treasury-unified">
 <div class="treasury-summary page-summary">
@@ -14,6 +14,7 @@
 <details class="panel treasury-entry"><summary>+ Manuel Kasa Giriş / Çıkış</summary>
 <form method="post" action="{{ url_for('add_cash_movement') }}" class="treasury-entry-form">
 <label>Tarih<input type="date" name="movement_date" value="{{ today }}" required></label>
+<label>Kasa / Hesap<select name="account"><option value="">Tüm Hesaplar</option><option value="unassigned" {{ 'selected' if selected_account=='unassigned' }}>Hesap Seçilmemiş</option>{% for a in treasury_accounts() %}<option value="{{ a.id }}" {{ 'selected' if selected_account==a.id|string }}>{{ a.name }}</option>{% endfor %}</select></label>
 <label>Yön<select name="movement_type"><option>Giriş</option><option>Çıkış</option></select></label>
 <label>Açıklama<input name="description" placeholder="Örn. Açılış bakiyesi" required></label>
 <label>Tutar (₺)<input type="number" name="amount" min="0.01" step="0.01" required></label>
@@ -24,6 +25,7 @@
 <form class="filters treasury-unified-filters">
 <label class="treasury-search">Ara<input name="q" value="{{ query }}" placeholder="Cari, açıklama, kart sahibi, belge / çek no"></label>
 <label>İşlem Türü<select name="movement">{% for value, label in [('all','Tüm Türler'),('cash','Kasa / Nakit'),('bank','Banka'),('card','Kredi Kartı'),('check','Çek'),('unknown','Belirtilmemiş')] %}<option value="{{ value }}" {{ 'selected' if movement_filter == value }}>{{ label }}</option>{% endfor %}</select></label>
+<label>Kasa / Hesap<select name="account"><option value="">Tüm Hesaplar</option><option value="unassigned" {{ 'selected' if selected_account=='unassigned' }}>Hesap Seçilmemiş</option>{% for a in treasury_accounts() %}<option value="{{ a.id }}" {{ 'selected' if selected_account==a.id|string }}>{{ a.name }}</option>{% endfor %}</select></label>
 <label>Yön<select name="direction">{% for value,label in [('all','Tüm Yönler'),('in','Giriş / Alınan'),('out','Çıkış / Verilen')] %}<option value="{{ value }}" {{ 'selected' if direction_filter == value }}>{{ label }}</option>{% endfor %}</select></label>
 <label>Durum<select name="status"><option value="all">Tüm Durumlar</option>{% for status in ['Gerçekleşti'] + check_statuses %}<option {{ 'selected' if status_filter == status }}>{{ status }}</option>{% endfor %}</select></label>
 <label>Başlangıç<input type="date" name="start_date" value="{{ start_date }}"></label>
@@ -34,7 +36,7 @@
 {% if movements %}<div class="table-wrap"><table class="compact-table treasury-unified-table"><thead><tr><th>Tarih</th><th>Tür / İşlem</th><th>Yön</th><th>Cari / Kaynak</th><th>Açıklama</th><th>Belge / Çek No</th><th>Vade</th><th>Durum</th><th class="number-cell">Tutar</th><th>İşlem</th></tr></thead><tbody>
 {% for movement in movements %}<tr>
 <td data-label="Tarih">{{ movement.date.strftime('%d.%m.%Y') }}</td>
-<td data-label="Tür / İşlem"><span class="treasury-method">{{ movement.kind }}</span> <span class="treasury-source">{{ movement.source }}</span></td>
+<td data-label="Tür / İşlem"><span class="treasury-method">{{ movement.kind }}</span> <span class="treasury-source">{{ movement.source }}</span><small class="fund-location" title="{{ movement.account_name }}">{{ movement.account_name }}</small></td>
 <td data-label="Yön" class="{{ 'credit-text' if movement.direction == 'Giriş' else 'debit-text' }}">{{ movement.direction }}</td>
 <td data-label="Cari / Kaynak" class="treasury-party" title="{{ movement.party }}">{% if movement.customer_id %}<a href="{{ url_for('customer_account', customer_id=movement.customer_id) }}">{{ movement.party }}</a>{% else %}{{ movement.party }}{% endif %}</td>
 <td data-label="Açıklama" class="treasury-description"><details><summary title="{{ movement.description }}">{{ movement.description }}</summary><div>{{ movement.description }}{% if movement.details %}<p>{{ movement.details }}</p>{% endif %}</div></details></td>
