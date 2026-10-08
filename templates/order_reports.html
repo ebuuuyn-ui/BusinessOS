@@ -1,20 +1,31 @@
 {% extends 'base.html' %}
 {% block title %}Sipariş Raporları · Business OS{% endblock %}
 {% block heading %}Sipariş Raporları{% endblock %}
-{% block subheading %}Sipariş listesini ve ürün kalemlerini Excel olarak alın{% endblock %}
+{% block subheading %}Tedarikçi Termin Raporu{% endblock %}
 {% block content %}
-<section class="panel form-panel">
-<h2>Rapor Seçimi</h2>
+<style>
+body.bos-ui .lead-report-table{width:100%;table-layout:fixed}
+body.bos-ui .lead-report-table th,body.bos-ui .lead-report-table td{font-size:11px;padding:5px 6px!important;line-height:1.3;border:1px solid #aebdce;overflow-wrap:anywhere}
+body.bos-ui .lead-report-table th{background:#e8eef5}
+body.bos-ui .lead-report-table td:nth-child(2){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.bos-ui .lead-report-table tr:nth-child(even){background:#f1f4f8}
+</style>
+<section class="panel">
+<div class="panel-head"><div><h2>Tedarikçi Termin Raporu</h2><p>Sisteme giriş → ilk Sevkiyat Bekliyor / Sevk Edildi / Teslim Edildi geçişi. Süreler takvim günüdür; her sipariş eşit ağırlıktadır.</p></div></div>
 <form method="get" class="filters">
-<label>Sipariş Türü<select name="type"><option value="">Tüm Siparişler</option>{% for kind in order_types %}<option value="{{ kind }}" {{ 'selected' if filters.type == kind }}>{{ kind }}</option>{% endfor %}</select></label>
-<label>Cari<input name="customer_q" value="{{ filters.customer_q }}" placeholder="Cari adı veya kodu"></label>
-<label>Sipariş / Ürün<input name="q" value="{{ filters.q }}" placeholder="Sipariş no, ürün adı veya kodu"></label>
-<button class="button" type="submit">Filtrele</button><a class="button" href="{{ url_for('order_reports') }}">Temizle</a>
+<label>Tedarikçi<input name="customer_q" value="{{ filters.customer_q }}" placeholder="Tedarikçi adı veya kodu"></label>
+<label>Sipariş No<input name="q" value="{{ filters.q }}"></label>
+<label>Giriş Başlangıcı<input type="date" name="start_date" value="{{ filters.start_date }}"></label>
+<label>Giriş Bitişi<input type="date" name="end_date" value="{{ filters.end_date }}"></label>
+<button>Filtrele</button><a class="button" href="{{ url_for('order_reports') }}">Temizle</a>
 </form>
-<table class="order-report-table" style="width:100%;margin-top:12px;table-layout:fixed;overflow-wrap:anywhere"><thead><tr><th>Rapor</th><th>İçerik</th><th>İşlem</th></tr></thead><tbody>
-<tr><td><strong>Sipariş Listesi</strong></td><td>Her sipariş için bir satır; cari, tarih, durum ve tutar bilgileri.</td><td><a class="button" href="{{ url_for('export_orders_excel', **filters) }}" data-native-download data-export-name="Business-OS-Siparis-Listesi.xlsx">Excel İndir</a></td></tr>
-<tr><td><strong>Kalem Ayrıntıları</strong></td><td>Siparişlerin ürün kalemleri, adetleri ve fiyat bilgileri.</td><td><a class="button" href="{{ url_for('export_orders_detailed_excel', **filters) }}" data-native-download data-export-name="Business-OS-Ayrintili-Siparis-Raporu.xlsx">Excel İndir</a></td></tr>
-</tbody></table>
-<div class="detail-navigation" style="margin-top:12px"><a class="button" href="{{ url_for('orders', **filters) }}">Siparişleri Görüntüle</a></div>
+<p style="padding:0 10px;font-size:12px">Ortalama Termin: <b>{{ (lead_average|money)+' gün' if lead_average is not none else '—' }}</b> ({{ measured_count }} sipariş) · Teslim Edildi Ortalaması: <b>{{ (delivery_average|money)+' gün' if delivery_average is not none else '—' }}</b> ({{ delivered_count }} sipariş) · Devam Eden: <b>{{ pending_count }}</b> · Geçmişi Eksik: <b>{{ missing_count }}</b></p>
+<div class="table-wrap"><table class="compact-table"><thead><tr><th>Tedarikçi</th><th>Sipariş</th><th>Ölçülen</th><th>Ortalama Termin</th><th>Teslim Edilen</th><th>Ort. Teslim Süresi</th><th>Devam Eden</th><th>Geçmişi Eksik</th><th>İptal</th></tr></thead><tbody>
+{% for g in supplier_groups %}<tr><td><a href="{{ url_for('customer_account',customer_id=g.customer.id) }}">{{ g.customer.name }}</a></td><td>{{ g.rows|length }}</td><td>{{ g.leads|length }}</td><td>{{ (g.average|money)+' gün' if g.average is not none else '—' }}</td><td>{{ g.deliveries|length }}</td><td>{{ (g.delivery_average|money)+' gün' if g.delivery_average is not none else '—' }}</td><td>{{ g.pending }}</td><td>{{ g.missing }}</td><td>{{ g.cancelled }}</td></tr>{% else %}<tr><td colspan="9">Bu filtreye uygun tedarik siparişi yok.</td></tr>{% endfor %}
+</tbody></table></div>
 </section>
+<section class="panel"><div class="panel-head"><div><h2>Sipariş Bazında Süreler</h2><p>Başlangıç sipariş üzerindeki tarih değil, sisteme kayıt zamanıdır. İptaller, devam edenler ve geçiş geçmişi eksik kayıtlar ortalamaya katılmaz. Teslim süresi yalnız “Teslim Edildi” geçişi bilinen siparişlerden hesaplanır.</p></div></div>
+<div class="table-wrap"><table class="compact-table lead-report-table"><thead><tr><th>Sipariş No</th><th>Tedarikçi</th><th>Sisteme Giriş</th><th>İlk Geçiş</th><th>Geçiş Durumu</th><th>Termin</th><th>Teslim Edildi</th><th>Teslim Süresi</th><th>Güncel Durum</th><th>Ölçüm</th></tr></thead><tbody>
+{% for r in report_rows %}<tr><td><a href="{{ url_for('order_detail',order_id=r.order.id) }}">{{ r.order.order_no }}</a></td><td title="{{ r.order.customer.name }}">{{ r.order.customer.name }}</td><td>{{ r.created.strftime('%d.%m.%Y %H:%M') if r.created else '—' }}</td><td>{{ r.first.strftime('%d.%m.%Y %H:%M') if r.first else '—' }}</td><td>{{ r.first_status or '—' }}</td><td>{{ (r.lead|money)+' gün' if r.lead is not none else '—' }}</td><td>{{ r.delivered.strftime('%d.%m.%Y %H:%M') if r.delivered else '—' }}</td><td>{{ (r.delivery|money)+' gün' if r.delivery is not none else '—' }}</td><td>{{ r.order.status }}</td><td>{{ r.state }}{% if r.age is not none %} · {{ r.age|money }} gün{% endif %}</td></tr>{% else %}<tr><td colspan="10">Sipariş bulunamadı.</td></tr>{% endfor %}
+</tbody></table></div></section>
 {% endblock %}

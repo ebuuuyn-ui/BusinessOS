@@ -4442,10 +4442,13 @@ def create_app(test_config=None):
 
     @app.get("/siparisler/raporlar")
     def order_reports():
-        filters = {key: request.args.get(key, "").strip() for key in ("q", "customer_q", "type")}
-        if filters["type"] not in ORDER_TYPES:
-            filters["type"] = ""
-        return render_template("order_reports.html", filters=filters, order_types=ORDER_TYPES)
+        from supplier_lead_times import build_report
+        filters={key:request.args.get(key, '').strip() for key in ('q','customer_q','start_date','end_date')}
+        for key in ('start_date','end_date'):
+            parsed=parse_date(filters[key])
+            filters[key]=parsed.isoformat() if parsed else ''
+        records=Order.query.options(joinedload(Order.customer),selectinload(Order.history)).filter(Order.order_type=='Satın Alma').all()
+        return render_template('order_reports.html', **build_report(records,normalize_search_text,filters))
 
     @app.get("/siparisler/excel")
     def export_orders_excel():
