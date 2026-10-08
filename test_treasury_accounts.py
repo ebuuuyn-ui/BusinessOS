@@ -100,7 +100,7 @@ class FundTests(unittest.TestCase):
 
     def test_expense_create_edit_reassign_clear_and_invalid_rollback(self):
         self.post(action='setup_cards');card=next(a['id'] for a in self.ext['rows']() if a['slug']=='card-maximum')
-        data=dict(category='Kira',payment_method='Nakit',amount='100',description='Masraf',expense_date=date.today().isoformat(),treasury_account_id=self.ids['enpara'])
+        data=dict(category='Kira',payment_method='Banka',amount='100',description='Masraf',expense_date=date.today().isoformat(),treasury_account_id=self.ids['enpara'])
         r=self.client.post('/masraflar',data=data);self.assertEqual(r.status_code,302)
         expense=m.Expense.query.one();self.assertEqual(expense.payment_method,'Banka');self.assertEqual(self.balances()['enpara'],-100);self.assertEqual(m.calculate_treasury()['cash_balance'],-100)
         url=f'/masraflar/{expense.id}/duzenle'
