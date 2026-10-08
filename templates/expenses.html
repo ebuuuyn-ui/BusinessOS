@@ -5,7 +5,7 @@
 <form method="post" class="panel expense-create-panel">
   <div class="panel-head"><div><h2>Yeni Masraf</h2><p>Ödemeyi kaydedin; zorunlu alanlar * ile işaretlidir.</p></div></div>
   <div class="expense-create-grid">
-    <div class="expense-section expense-main"><span class="expense-section-title">Ödeme Bilgileri</span><div class="expense-fields four-fields"><label>Tarih *<input type="date" name="expense_date" value="{{ today }}" required></label><label>Kategori *<select name="category" required>{% for category in categories %}<option>{{ category }}</option>{% endfor %}</select></label><label>Ödeme Şekli *<select name="payment_method" required>{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select></label><label>Tutar (₺) *<input class="expense-amount-input" type="number" name="amount" min="0.01" step="0.01" value="0" onfocus="this.select()" required></label></div></div>
+    <div class="expense-section expense-main"><span class="expense-section-title">Ödeme Bilgileri</span><div class="expense-fields four-fields"><label>Tarih *<input type="date" name="expense_date" value="{{ today }}" required></label><label>Kategori *<select name="category" required>{% for category in categories %}<option>{{ category }}</option>{% endfor %}</select></label><label>Ödeme Şekli *<select name="payment_method" required>{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select></label>{% include 'expense_account_select.html' %}<label>Tutar (₺) *<input class="expense-amount-input" type="number" name="amount" min="0.01" step="0.01" value="0" onfocus="this.select()" required></label></div></div>
     <div class="expense-section expense-detail"><span class="expense-section-title">Masraf Ayrıntıları</span><div class="expense-fields detail-fields"><label>Belge / Fatura No<input name="document_no" placeholder="Varsa"></label><label>Ödenen Kişi / Firma<input name="payee" placeholder="Örn. elektrik firması"></label><label>Açıklama *<input name="description" placeholder="Masrafın kısa açıklaması" required></label><button class="button primary expense-submit" type="submit">Masrafı Kaydet</button></div></div>
   </div>
 </form>
@@ -18,7 +18,7 @@
     <label>Kategori *<select name="category" required>{% for category in categories %}<option>{{ category }}</option>{% endfor %}</select></label>
     <label>Ödeme Şekli *<select name="payment_method" required>{% for method in payment_methods %}<option>{{ method }}</option>{% endfor %}</select></label>
     <label>Her Ayın Günü *<input type="number" name="payment_day" min="1" max="31" value="1" required></label>
-    <label>Tutar (₺) *<input class="expense-amount-input" type="number" name="amount" min="0.01" step="0.01" value="0" required></label>
+    {% include 'expense_account_select.html' %}<label>Tutar (₺) *<input class="expense-amount-input" type="number" name="amount" min="0.01" step="0.01" value="0" required></label>
     <button class="button primary" type="submit">Aylık Plan Ekle</button>
   </form>
   {% if recurring_due %}<div class="table-wrap"><table class="compact-table recurring-table"><thead><tr><th>Bu Ay Ödeme Tarihi</th><th>Açıklama</th><th>Firma</th><th>Kategori</th><th>Ödeme</th><th class="number-cell">Tutar</th><th>Durum / İşlem</th></tr></thead><tbody>

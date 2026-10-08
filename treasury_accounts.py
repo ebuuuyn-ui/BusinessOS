@@ -98,6 +98,28 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
     app.jinja_env.globals['treasury_accounts']=choices
     app.extensions['treasury_accounts']={'ready':ready,'rows':rows,'assign':assign,'unassign':unassign,'tables':tables,'postings':postings}
 
+    def expense_account(expense):
+        if not expense or not expense.id or not ready(): return ''
+        p=posted('expense:'+str(expense.id))
+        return str(p['account_id']) if p else ''
+    def prepare_expense(expense):
+        chosen=request.form.get('treasury_account_id',expense_account(expense)).strip()
+        if chosen:
+            if not ready(): raise TreasuryLocked('Önce Kasalar ekranından hesapları hazırlayın.')
+            try: a=account(chosen)
+            except (ValueError,TypeError): raise TreasuryLocked('Geçerli bir ödeme hesabı seçin.')
+            if a['kind'] not in ('Nakit','Banka','Kredi Kartı'): raise TreasuryLocked('Masraf için kasa, banka veya kendi kredi kartınızı seçin.')
+        if expense and expense.id and ready() and posted('expense:'+str(expense.id)):
+            unassign('expense:'+str(expense.id))
+        return chosen
+    def finish_expense(expense,chosen):
+        if chosen:
+            expense.payment_method=account(chosen)['kind']
+            db.session.flush()
+            try: assign('expense:'+str(expense.id),chosen)
+            except (ValueError,TypeError) as error: raise TreasuryLocked(str(error))
+    app.extensions['treasury_accounts'].update(expense_account=expense_account,prepare_expense=prepare_expense,finish_expense=finish_expense)
+
     def liquid_transfer(end=None):
         if not ready(): return Decimal(0)
         stmt=select(db.func.coalesce(db.func.sum(postings.c.amount),0)).join(accounts,postings.c.account_id==accounts.c.id).where(postings.c.source_key.like('transfer:%'),accounts.c.kind.in_(['Nakit','Banka']))

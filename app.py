@@ -939,7 +939,7 @@ def calculate_treasury(today=None):
         func.coalesce(func.sum(case((AccountTransaction.transaction_type == "Tahsilat", AccountTransaction.credit), else_=0)), 0),
         func.coalesce(func.sum(case((AccountTransaction.transaction_type == "Ödeme", AccountTransaction.debit), else_=0)), 0),
     ).filter(AccountTransaction.payment_method.in_(LIQUID_PAYMENT_METHODS)).one()
-    cash_expenses = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.payment_method == "Nakit").scalar()
+    cash_expenses = db.session.query(func.coalesce(func.sum(Expense.amount), 0)).filter(Expense.payment_method.in_(LIQUID_PAYMENT_METHODS)).scalar()
     manual_in, manual_out = db.session.query(
         func.coalesce(func.sum(case((CashMovement.movement_type == "Giriş", CashMovement.amount), else_=0)), 0),
         func.coalesce(func.sum(case((CashMovement.movement_type == "Çıkış", CashMovement.amount), else_=0)), 0),
@@ -3054,7 +3054,7 @@ def create_app(test_config=None):
 
         cash_collections = sum((item.credit or Decimal("0") for item in transactions if item.transaction_type == "Tahsilat" and item.payment_method in LIQUID_PAYMENT_METHODS), Decimal("0"))
         cash_payments = sum((item.debit or Decimal("0") for item in transactions if item.transaction_type == "Ödeme" and item.payment_method in LIQUID_PAYMENT_METHODS), Decimal("0"))
-        cash_expenses = sum((item.amount for item in Expense.query.filter(Expense.expense_date <= selected, Expense.payment_method == "Nakit").all()), Decimal("0"))
+        cash_expenses = sum((item.amount for item in Expense.query.filter(Expense.expense_date <= selected, Expense.payment_method.in_(LIQUID_PAYMENT_METHODS)).all()), Decimal("0"))
         cash_movements = CashMovement.query.filter(CashMovement.movement_date <= selected).all()
         manual_cash = sum((item.amount if item.movement_type == "Giriş" else -item.amount for item in cash_movements), Decimal("0"))
         cash_balance = cash_collections - cash_payments - cash_expenses + manual_cash + app.extensions["treasury_accounts"]["liquid_transfer"](selected)
@@ -4230,7 +4230,9 @@ def create_app(test_config=None):
             else:
                 create_database_backup(app, "before_expense_add")
                 expense = Expense(expense_date=parse_date(request.form.get("expense_date")) or date.today(), category=category, document_no=request.form.get("document_no", "").strip(), payee=request.form.get("payee", "").strip(), description=description, payment_method=payment_method, amount=amount)
+                chosen = app.extensions['treasury_accounts']['prepare_expense'](None)
                 db.session.add(expense)
+                app.extensions['treasury_accounts']['finish_expense'](expense, chosen)
                 db.session.commit()
                 flash("Masraf kaydı oluşturuldu.", "success")
                 return redirect(url_for("expenses"))
@@ -4302,7 +4304,7 @@ def create_app(test_config=None):
 
     @app.route("/masraflar/<int:expense_id>/duzenle", methods=["GET", "POST"])
     def edit_expense(expense_id):
-        expense = db.get_or_404(Expense, expense_id)
+        expense = db.first_or_404(db.select(Expense).where(Expense.id == expense_id).with_for_update()) if request.method == "POST" else db.get_or_404(Expense, expense_id)
         if request.method == "POST":
             category = request.form.get("category", "")
             payment_method = request.form.get("payment_method", "")
@@ -4312,6 +4314,7 @@ def create_app(test_config=None):
                 flash("Lütfen zorunlu masraf bilgilerini kontrol edin.", "error")
             else:
                 create_database_backup(app, "before_expense_edit")
+                chosen = app.extensions['treasury_accounts']['prepare_expense'](expense)
                 expense.expense_date = parse_date(request.form.get("expense_date")) or expense.expense_date
                 expense.category = category
                 expense.document_no = request.form.get("document_no", "").strip()
@@ -4319,10 +4322,11 @@ def create_app(test_config=None):
                 expense.description = description
                 expense.payment_method = payment_method
                 expense.amount = amount
+                app.extensions['treasury_accounts']['finish_expense'](expense, chosen)
                 db.session.commit()
                 flash("Masraf kaydı güncellendi.", "success")
                 return redirect(url_for("expenses"))
-        return render_template("expense_edit.html", expense=expense, categories=EXPENSE_CATEGORIES, payment_methods=PAYMENT_METHODS)
+        return render_template("expense_edit.html", expense=expense, categories=EXPENSE_CATEGORIES, payment_methods=PAYMENT_METHODS, selected_expense_account=app.extensions["treasury_accounts"]["expense_account"](expense))
 
     @app.post("/masraflar/<int:expense_id>/sil")
     def delete_expense(expense_id):

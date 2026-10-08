@@ -98,6 +98,20 @@ class FundTests(unittest.TestCase):
         data['treasury_account_id']=card;self.client.post('/odeme-girisi',data=data)
         self.assertEqual(m.AccountTransaction.query.count(),1);self.assertEqual(self.balances()['card-maximum'],-100)
 
+    def test_expense_create_edit_reassign_clear_and_invalid_rollback(self):
+        self.post(action='setup_cards');card=next(a['id'] for a in self.ext['rows']() if a['slug']=='card-maximum')
+        data=dict(category='Kira',payment_method='Nakit',amount='100',description='Masraf',expense_date=date.today().isoformat(),treasury_account_id=self.ids['enpara'])
+        r=self.client.post('/masraflar',data=data);self.assertEqual(r.status_code,302)
+        expense=m.Expense.query.one();self.assertEqual(expense.payment_method,'Banka');self.assertEqual(self.balances()['enpara'],-100);self.assertEqual(m.calculate_treasury()['cash_balance'],-100)
+        url=f'/masraflar/{expense.id}/duzenle'
+        page=self.client.get(url);self.assertEqual(page.status_code,200);self.assertIn(b'data-kind="Banka" selected',page.data)
+        data.update(amount='150',treasury_account_id=card)
+        self.client.post(url,data=data);self.assertEqual(self.balances()['enpara'],0);self.assertEqual(self.balances()['card-maximum'],-150);self.assertEqual(m.calculate_treasury()['cash_balance'],0)
+        data.update(amount='200',treasury_account_id=self.ids['ahmet'])
+        self.client.post(url,data=data);m.db.session.expire_all();self.assertEqual(expense.amount,150);self.assertEqual(self.balances()['card-maximum'],-150)
+        data.update(amount='150',payment_method='Kredi Kartı',treasury_account_id='')
+        self.client.post(url,data=data);self.assertEqual(self.count(),0);self.assertEqual(m.Expense.query.count(),1);self.assertEqual(self.balances()['card-maximum'],0)
+
     def test_invalid_and_duplicate_assignment_preserve_money(self):
         self.link();t=self.tx();key='tx:'+str(t.id)
         self.post(action='assign',source_key=key,account_id=self.ids['kuveyt']);self.assertEqual(self.count(),0)
