@@ -80,6 +80,14 @@ class FundTests(unittest.TestCase):
         self.assertEqual(self.ahmet.balance,0);self.assertEqual(self.balances()['enpara'],80);self.assertEqual(self.count(),1)
         self.assertEqual(m.AccountTransaction.query.count(),1)
 
+    def test_edit_returns_to_filtered_source_and_rejects_external_return(self):
+        t=self.tx();route=f'/musteriler/{t.customer_id}/cari-hesap/hareket/{t.id}/duzenle'
+        data=dict(original_description=t.description,description=t.description,return_to='/kasa-cek?account=unassigned&q=abc&page=2')
+        r=self.client.post(route,data=data);self.assertEqual(r.location,data['return_to'])
+        for unsafe in ['https://example.com','//example.com','/%2fexample.com','/\\example.com']:
+            data['return_to']=unsafe;r=self.client.post(route,data=data)
+            self.assertEqual(r.location,f'/musteriler/{t.customer_id}/cari-hesap')
+
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):
         self.tx();self.post(action='setup')
         self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),0)

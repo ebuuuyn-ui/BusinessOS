@@ -2,6 +2,7 @@
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
+from navigation import return_destination
 from flask import request, render_template, redirect, url_for, flash, abort, has_request_context, g, current_app
 from sqlalchemy import inspect, select, event, or_
 from sqlalchemy.exc import IntegrityError
@@ -244,7 +245,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                     db.session.rollback();raise
                 finally: db.session.info.pop('treasury_internal',None)
                 flash('Hareket güncellendi. Tutar korundu; hesap seçiminiz kaydedildi.','success')
-                return redirect(url_for('customer_account',customer_id=customer_id))
+                return redirect(return_destination(url_for('customer_account',customer_id=customer_id)))
         return show()
 
     @app.route('/kasa-cek/kasalar',methods=['GET','POST'])

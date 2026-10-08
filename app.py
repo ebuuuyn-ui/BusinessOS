@@ -1,3 +1,4 @@
+from navigation import return_destination, register_navigation
 import os
 import sqlite3
 import unicodedata
@@ -2102,6 +2103,7 @@ def create_app(test_config=None):
     if data_directory:
         flask_options["instance_path"] = os.path.abspath(os.path.expanduser(data_directory))
     app = Flask(__name__, **flask_options)
+    register_navigation(app)
     os.makedirs(app.instance_path, exist_ok=True)
     database_url = os.getenv("DATABASE_URL", f"sqlite:///{os.path.join(app.instance_path, 'business_os.db')}")
     if database_url.startswith(("postgresql://", "postgres://")):
@@ -4326,7 +4328,7 @@ def create_app(test_config=None):
                 app.extensions['treasury_accounts']['finish_expense'](expense, chosen)
                 db.session.commit()
                 flash("Masraf kaydı güncellendi.", "success")
-                return redirect(url_for("expenses"))
+                return redirect(return_destination(url_for("expenses")))
         return render_template("expense_edit.html", expense=expense, categories=EXPENSE_CATEGORIES, payment_methods=PAYMENT_METHODS, selected_expense_account=app.extensions["treasury_accounts"]["expense_account"](expense))
 
     @app.post("/masraflar/<int:expense_id>/sil")
