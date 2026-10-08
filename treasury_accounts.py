@@ -67,9 +67,11 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
             batch=str(uuid4());add(a,key,day,amount,description,batch);add(a,'tx:'+str(partner.id),pday,pamount,pdesc,batch)
             return
         if a['kind']=='Mahsup': raise ValueError('Mahsup hesabı yalnızca bağlı tedarikçi kart işlemleri içindir.')
-        allowed={'Nakit':{'Nakit'},'Banka':{'Banka','Nakit'},'Tahsilat Sistemi':{'Kredi Kartı'}}
+        allowed={'Nakit':{'Nakit'},'Banka':{'Banka','Nakit'},'Tahsilat Sistemi':{'Kredi Kartı','Nakit'}}
         if method not in allowed[a['kind']]: raise ValueError('Ödeme şekli ile seçilen hesap türü uyuşmuyor.')
         if isinstance(obj,Transaction) and a['customer_id']==obj.customer_id: raise ValueError('Hesaba bağlı carinin kendi hareketi için hesaplar arası transfer kullanın.')
+        if a['kind']=='Tahsilat Sistemi' and method=='Nakit' and not isinstance(obj,Transaction):
+            raise ValueError('Nakit masrafı tahsilat sistemine bağlanamaz.')
         add(a,key,day,amount,description)
     def unassign(key):
         obj=posted(key)
@@ -93,7 +95,12 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         if not ready(): return Decimal(0)
         stmt=select(db.func.coalesce(db.func.sum(postings.c.amount),0)).join(accounts,postings.c.account_id==accounts.c.id).where(postings.c.source_key.like('transfer:%'),accounts.c.kind.in_(['Nakit','Banka']))
         if end: stmt=stmt.where(postings.c.date<=end)
-        return db.session.execute(stmt).scalar()
+        total = db.session.execute(stmt).scalar()
+        # Legacy cash-labelled receipts held by a third party are receivables,
+        # not cash in our own cashbox/bank. The original receipt stays intact.
+        held = select(db.func.coalesce(db.func.sum(postings.c.amount),0)).select_from(postings).join(accounts,postings.c.account_id==accounts.c.id).join(Transaction,postings.c.source_key==('tx:'+db.cast(Transaction.id,db.String))).where(accounts.c.kind=='Tahsilat Sistemi',Transaction.payment_method=='Nakit')
+        if end: held=held.where(postings.c.date<=end)
+        return total - db.session.execute(held).scalar()
     app.extensions['treasury_accounts']['liquid_transfer']=liquid_transfer
     def enrich(movements):
         if not ready():

@@ -58,6 +58,21 @@ class FundTests(unittest.TestCase):
         self.assertEqual(t.payment_method,'Nakit')
         self.assertEqual(m.calculate_treasury()['cash_balance'],before)
 
+    def test_cash_held_by_ahmet_is_receivable_not_liquid_and_reverses(self):
+        self.link();t=self.tx(method='Nakit',amount=Decimal('62000'))
+        t.transaction_date=date(2026,9,10);m.db.session.commit();key='tx:'+str(t.id)
+        self.assertEqual(m.calculate_treasury()['cash_balance'],Decimal('62000'))
+        self.post(action='assign',source_key=key,account_id=self.ids['ahmet'])
+        self.assertEqual(self.ahmet.balance,Decimal('62000'))
+        self.assertEqual(self.balances()['ahmet'],Decimal('62000'))
+        self.assertEqual(t.payment_method,'Nakit')
+        self.assertEqual(m.calculate_treasury()['cash_balance'],0)
+        self.assertEqual(self.ext['liquid_transfer'](date(2026,9,9)),0)
+        self.assertEqual(self.ext['liquid_transfer'](date(2026,9,10)),Decimal('-62000'))
+        self.post(action='unassign',source_key=key)
+        self.assertEqual(m.calculate_treasury()['cash_balance'],Decimal('62000'))
+        self.assertEqual(self.ahmet.balance,0)
+
     def test_invalid_and_duplicate_assignment_preserve_money(self):
         self.link();t=self.tx();key='tx:'+str(t.id)
         self.post(action='assign',source_key=key,account_id=self.ids['kuveyt']);self.assertEqual(self.count(),0)
