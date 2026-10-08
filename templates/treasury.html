@@ -21,7 +21,7 @@
 <button class="button primary">Kaydet</button></form>
 <p>Bu alan yalnızca manuel nakit hareketi içindir. Cari işlemler için Tahsilat veya Ödeme kullanın.</p></details>
 <div class="panel treasury-movements">
-<div class="panel-head"><div><h2>Kasa, Banka ve Çek Hareketleri</h2><p>{{ movements|length }} hareket · Filtrelenen giriş / alınan: <b class="credit-text">₺{{ filtered_in|money }}</b> · Çıkış / verilen: <b class="debit-text">₺{{ filtered_out|money }}</b></p></div></div>
+<div class="panel-head"><div><h2>Kasa, Banka ve Çek Hareketleri</h2><p>{{ movements|length }} hareket · Filtrelenen giriş / alınan: <b class="credit-text">₺{{ filtered_in|money }}</b> · Çıkış / verilen: <b class="debit-text">₺{{ filtered_out|money }}</b>{% if selected_account_info %} · {{ selected_account_info.name }} — Seçili Hesap Bakiyesi: <b class="{{ 'debit-text' if selected_account_balance < 0 else 'credit-text' }}" title="Seçili hesabın tüm hareketlerine göre güncel bakiye; tarih ve arama filtrelerinden bağımsızdır.">₺{{ selected_account_balance|money }}</b>{% endif %}</p></div></div>
 <form class="filters treasury-unified-filters">
 <label class="treasury-search">Ara<input name="q" value="{{ query }}" placeholder="Cari, açıklama, kart sahibi, belge / çek no"></label>
 <label>İşlem Türü<select name="movement">{% for value, label in [('all','Tüm Türler'),('cash','Kasa / Nakit'),('bank','Banka'),('card','Kredi Kartı'),('check','Çek'),('unknown','Belirtilmemiş')] %}<option value="{{ value }}" {{ 'selected' if movement_filter == value }}>{{ label }}</option>{% endfor %}</select></label>

@@ -101,6 +101,10 @@ class FundTests(unittest.TestCase):
         self.post(action='transfer',from_id=self.ids['cash'],to_id=self.ids['enpara'],amount='25',date=date.today().isoformat(),description='Virman',token=self.context()['token'])
         self.assertEqual(self.ext['total_balance'](),Decimal('150'))
         self.assertEqual(sum(self.balances().values()),Decimal('150'))
+        self.assertEqual(self.ext['total_balance'](self.ids['cash']),Decimal('75'))
+        html=self.client.get('/kasa-cek?account='+str(self.ids['cash'])+'&q=no-match').get_data(as_text=True)
+        self.assertIn('Seçili Hesap Bakiyesi',html);self.assertIn('₺75,00',html)
+        self.assertNotIn('Seçili Hesap Bakiyesi',self.client.get('/kasa-cek?account=unassigned').get_data(as_text=True))
         self.assertIn('Toplam Hesap Bakiyesi',self.client.get('/kasa-cek').get_data(as_text=True))
 
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):

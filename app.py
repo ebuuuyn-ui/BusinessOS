@@ -3457,6 +3457,8 @@ def create_app(test_config=None):
             movements.append({"source_key": "cash:"+str(movement.id), "date": movement.movement_date, "kind": "Kasa", "direction": movement.movement_type, "description": movement.description, "details": "", "party": "Kasa", "reference": None, "due_date": None, "status": "Gerçekleşti", "amount": movement.amount, "customer_id": None, "sort_time": movement.created_at, "source": "Manuel", "manual_id": movement.id, "check_id": None})
         movements = app.extensions["treasury_accounts"]["enrich"](movements)
         selected_account = request.args.get("account", "")
+        selected_account_info = next((a for a in app.extensions["treasury_accounts"]["rows"]() if str(a['id'])==selected_account), None)
+        selected_account_balance = app.extensions["treasury_accounts"]["total_balance"](selected_account_info['id']) if selected_account_info else None
         if selected_account == "unassigned": movements = [m for m in movements if not m['account_id']]
         elif selected_account.isdigit(): movements = [m for m in movements if m['account_id'] == int(selected_account)]
         movement_filter = request.args.get("movement", "all")
@@ -3488,7 +3490,7 @@ def create_app(test_config=None):
         movements.sort(key=lambda movement: (movement["date"], movement["sort_time"]), reverse=True)
         filtered_in = sum((movement["amount"] or 0 for movement in movements if movement["direction"] in {"Giriş", "Alınan"}), Decimal("0"))
         filtered_out = sum((movement["amount"] or 0 for movement in movements if movement["direction"] in {"Çıkış", "Verilen"}), Decimal("0"))
-        return render_template("treasury.html", summary=summary, selected_account=selected_account, movements=movements, filtered_in=filtered_in, filtered_out=filtered_out, today=today.isoformat(), check_statuses=CHECK_STATUSES, movement_filter=movement_filter, direction_filter=direction_filter, status_filter=status_filter, query=query, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""))
+        return render_template("treasury.html", summary=summary, selected_account=selected_account, selected_account_info=selected_account_info, selected_account_balance=selected_account_balance, movements=movements, filtered_in=filtered_in, filtered_out=filtered_out, today=today.isoformat(), check_statuses=CHECK_STATUSES, movement_filter=movement_filter, direction_filter=direction_filter, status_filter=status_filter, query=query, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""))
 
     @app.post("/kasa-cek/kasa-hareketi")
     def add_cash_movement():
