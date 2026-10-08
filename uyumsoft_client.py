@@ -34,7 +34,9 @@ def party(parent, kind, data):
     address=add(p,A,'PostalAddress')
     add(address,B,'StreetName',data['address']);add(address,B,'CitySubdivisionName',data['district'])
     add(address,B,'CityName',data['city']);add(add(address,A,'Country'),B,'Name','Türkiye')
-    add(add(add(p,A,'PartyTaxScheme'),A,'TaxScheme'),B,'Name',data['tax_office'])
+    tax_office = str(data.get('tax_office') or '').strip()
+    if tax_office:
+        add(add(add(p,A,'PartyTaxScheme'),A,'TaxScheme'),B,'Name',tax_office)
     if len(data['tax_number'])==11:
         names=data['name'].split()
         if len(names)<2: raise UyumError('Şahıs için ad ve soyad gereklidir.')

@@ -34,14 +34,14 @@
 </div><h3>Alıcı Bilgileri</h3><div class="form-grid">
 <label>Firma / Ad Soyad<input name="buyer_name" value="{{ data.buyer.name }}" required></label>
 <label>Vergi numarası / TCKN<input name="buyer_tax_number" value="{{ data.buyer.tax_number }}" pattern="[0-9]{10,11}" required></label>
-<label>Vergi dairesi<input name="buyer_tax_office" value="{{ data.buyer.tax_office }}" required></label>
+<label>Vergi dairesi (isteğe bağlı)<input name="buyer_tax_office" value="{{ data.buyer.tax_office }}"></label>
 <label>İl<input name="buyer_city" value="{{ data.buyer.city }}" required></label>
 <label>İlçe<input name="district" value="{{ data.buyer.district }}" required></label>
 <label>Adres<textarea name="buyer_address" required>{{ data.buyer.address }}</textarea></label>
 </div><p>Bu ekranda düzelttiğiniz alıcı bilgileri yalnızca bu fatura taslağında kullanılır.</p>
 {% else %}
 <div class="form-grid"><div><h3>Gönderici</h3><p>{{ data.seller.name }}<br>{{ data.seller.tax_office }} · {{ 'TCKN' if data.seller.tax_number|length == 11 else 'VKN' }}: {{ data.seller.tax_number }}<br>{{ data.seller.address }}<br>{{ data.seller.district }} / {{ data.seller.city }}</p></div>
-<div><h3>Alıcı</h3><p>{{ data.buyer.name }}<br>{{ data.buyer.tax_office or 'Vergi dairesi eksik' }} · {{ data.buyer.tax_number or 'Vergi numarası eksik' }}<br>{{ data.buyer.address or 'Adres eksik' }}<br>{{ data.buyer.district }} / {{ data.buyer.city or 'İl eksik' }}</p></div></div>
+<div><h3>Alıcı</h3><p>{{ data.buyer.name }}<br>{% if data.buyer.tax_office %}{{ data.buyer.tax_office }} · {% endif %}{{ data.buyer.tax_number or 'Vergi numarası eksik' }}<br>{{ data.buyer.address or 'Adres eksik' }}<br>{{ data.buyer.district }} / {{ data.buyer.city or 'İl eksik' }}</p></div></div>
 <p><b>Fatura tarihi:</b> {{ data.date }} · <b>Vade:</b> {{ data.due_date or '—' }}</p>
 {% endif %}
 <h3>Fatura Kalemleri</h3><div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Adet</th><th>Birim fiyat</th><th>İskonto</th><th>KDV</th></tr></thead><tbody>{% for item in data['items'] %}<tr><td>{{ item.name }}</td><td>{{ item.quantity }}</td><td>₺{{ item.price|float|money }} ({{ 'KDV dâhil' if item.included else 'KDV hariç' }})</td><td>%{{ item.discount|float|money }}</td><td>%{{ item.vat|float|money }}</td></tr>{% endfor %}</tbody></table></div>

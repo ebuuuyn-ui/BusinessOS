@@ -64,7 +64,10 @@ def snapshot(invoice,seller,district=''):
 def validate(data):
     from decimal import Decimal
     for label,person in [('Gönderici',data['seller']),('Alıcı',data['buyer'])]:
-        if any(not str(person.get(key,'')).strip() for key in ('name','tax_number','tax_office','address','city','district')):
+        required = ('name','tax_number','address','city','district')
+        if label == 'Gönderici':
+            required += ('tax_office',)
+        if any(not str(person.get(key,'')).strip() for key in required):
             raise UyumError(label+' firma, vergi ve adres bilgileri eksik. İlçe alanını da doldurun.')
         if not re.fullmatch(r'(?:[0-9]{10}|[0-9]{11})',person['tax_number']):raise UyumError(label+' vergi numarası 10 veya 11 rakam olmalıdır.')
     if not data['items']:raise UyumError('Fatura kalemi bulunmuyor.')

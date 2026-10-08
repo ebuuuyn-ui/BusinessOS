@@ -29,6 +29,20 @@ class UyumTests(unittest.TestCase):
         r=self.post(self.path,{'action':'preview','district':'Ümraniye'})
         self.assertEqual(r.status_code,200)
         return re.search('name="preview" type="hidden" value="([^"]+)"',r.text)[1]
+    def test_buyer_tax_office_optional_and_omitted_from_xml(self):
+        i=self.make_invoice();i.customer.tax_office='';m.db.session.commit()
+        d=snapshot(i,DEFAULT_SELLER,'Ümraniye');validate(d)
+        for einvoice in (True,False):
+            root=invoice_xml(d,'test-uuid',einvoice)
+            buyer=root.find('{'+A+'}AccountingCustomerParty/{'+A+'}Party')
+            self.assertIsNone(buyer.find('{'+A+'}PartyTaxScheme'))
+            self.assertEqual(buyer.findtext('{'+A+'}PartyIdentification/{'+B+'}ID'),'0123456789')
+        d['buyer']['tax_office']=' Test Dairesi '
+        root=invoice_xml(d,'test-uuid',True)
+        self.assertEqual(root.findtext('{'+A+'}AccountingCustomerParty/{'+A+'}Party/{'+A+'}PartyTaxScheme/{'+A+'}TaxScheme/{'+B+'}Name'),'Test Dairesi')
+        d['seller']=dict(d['seller'],tax_office='')
+        with self.assertRaises(UyumError):validate(d)
+
     def test_xml_calculations_tax_included_discount_and_escaping(self):
         i=self.make_invoice();d=snapshot(i,DEFAULT_SELLER,'Ümraniye');validate(d)
         root=invoice_xml(d,'fake-uuid',False)
@@ -145,6 +159,20 @@ class OrderDraftTests(UyumTests):
         o=m.db.session.get(m.Order,self.order_id);o.order_type='Satış';o.order_no='SS-TEST'
         o.customer.tax_number='0123456789';o.customer.tax_office='Test';o.customer.city='İstanbul';o.customer.address='Test adres'
         m.db.session.commit();self.path=f'/siparisler/{o.id}/uyumsoft';return o
+    def test_order_preview_without_buyer_tax_office(self):
+        o=self.make_order();o.customer.tax_office=None;m.db.session.commit()
+        before=(m.Invoice.query.count(),m.StockMovement.query.count())
+        with patch('uyumsoft.Client') as client, patch('uyumsoft.DEFAULT_SELLER',DEFAULT_SELLER):
+            entry=self.client.get(self.path,base_url=BASE)
+            field=re.search(r'<input name="buyer_tax_office"[^>]*>',entry.text)[0]
+            self.assertNotIn('required',field)
+            response=self.post(self.path,dict(action='preview',district='Ümraniye',buyer_tax_office='',invoice_date='2026-10-08'))
+            self.assertEqual(response.status_code,200)
+            self.assertIn('name="preview"',response.text)
+            self.assertNotIn('Vergi dairesi eksik',response.text)
+            client.assert_not_called()
+        self.assertEqual(before,(m.Invoice.query.count(),m.StockMovement.query.count()))
+
     def test_order_entry_offline_preview_no_bookkeeping(self):
         from uyumsoft import month_after
         o=self.make_order();self.assertEqual(month_after(date(2026,1,31)),date(2026,2,28))
