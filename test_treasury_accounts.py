@@ -182,7 +182,7 @@ class FundTests(unittest.TestCase):
         card=cards[0]['id']
         t=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Maximum ödeme',debit=100,credit=0)
         m.db.session.add(t);m.db.session.commit()
-        self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['ahmet']);self.assertEqual(self.count(),0)
+        self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['enpara']);self.assertEqual(self.count(),0)
         self.post(action='assign',source_key='tx:'+str(t.id),account_id=card)
         self.assertEqual(self.balances()['card-maximum'],-100);self.assertEqual(m.calculate_treasury()['cash_balance'],0)
         before=m.AccountTransaction.query.count()
