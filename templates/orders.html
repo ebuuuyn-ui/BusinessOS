@@ -82,7 +82,8 @@
             <form class="order-status-form" method="post" action="{{ url_for('update_order_status', order_id=order.id) }}">
               <input type="hidden" name="return_to" value="{{ request.full_path }}">
               <select class="order-status-select" name="status" aria-label="{{ order.order_no }} sipariş durumunu değiştir" onchange="this.form.requestSubmit()">
-                {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if status == order.status }}>{{ status }}</option>{% endfor %}
+                {% if order.status in ['Onaylandı', 'Üretimde', 'Paketleniyor'] %}<option value="{{ order.status }}" selected disabled hidden>{{ order.status }}</option>{% endif %}
+                {% for status in statuses if status not in ['Onaylandı', 'Üretimde', 'Paketleniyor'] %}<option value="{{ status }}" {{ 'selected' if status == order.status }}>{{ status }}</option>{% endfor %}
               </select>
             </form>
           </td>
