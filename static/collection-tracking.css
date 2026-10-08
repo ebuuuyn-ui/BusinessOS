@@ -27,3 +27,26 @@
 .collection-state.other,.collection-state.undated{background:#eef0f5;color:#526074}
 @media(max-width:1100px){.collection-overview{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.collection-overview{grid-template-columns:1fr}}
+
+/* Match the compact register tables used across BOS. */
+body.bos-ui .collection-list-note{font-size:11px;line-height:1.4;padding:0 10px 6px;margin:4px 0}
+body.bos-ui .collection-export-bar{gap:12px;padding:6px 10px}
+body.bos-ui .maturity-tabs{margin-bottom:8px;padding:2px;border-radius:5px}
+body.bos-ui .maturity-tabs a{min-height:30px;padding:0 12px;font-size:12px;border-radius:4px}
+body.bos-ui .collection-customer-table>thead>tr>th,
+body.bos-ui .collection-customer-table>tbody>tr>td{padding:4px 7px!important;font-size:12px;line-height:1.35;vertical-align:middle;border:1px solid #aebdce}
+body.bos-ui .collection-customer-table>thead>tr>th{font-size:11px;background:#e8eef5}
+body.bos-ui .collection-customer-row:nth-of-type(4n+3){background:#f1f4f8}
+body.bos-ui .collection-customer-row:hover{background:#e4efff}
+body.bos-ui .collection-name-actions{display:flex;align-items:center;gap:6px;min-width:0}
+body.bos-ui .collection-name-actions>a{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.bos-ui .collection-name-actions b{font-weight:600}
+body.bos-ui .collection-detail-toggle{display:inline-flex;flex-shrink:0;gap:3px;align-items:center;padding:2px 4px;margin:0;min-height:24px;height:auto;font-size:11px;line-height:18px;border:1px solid #b8cbe2;border-radius:4px;background:#f4f8fd}
+body.bos-ui .collection-state-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+body.bos-ui .collection-payment-link{display:inline-block;margin:0;font-size:11px;white-space:nowrap}
+body.bos-ui .collection-customer-table .collection-state{padding:2px 5px;font-size:10px;border-radius:4px;white-space:nowrap}
+body.bos-ui .collection-customer-table small.block{font-size:10px;line-height:1.2;margin:0}
+body.bos-ui .collection-order-detail{padding:7px;border-radius:4px}
+body.bos-ui .collection-order-detail td,body.bos-ui .collection-order-detail th{padding:4px 6px!important;font-size:11px;border-color:#aebdce}
+@media(min-width:901px){body.bos-ui .collection-customer-table>tbody>.collection-customer-row{height:34px}body.bos-ui .collection-customer-table>tbody>.collection-customer-row>td:not(:first-child){white-space:nowrap;overflow-wrap:normal}}
+@media(max-width:700px){body.bos-ui .collection-name-actions{flex-wrap:wrap}body.bos-ui .collection-name-actions>a{flex-basis:100%;white-space:normal}body.bos-ui .collection-detail-toggle{min-height:32px}}

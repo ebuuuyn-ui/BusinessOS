@@ -4,7 +4,7 @@
 {% block subheading %}Fatura ve cari hareketlerine göre net bakiye ve vade{% endblock %}
 {% block header_action %}<div class="header-actions"><a class="button payment-button" href="{{ url_for('quick_payment') }}">− Ödeme Girişi</a><a class="button collection-button" href="{{ url_for('quick_collection') }}">+ Tahsilat Girişi</a></div>{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='collection-tracking.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='collection-tracking.css', v='20261009-compact') }}">
 <nav class="maturity-tabs" aria-label="Vade takibi türü">
   <a class="{{ 'active' if not is_purchase }}" {% if not is_purchase %}aria-current="page"{% endif %} href="{{ url_for('collection_tracking', kind='sales') }}">Satış Vadeleri</a>
   <a class="{{ 'active' if is_purchase }}" {% if is_purchase %}aria-current="page"{% endif %} href="{{ url_for('collection_tracking', kind='purchase') }}">Satın Alma Vadeleri</a>
@@ -29,13 +29,13 @@
   {% if customers %}<div class="table-wrap"><table class="compact-table collection-customer-table"><colgroup><col style="width:26%"><col style="width:7%"><col style="width:13%"><col style="width:13%"><col style="width:14%"><col style="width:12%"><col style="width:15%"></colgroup><thead><tr><th>Cari</th><th>Açık kayıt</th><th class="number-cell">{{ 'Net borcumuz' if is_purchase else 'Net alacağımız' }}</th><th class="number-cell">Gecikmiş tutar</th><th>Ortalama vade</th><th>En eski açık vade</th><th>Durum / İşlem</th></tr></thead><tbody>
   {% for group in customers %}
     <tr class="collection-customer-row" data-customer-id="{{ group.customer.id }}">
-      <td><a data-workspace-new-tab href="{{ url_for('customer_account', customer_id=group.customer.id) }}"><b>{{ group.customer.name }}</b></a><button type="button" class="collection-detail-toggle" aria-expanded="false" aria-controls="collection-detail-{{ group.customer.id }}" data-detail-url="{{ url_for('collection_tracking_detail', customer_id=group.customer.id, kind=tracking_kind) }}">Kayıtlar ({{ group.entry_count }}) <span aria-hidden="true">⌄</span></button></td>
+      <td><div class="collection-name-actions"><a title="{{ group.customer.name }}" data-workspace-new-tab href="{{ url_for('customer_account', customer_id=group.customer.id) }}"><b>{{ group.customer.name }}</b></a><button type="button" class="collection-detail-toggle" aria-expanded="false" aria-controls="collection-detail-{{ group.customer.id }}" data-detail-url="{{ url_for('collection_tracking_detail', customer_id=group.customer.id, kind=tracking_kind) }}">Kayıtlar ({{ group.entry_count }}) <span aria-hidden="true">⌄</span></button></div></td>
       <td>{{ group.open_count }}</td>
       <td class="number-cell"><b>₺{{ group.remaining|money }}</b>{% if group.undated_amount %}<small class="block">Vadesiz fatura: ₺{{ group.undated_amount|money }}</small>{% endif %}{% if group.other_amount %}<small class="block">Fatura dışı: ₺{{ group.other_amount|money }}</small>{% endif %}</td>
       <td class="number-cell {{ 'debit-text' if group.overdue_amount else '' }}">{{ '₺' + (group.overdue_amount|money) if group.overdue_amount else '—' }}</td>
       <td>{% if group.average_due_date %}<b>{{ group.average_due_date.strftime('%d.%m.%Y') }}</b><small class="block">{{ group.average_label }}</small>{% else %}{{ group.average_label }}{% endif %}</td>
       <td>{{ group.oldest_due_date.strftime('%d.%m.%Y') if group.oldest_due_date else '—' }}</td>
-      <td><span class="collection-state {{ group.state }}">{{ group.state_label }}</span><a class="collection-payment-link" data-workspace-new-tab href="{{ url_for('quick_payment' if is_purchase else 'quick_collection') }}">{{ 'Ödeme gir' if is_purchase else 'Tahsilat gir' }} →</a></td>
+      <td><div class="collection-state-actions"><span class="collection-state {{ group.state }}">{{ group.state_label }}</span><a class="collection-payment-link" data-workspace-new-tab href="{{ url_for('quick_payment' if is_purchase else 'quick_collection') }}">{{ 'Ödeme Gir' if is_purchase else 'Tahsilat Gir' }} →</a></div></td>
     </tr>
     <tr id="collection-detail-{{ group.customer.id }}" class="collection-detail-row" hidden><td colspan="7"><div class="collection-detail-content" aria-live="polite"></div></td></tr>
   {% endfor %}</tbody></table></div>{% else %}<div class="empty compact"><b>Bu filtreye uygun cari bulunmuyor.</b><br>Fatura ve cari hareketleri üzerinden hesaplanır.</div>{% endif %}
