@@ -6,10 +6,10 @@
  function update(){
  const payment=type?type.value==='Ödeme':field.dataset.payment==='1',own=payment&&method.value==='Kredi Kartı'&&owner?.value==='Kendi Kartımız',isDirect=!payment&&method.value==='Kredi Kartı'&&direct?.checked;
  field.disabled=isDirect||method.value==='Çek'||!method.value;
- for(const o of field.options){const match=method.value==='Kredi Kartı'?o.dataset.kind===(own?'Kredi Kartı':'Tahsilat Sistemi'):o.dataset.kind===method.value;o.hidden=!!o.value&&!match;o.disabled=o.hidden}
+ for(const o of field.options){const match=method.value==='Kredi Kartı'?(own?['Kredi Kartı','Tahsilat Sistemi'].includes(o.dataset.kind):o.dataset.kind==='Tahsilat Sistemi'):o.dataset.kind===method.value;o.hidden=!!o.value&&!match;o.disabled=o.hidden}
  if(field.selectedOptions[0]?.disabled||field.disabled)field.value='';
  field.required=own&&[...field.options].some(o=>o.value&&!o.disabled);
- note.textContent=isDirect?'Tedarikçi aktarımı giriş ve çıkış olarak Mahsup hesabına işlenir.':own?'Kart seçimi zorunludur. Ödeme kart bakiyesini eksiye düşürür; banka bakiyesi virman yaptığınızda azalır.':method.value==='Çek'?'Çek, çek takibinde tutulur.':'Seçilmezse hareket daha sonra Kasalar ekranından bağlanabilir.';
+ note.textContent=isDirect?'Tedarikçi aktarımı giriş ve çıkış olarak Mahsup hesabına işlenir.':own?'Hesabı seçin. Kendi kartınız borçlanır; Ahmet Tahsilat Sistemi seçilirse ödeme Ahmet carisindeki paranızdan düşer.':method.value==='Çek'?'Çek, çek takibinde tutulur.':'Seçilmezse hareket daha sonra Kasalar ekranından bağlanabilir.';
  }
  [method,direct,owner,type].forEach(e=>e?.addEventListener('change',update));update();
 });</script>{% endif %}

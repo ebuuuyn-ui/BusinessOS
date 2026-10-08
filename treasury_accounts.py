@@ -12,7 +12,7 @@ class TreasuryLocked(ValueError):
 
 DEFAULTS = [('cash','Nakit Kasa','Nakit'),('kuveyt','Kuveyt Türk','Banka'),('enpara','Enpara','Banka'),('ahmet','Ahmet Tahsilat Sistemi','Tahsilat Sistemi'),('direct','Doğrudan Tedarikçi Aktarımı','Mahsup')]
 
-CARD_DEFAULTS = [('card-maximum','Maximum Kredi Kartı'),('card-garanti','Garanti Bonus Kredi Kartı'),('card-ahmet-enpara','Ahmet Enpara Kredi Kartı')]
+CARD_DEFAULTS = [('card-maximum','Maximum Kredi Kartı'),('card-garanti','Garanti Bonus Kredi Kartı')]
 
 def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
     def table(name,*columns):
@@ -74,7 +74,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         own_card = isinstance(obj,Transaction) and obj.transaction_type=='Ödeme' and obj.card_owner_type=='Kendi Kartımız' and method=='Kredi Kartı'
         if a['kind']=='Kredi Kartı' and not (own_card or isinstance(obj,Expense) and method=='Kredi Kartı'):
             raise ValueError('Kredi kartı hesabına yalnızca kendi kartınızla yapılan ödemeyi bağlayın.')
-        if own_card and a['kind']!='Kredi Kartı':
+        if own_card and a['kind'] not in ('Kredi Kartı','Tahsilat Sistemi'):
             raise ValueError('Kendi kartınızla yapılan ödeme için kredi kartı hesabı seçin.')
         if method not in allowed[a['kind']]: raise ValueError('Ödeme şekli ile seçilen hesap türü uyuşmuyor.')
         if isinstance(obj,Transaction) and a['customer_id']==obj.customer_id: raise ValueError('Hesaba bağlı carinin kendi hareketi için hesaplar arası transfer kullanın.')
@@ -200,7 +200,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         current=posted(key) if ready() else None
         selected=str(current['account_id']) if current else ''
         own=tx.transaction_type=='Ödeme' and tx.card_owner_type=='Kendi Kartımız' and tx.payment_method=='Kredi Kartı'
-        kinds={'Mahsup'} if partner else {'Kredi Kartı'} if own else {'Tahsilat Sistemi'} if tx.payment_method=='Kredi Kartı' else {'Nakit','Banka'} if tx.payment_method=='Banka' else {'Nakit','Banka','Tahsilat Sistemi'}
+        kinds={'Mahsup'} if partner else {'Kredi Kartı','Tahsilat Sistemi'} if own else {'Tahsilat Sistemi'} if tx.payment_method=='Kredi Kartı' else {'Nakit','Banka'} if tx.payment_method=='Banka' else {'Nakit','Banka','Tahsilat Sistemi'}
         options=[a for a in choices() if a['kind'] in kinds and a['customer_id']!=tx.customer_id] if ready() and tx.payment_method!='Çek' else []
         def show():
             return render_template('account_transaction_edit.html',transaction=tx,partner=partner,account_options=options,selected_account=selected)
@@ -273,6 +273,24 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                     for slug,name in CARD_DEFAULTS:
                         if slug not in existing: db.session.execute(accounts.insert().values(slug=slug,name=name,kind='Kredi Kartı',created_at=datetime.utcnow()))
                     log('setup_cards','Credit card accounts; no historical assignments')
+                elif action=='move_ahmet_card':
+                    pair=list(db.session.execute(select(accounts).where(accounts.c.slug.in_(['card-ahmet-enpara','ahmet'])).order_by(accounts.c.id).with_for_update()).mappings())
+                    old=next((a for a in pair if a['slug']=='card-ahmet-enpara'),None)
+                    target=next((a for a in pair if a['slug']=='ahmet'),None)
+                    if not old or not target or not target['customer_id']: raise ValueError('Ahmet hesabı ve cari bağlantısını kontrol edin.')
+                    if old['kind']=='Birleştirildi':
+                        flash('Ahmet kartı daha önce taşınmış.','success');return redirect(url_for('treasury_accounts_page'))
+                    if old['kind']!='Kredi Kartı' or target['kind']!='Tahsilat Sistemi': raise ValueError('Hesap türleri uygun değil.')
+                    entries=list(db.session.execute(select(postings).where(postings.c.account_id==old['id']).with_for_update()).mappings())
+                    if any(p['mirror_id'] for p in entries): raise ValueError('Bu hareketlerin zaten cari bağlantısı var.')
+                    backup()
+                    for p in entries:
+                        mirror=Transaction(customer_id=target['customer_id'],transaction_type='Hesap Mahsubu',transaction_date=p['date'],payment_method='Hesap Mahsubu',description=(target['name']+' · '+p['description'])[:240],reference_no=p['source_key'][:80],debit=max(p['amount'],Decimal(0)),credit=max(-p['amount'],Decimal(0)))
+                        db.session.add(mirror);db.session.flush()
+                        db.session.execute(postings.update().where(postings.c.id==p['id']).values(account_id=target['id'],mirror_id=mirror.id))
+                    db.session.execute(accounts.update().where(accounts.c.id==old['id']).values(kind='Birleştirildi'))
+                    import json
+                    log('move_ahmet_card',json.dumps(dict(source=dict(old),target=dict(target),posting_ids=[p['id'] for p in entries]),default=str,ensure_ascii=False))
                 elif action=='merge_garanti_bonus':
                     pair=list(db.session.execute(select(accounts).where(accounts.c.slug.in_(['card-bonus','card-garanti'])).order_by(accounts.c.id).with_for_update()).mappings())
                     old=next((a for a in pair if a['slug']=='card-bonus'),None)

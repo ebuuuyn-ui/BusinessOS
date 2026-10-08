@@ -122,6 +122,18 @@ class FundTests(unittest.TestCase):
         self.assertEqual(self.ext['total_balance'](cards['card-garanti']['id']),Decimal('-234'))
         self.assertEqual(m.AccountTransaction.query.count(),2)
 
+    def test_ahmet_card_move_creates_one_credit_and_future_payments_reduce_receivable(self):
+        self.link();receipt=self.tx(amount=100);self.post(action='assign',source_key='tx:'+str(receipt.id),account_id=self.ids['ahmet'])
+        m.db.session.execute(self.accounts.insert().values(slug='card-ahmet-enpara',name='Ahmet Enpara',kind='Kredi Kartı',created_at=m.datetime.utcnow()));m.db.session.commit()
+        old=next(a['id'] for a in self.ext['rows']() if a['slug']=='card-ahmet-enpara')
+        tx=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Ahmet ödeme',debit=30,credit=0)
+        m.db.session.add(tx);m.db.session.commit();self.post(action='assign',source_key='tx:'+str(tx.id),account_id=old)
+        self.post(action='move_ahmet_card');self.post(action='move_ahmet_card');self.post(action='setup_cards')
+        self.assertEqual(self.ahmet.balance,70);self.assertEqual(self.ext['total_balance'](),70);self.assertEqual(self.count(),2)
+        self.assertNotIn('card-ahmet-enpara',[a['slug'] for a in self.ext['rows']()]);self.assertEqual(tx.debit,30)
+        self.client.post('/odeme-girisi',data=dict(customer_id=self.supplier.id,amount='10',payment_method='Kredi Kartı',transaction_date=date.today().isoformat(),card_installments='1',card_owner_type='Kendi Kartımız',description='Ahmet yeni ödeme',treasury_account_id=self.ids['ahmet']))
+        self.assertEqual(self.ahmet.balance,60);self.assertEqual(self.count(),3)
+
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):
         self.tx();self.post(action='setup')
         self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),0)
@@ -166,7 +178,7 @@ class FundTests(unittest.TestCase):
 
     def test_own_card_payment_and_bank_virman_reverse_without_second_expense(self):
         self.post(action='setup_cards');self.post(action='setup_cards')
-        cards=[a for a in self.ext['rows']() if a['kind']=='Kredi Kartı'];self.assertEqual(len(cards),3)
+        cards=[a for a in self.ext['rows']() if a['kind']=='Kredi Kartı'];self.assertEqual(len(cards),2)
         card=cards[0]['id']
         t=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Maximum ödeme',debit=100,credit=0)
         m.db.session.add(t);m.db.session.commit()
