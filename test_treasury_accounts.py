@@ -50,6 +50,14 @@ class FundTests(unittest.TestCase):
         transfer=m.db.session.execute(select(self.postings).where(self.postings.c.source_key.like('transfer:%'))).mappings().first()
         self.post(action='unassign',source_key=transfer['source_key']);self.assertEqual(self.count(),1);self.assertEqual(self.ahmet.balance,80)
         self.post(action='unassign',source_key=key);self.assertEqual(self.ahmet.balance,0);self.assertEqual(self.buyer.balance,-80);self.assertEqual(self.count(),0)
+    def test_legacy_cash_method_can_be_assigned_to_bank_without_rewriting_source(self):
+        t=self.tx();t.payment_method='Nakit';t.description='ENPARAYA GELEN';m.db.session.commit()
+        before=m.calculate_treasury()['cash_balance']
+        self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['enpara'])
+        self.assertEqual(self.balances()['enpara'],Decimal('80'))
+        self.assertEqual(t.payment_method,'Nakit')
+        self.assertEqual(m.calculate_treasury()['cash_balance'],before)
+
     def test_invalid_and_duplicate_assignment_preserve_money(self):
         self.link();t=self.tx();key='tx:'+str(t.id)
         self.post(action='assign',source_key=key,account_id=self.ids['kuveyt']);self.assertEqual(self.count(),0)

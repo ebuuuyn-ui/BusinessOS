@@ -67,7 +67,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
             batch=str(uuid4());add(a,key,day,amount,description,batch);add(a,'tx:'+str(partner.id),pday,pamount,pdesc,batch)
             return
         if a['kind']=='Mahsup': raise ValueError('Mahsup hesabı yalnızca bağlı tedarikçi kart işlemleri içindir.')
-        allowed={'Nakit':{'Nakit'},'Banka':{'Banka'},'Tahsilat Sistemi':{'Kredi Kartı'}}
+        allowed={'Nakit':{'Nakit'},'Banka':{'Banka','Nakit'},'Tahsilat Sistemi':{'Kredi Kartı'}}
         if method not in allowed[a['kind']]: raise ValueError('Ödeme şekli ile seçilen hesap türü uyuşmuyor.')
         if isinstance(obj,Transaction) and a['customer_id']==obj.customer_id: raise ValueError('Hesaba bağlı carinin kendi hareketi için hesaplar arası transfer kullanın.')
         add(a,key,day,amount,description)
