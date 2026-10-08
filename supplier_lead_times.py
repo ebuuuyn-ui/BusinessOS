@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from decimal import Decimal
 
-TARGETS={'Sevkiyat Bekliyor','Sevk Edildi','Teslim Edildi'}
+TARGETS={'Sevk Edildi','Teslim Edildi'}
 LOCAL=ZoneInfo('Europe/Istanbul')
 def utc(value):
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
@@ -24,28 +24,25 @@ def build_report(orders,normalize,filters,now=None):
         if filters.get('end_date') and day>filters['end_date']:continue
         if any(t not in normalize(order.customer.name+' '+(order.customer.code or '')) for t in normalize(filters.get('customer_q','')).split()):continue
         if any(t not in normalize(order.order_no) for t in normalize(filters.get('q','')).split()):continue
-        first=None;delivered=None;previous=None;uncertain=False
+        first=None;previous=None;uncertain=False
         for event in sorted(order.history,key=lambda e:(e.created_at,e.id or 0)):
             if event.status in TARGETS:
                 if previous is None:uncertain=True
                 elif event.status!=previous:
                     if first is None and previous not in TARGETS:first=event
-                    if event.status=='Teslim Edildi' and delivered is None:delivered=event
             previous=event.status
-        invalid=not created or any(e and utc(e.created_at)<utc(created) for e in (first,delivered))
+        invalid=not created or any(e and utc(e.created_at)<utc(created) for e in (first,))
         cancelled=order.status=='İptal Edildi'
         missing=invalid or uncertain or (order.status in TARGETS and first is None)
         lead=days(created,first.created_at) if first and not missing and not cancelled else None
-        delivery=days(created,delivered.created_at) if delivered and not missing and not cancelled else None
         state='İptal — Ortalama Dışı' if cancelled else 'Geçmiş Eksik / Tutarsız' if missing else 'Ölçüldü' if lead is not None else 'Devam Ediyor'
-        row=dict(order=order,created=local(created),first=local(first.created_at) if first else None,first_status=first.status if first else None,lead=lead,delivered=local(delivered.created_at) if delivered else None,delivery=delivery,state=state,age=days(created,now) if created and utc(created)<=utc(now) and state=='Devam Ediyor' else None)
+        row=dict(order=order,created=local(created),first=local(first.created_at) if first else None,first_status=first.status if first else None,lead=lead,state=state,age=days(created,now) if created and utc(created)<=utc(now) and state=='Devam Ediyor' else None)
         result.append(row)
-        group=groups.setdefault(order.customer_id,dict(customer=order.customer,rows=[],leads=[],deliveries=[],pending=0,missing=0,cancelled=0))
+        group=groups.setdefault(order.customer_id,dict(customer=order.customer,rows=[],leads=[],pending=0,missing=0,cancelled=0))
         group['rows'].append(row)
         if lead is not None:group['leads'].append(lead)
-        if delivery is not None:group['deliveries'].append(delivery)
         group['pending']+=state=='Devam Ediyor';group['missing']+=state=='Geçmiş Eksik / Tutarsız';group['cancelled']+=cancelled
     for group in groups.values():
-        group['average']=average(group['leads']);group['delivery_average']=average(group['deliveries'])
-    leads=[r['lead'] for r in result if r['lead'] is not None];deliveries=[r['delivery'] for r in result if r['delivery'] is not None]
-    return dict(report_rows=sorted(result,key=lambda r:r['created'] or datetime.min.replace(tzinfo=timezone.utc),reverse=True),supplier_groups=sorted(groups.values(),key=lambda g:normalize(g['customer'].name)),lead_average=average(leads),delivery_average=average(deliveries),measured_count=len(leads),delivered_count=len(deliveries),missing_count=sum(g['missing'] for g in groups.values()),pending_count=sum(g['pending'] for g in groups.values()),filters=filters)
+        group['average']=average(group['leads'])
+    leads=[r['lead'] for r in result if r['lead'] is not None]
+    return dict(report_rows=sorted(result,key=lambda r:r['created'] or datetime.min.replace(tzinfo=timezone.utc),reverse=True),supplier_groups=sorted(groups.values(),key=lambda g:normalize(g['customer'].name)),lead_average=average(leads),measured_count=len(leads),missing_count=sum(g['missing'] for g in groups.values()),pending_count=sum(g['pending'] for g in groups.values()),filters=filters)
