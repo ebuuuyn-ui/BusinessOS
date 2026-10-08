@@ -58,6 +58,28 @@ class FundTests(unittest.TestCase):
         self.client.post(route,data=dict(original_description=t.description,description=''))
         self.assertEqual(t.description,'Yeni not')
 
+    def test_edit_account_reassigns_atomically_and_preserves_amount(self):
+        t=self.tx(method='Nakit');self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['cash'])
+        route=f'/musteriler/{t.customer_id}/cari-hesap/hareket/{t.id}/duzenle'
+        data=dict(original_description=t.description,original_account_id=str(self.ids['cash']),description=t.description,treasury_account_id=str(self.ids['enpara']))
+        self.assertEqual(self.client.post(route,data=data).status_code,302)
+        self.assertEqual(t.payment_method,'Banka');self.assertEqual(t.credit,80)
+        self.assertEqual(self.balances()['cash'],0);self.assertEqual(self.balances()['enpara'],80);self.assertEqual(self.count(),1)
+        data['treasury_account_id']=str(self.ids['kuveyt'])
+        self.client.post(route,data=data)
+        self.assertEqual(self.balances()['enpara'],80);self.assertEqual(self.balances()['kuveyt'],0)
+        data.update(original_account_id=str(self.ids['enpara']),treasury_account_id='999999',description='Wrong')
+        self.client.post(route,data=data);self.assertEqual(t.description,'Tahsilat');self.assertEqual(self.balances()['enpara'],80)
+        data.update(treasury_account_id='',description=t.description)
+        self.client.post(route,data=data);self.assertEqual(self.count(),0);self.assertEqual(t.credit,80)
+
+    def test_edit_account_moves_ahmet_mirror_without_duplicate(self):
+        self.link();t=self.tx(method='Nakit');self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['ahmet'])
+        route=f'/musteriler/{t.customer_id}/cari-hesap/hareket/{t.id}/duzenle'
+        self.client.post(route,data=dict(original_description=t.description,original_account_id=str(self.ids['ahmet']),description=t.description,treasury_account_id=str(self.ids['enpara'])))
+        self.assertEqual(self.ahmet.balance,0);self.assertEqual(self.balances()['enpara'],80);self.assertEqual(self.count(),1)
+        self.assertEqual(m.AccountTransaction.query.count(),1)
+
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):
         self.tx();self.post(action='setup')
         self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),0)

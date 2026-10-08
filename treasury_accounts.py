@@ -188,10 +188,23 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         tx=db.session.execute(select(Transaction).where(Transaction.id==transaction_id,Transaction.customer_id==customer_id).with_for_update()).scalar_one_or_none()
         if not tx or tx.transaction_type not in ('Tahsilat','Ödeme'): abort(404)
         partner=db.session.execute(select(Transaction).where(Transaction.id==tx.linked_transaction_id).with_for_update()).scalar_one_or_none() if tx.linked_transaction_id else None
+        key='tx:'+str(tx.id)
+        current=posted(key) if ready() else None
+        selected=str(current['account_id']) if current else ''
+        own=tx.transaction_type=='Ödeme' and tx.card_owner_type=='Kendi Kartımız' and tx.payment_method=='Kredi Kartı'
+        kinds={'Mahsup'} if partner else {'Kredi Kartı'} if own else {'Tahsilat Sistemi'} if tx.payment_method=='Kredi Kartı' else {'Nakit','Banka'} if tx.payment_method=='Banka' else {'Nakit','Banka','Tahsilat Sistemi'}
+        options=[a for a in choices() if a['kind'] in kinds and a['customer_id']!=tx.customer_id] if ready() and tx.payment_method!='Çek' else []
+        def show():
+            return render_template('account_transaction_edit.html',transaction=tx,partner=partner,account_options=options,selected_account=selected)
         if request.method=='POST':
-            note=request.form.get('description','').strip()
+            note=request.form.get('description','').strip() or tx.description
+            chosen=request.form.get('treasury_account_id',selected).strip()
             if not note or len(note)>240:
                 flash('Açıklama 1–240 karakter olmalıdır.','error')
+            elif chosen and chosen not in {str(a['id']) for a in options}:
+                flash('Bu hareket için uygun bir hesap seçin.','error')
+            elif request.form.get('original_account_id',selected)!=selected:
+                flash('Hesap bağlantısı değişmiş. Sayfayı yenileyip tekrar seçin.','error')
             elif request.form.get('original_description') != tx.description:
                 flash('Bu kayıt değişmiş. Güncel açıklamayı kontrol edip yeniden kaydedin.','error')
             else:
@@ -201,10 +214,12 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                     if (partner.description or '').endswith(suffix): changes.append((partner,partner.description,partner.description[:-len(suffix)]+' · '+note))
                 if any(len(new)>240 for _,_,new in changes):
                     flash('Bağlı ödeme açıklaması çok uzun olacak. Lütfen daha kısa bir açıklama yazın.','error')
-                    return render_template('account_transaction_edit.html',transaction=tx,partner=partner)
+                    return show()
                 backup()
                 db.session.info['treasury_internal']=True
                 try:
+                    if chosen!=selected and current: unassign(key)
+                    db.session.info['treasury_internal']=True
                     for item,old,new in changes:
                         item.description=new
                         if ready():
@@ -216,13 +231,21 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                                     if mirror: mirror.description=(account(p['account_id'])['name']+' · '+new)[:240]
                             import json
                             log('edit_description',json.dumps(dict(source='tx:'+str(item.id),old=old,new=new),ensure_ascii=False))
+                    if chosen!=selected and chosen:
+                        target=account(chosen)
+                        if not partner and target['kind'] in ('Nakit','Banka'):
+                            tx.payment_method=target['kind']
+                        db.session.flush()
+                        assign(key,chosen)
                     db.session.commit()
+                except ValueError as error:
+                    db.session.rollback();flash(str(error),'error');return show()
                 except Exception:
                     db.session.rollback();raise
                 finally: db.session.info.pop('treasury_internal',None)
-                flash('Açıklama güncellendi. Tutar ve hesap bağlantıları korundu.','success')
+                flash('Hareket güncellendi. Tutar korundu; hesap seçiminiz kaydedildi.','success')
                 return redirect(url_for('customer_account',customer_id=customer_id))
-        return render_template('account_transaction_edit.html',transaction=tx,partner=partner)
+        return show()
 
     @app.route('/kasa-cek/kasalar',methods=['GET','POST'])
     def treasury_accounts_page():

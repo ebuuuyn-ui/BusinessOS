@@ -43,7 +43,7 @@
       {% if entry.payment_method %}<small class="block">{{ entry.payment_method }}{% if entry.check_no %} · Çek: {{ entry.check_no }} · Vade: {{ entry.check_due_date.strftime('%d.%m.%Y') }} · {{ entry.check_status }}{% elif entry.payment_method == 'Kredi Kartı' %} · {{ entry.card_installments }} taksit · {{ entry.card_owner_type }}{% if entry.card_customer_name %}: {{ entry.card_customer_name }}{% endif %}{% endif %}</small>{% endif %}
     </details>
     {% endif %}
-    {% if entry.editable_description %}<a class="description-edit no-print" href="{{ url_for('edit_account_transaction',customer_id=customer.id,transaction_id=entry.transaction_id) }}" title="Açıklamayı düzenle" aria-label="Açıklamayı düzenle">✎ <span>Düzenle</span></a>{% endif %}
+    {% if entry.editable_description %}<a class="description-edit no-print" href="{{ url_for('edit_account_transaction',customer_id=customer.id,transaction_id=entry.transaction_id) }}" title="Hareketi düzenle" aria-label="Hareketi düzenle">✎ <span>Düzenle</span></a>{% endif %}
   </div></td>
   <td class="money debit-text">{{ '₺' + (entry.debit|money) if entry.debit else '—' }}</td>
   <td class="money credit-text">{{ '₺' + (entry.credit|money) if entry.credit else '—' }}</td>
