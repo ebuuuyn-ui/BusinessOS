@@ -107,6 +107,21 @@ class FundTests(unittest.TestCase):
         self.assertNotIn('Seçili Hesap Bakiyesi',self.client.get('/kasa-cek?account=unassigned').get_data(as_text=True))
         self.assertIn('Toplam Hesap Bakiyesi',self.client.get('/kasa-cek').get_data(as_text=True))
 
+    def test_merge_cards_preserves_postings_and_is_idempotent(self):
+        self.post(action='setup_cards')
+        m.db.session.execute(self.accounts.insert().values(slug='card-bonus',name='Bonus Kredi Kartı',kind='Kredi Kartı',created_at=m.datetime.utcnow()));m.db.session.commit()
+        cards={a['slug']:a for a in self.ext['rows']()}
+        for slug,amount in [('card-bonus',34),('card-garanti',200)]:
+            tx=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Kart',debit=amount,credit=0)
+            m.db.session.add(tx);m.db.session.commit();self.post(action='assign',source_key='tx:'+str(tx.id),account_id=cards[slug]['id'])
+        before=self.ext['total_balance']();ids=set(m.db.session.execute(select(self.postings.c.id)).scalars())
+        self.post(action='merge_garanti_bonus');self.post(action='merge_garanti_bonus');self.post(action='setup_cards')
+        self.assertEqual(self.ext['total_balance'](),before)
+        self.assertEqual(set(m.db.session.execute(select(self.postings.c.id)).scalars()),ids)
+        self.assertNotIn('card-bonus',[a['slug'] for a in self.ext['rows']()])
+        self.assertEqual(self.ext['total_balance'](cards['card-garanti']['id']),Decimal('-234'))
+        self.assertEqual(m.AccountTransaction.query.count(),2)
+
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):
         self.tx();self.post(action='setup')
         self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),0)
@@ -151,7 +166,7 @@ class FundTests(unittest.TestCase):
 
     def test_own_card_payment_and_bank_virman_reverse_without_second_expense(self):
         self.post(action='setup_cards');self.post(action='setup_cards')
-        cards=[a for a in self.ext['rows']() if a['kind']=='Kredi Kartı'];self.assertEqual(len(cards),4)
+        cards=[a for a in self.ext['rows']() if a['kind']=='Kredi Kartı'];self.assertEqual(len(cards),3)
         card=cards[0]['id']
         t=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Maximum ödeme',debit=100,credit=0)
         m.db.session.add(t);m.db.session.commit()

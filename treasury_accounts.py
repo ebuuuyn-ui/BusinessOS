@@ -12,7 +12,7 @@ class TreasuryLocked(ValueError):
 
 DEFAULTS = [('cash','Nakit Kasa','Nakit'),('kuveyt','Kuveyt Türk','Banka'),('enpara','Enpara','Banka'),('ahmet','Ahmet Tahsilat Sistemi','Tahsilat Sistemi'),('direct','Doğrudan Tedarikçi Aktarımı','Mahsup')]
 
-CARD_DEFAULTS = [('card-maximum','Maximum Kredi Kartı'),('card-bonus','Bonus Kredi Kartı'),('card-garanti','Garanti Kredi Kartı'),('card-ahmet-enpara','Ahmet Enpara Kredi Kartı')]
+CARD_DEFAULTS = [('card-maximum','Maximum Kredi Kartı'),('card-garanti','Garanti Bonus Kredi Kartı'),('card-ahmet-enpara','Ahmet Enpara Kredi Kartı')]
 
 def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
     def table(name,*columns):
@@ -25,7 +25,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         inspector=inspect(db.session.connection())
         return all(inspector.has_table(t.name) for t in tables)
     def rows():
-        return [dict(r) for r in db.session.execute(select(accounts).order_by(accounts.c.id)).mappings()] if ready() else []
+        return [dict(r) for r in db.session.execute(select(accounts).where(accounts.c.kind!='Birleştirildi').order_by(accounts.c.id)).mappings()] if ready() else []
     def log(action,detail):
         db.session.execute(audit.insert().values(id=str(uuid4()),action=action,detail=str(detail),actor=getattr(g,'web_username','local') if has_request_context() else 'test',created_at=datetime.utcnow()))
     def money(value):
@@ -36,7 +36,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         return n
     def account(account_id):
         row=db.session.execute(select(accounts).where(accounts.c.id==int(account_id)).with_for_update()).mappings().first()
-        if not row: raise ValueError('Geçerli bir kasa / hesap seçin.')
+        if not row or row['kind']=='Birleştirildi': raise ValueError('Geçerli bir kasa / hesap seçin.')
         return dict(row)
     def posted(key):
         return db.session.execute(select(postings).where(postings.c.source_key==key)).mappings().first()
@@ -273,6 +273,22 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                     for slug,name in CARD_DEFAULTS:
                         if slug not in existing: db.session.execute(accounts.insert().values(slug=slug,name=name,kind='Kredi Kartı',created_at=datetime.utcnow()))
                     log('setup_cards','Credit card accounts; no historical assignments')
+                elif action=='merge_garanti_bonus':
+                    pair=list(db.session.execute(select(accounts).where(accounts.c.slug.in_(['card-bonus','card-garanti'])).order_by(accounts.c.id).with_for_update()).mappings())
+                    old=next((a for a in pair if a['slug']=='card-bonus'),None)
+                    target=next((a for a in pair if a['slug']=='card-garanti'),None)
+                    if not old or not target: raise ValueError('Birleştirilecek iki kart bulunamadı.')
+                    if old['kind']=='Birleştirildi':
+                        flash('Bu kartlar zaten birleştirilmiş.','success')
+                        return redirect(url_for('treasury_accounts_page'))
+                    if any(a['kind']!='Kredi Kartı' or a['customer_id'] for a in pair): raise ValueError('Yalnızca cariye bağlı olmayan kredi kartları birleştirilebilir.')
+                    backup()
+                    moved=list(db.session.execute(select(postings.c.id).where(postings.c.account_id==old['id'])).scalars())
+                    db.session.execute(postings.update().where(postings.c.account_id==old['id']).values(account_id=target['id']))
+                    db.session.execute(accounts.update().where(accounts.c.id==target['id']).values(name='Garanti Bonus Kredi Kartı'))
+                    db.session.execute(accounts.update().where(accounts.c.id==old['id']).values(kind='Birleştirildi'))
+                    import json
+                    log('merge_cards',json.dumps(dict(source=dict(old),target=dict(target),posting_ids=moved),default=str,ensure_ascii=False))
                 elif action=='add_card':
                     name=request.form.get('name','').strip()
                     if not name or len(name)>120: raise ValueError('Kart adını 1–120 karakter olarak girin.')
