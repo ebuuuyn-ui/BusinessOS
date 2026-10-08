@@ -11,6 +11,8 @@ class TreasuryLocked(ValueError):
 
 DEFAULTS = [('cash','Nakit Kasa','Nakit'),('kuveyt','Kuveyt Türk','Banka'),('enpara','Enpara','Banka'),('ahmet','Ahmet Tahsilat Sistemi','Tahsilat Sistemi'),('direct','Doğrudan Tedarikçi Aktarımı','Mahsup')]
 
+CARD_DEFAULTS = [('card-maximum','Maximum Kredi Kartı'),('card-bonus','Bonus Kredi Kartı'),('card-garanti','Garanti Kredi Kartı'),('card-ahmet-enpara','Ahmet Enpara Kredi Kartı')]
+
 def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
     def table(name,*columns):
         return db.metadata.tables[name] if name in db.metadata.tables else db.Table(name,db.metadata,*columns)
@@ -67,7 +69,12 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
             batch=str(uuid4());add(a,key,day,amount,description,batch);add(a,'tx:'+str(partner.id),pday,pamount,pdesc,batch)
             return
         if a['kind']=='Mahsup': raise ValueError('Mahsup hesabı yalnızca bağlı tedarikçi kart işlemleri içindir.')
-        allowed={'Nakit':{'Nakit'},'Banka':{'Banka','Nakit'},'Tahsilat Sistemi':{'Kredi Kartı','Nakit'}}
+        allowed={'Nakit':{'Nakit'},'Banka':{'Banka','Nakit'},'Tahsilat Sistemi':{'Kredi Kartı','Nakit'},'Kredi Kartı':{'Kredi Kartı'}}
+        own_card = isinstance(obj,Transaction) and obj.transaction_type=='Ödeme' and obj.card_owner_type=='Kendi Kartımız' and method=='Kredi Kartı'
+        if a['kind']=='Kredi Kartı' and not (own_card or isinstance(obj,Expense) and method=='Kredi Kartı'):
+            raise ValueError('Kredi kartı hesabına yalnızca kendi kartınızla yapılan ödemeyi bağlayın.')
+        if own_card and a['kind']!='Kredi Kartı':
+            raise ValueError('Kendi kartınızla yapılan ödeme için kredi kartı hesabı seçin.')
         if method not in allowed[a['kind']]: raise ValueError('Ödeme şekli ile seçilen hesap türü uyuşmuyor.')
         if isinstance(obj,Transaction) and a['customer_id']==obj.customer_id: raise ValueError('Hesaba bağlı carinin kendi hareketi için hesaplar arası transfer kullanın.')
         if a['kind']=='Tahsilat Sistemi' and method=='Nakit' and not isinstance(obj,Transaction):
@@ -130,6 +137,8 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                 direct=next((a for a in rows() if a['slug']=='direct'),None)
                 if direct: assign('tx:'+str(tx.id),direct['id'])
             elif chosen: assign('tx:'+str(tx.id),chosen)
+            elif tx.transaction_type=='Ödeme' and tx.payment_method=='Kredi Kartı' and tx.card_owner_type=='Kendi Kartımız' and any(a['kind']=='Kredi Kartı' for a in rows()):
+                raise ValueError('Ödemenin yapıldığı kredi kartını seçin.')
     def finish(new_transactions):
         try: finish_inner(new_transactions)
         except (ValueError,TypeError) as e: raise TreasuryLocked(str(e))
@@ -165,6 +174,16 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                         if slug not in existing: db.session.execute(accounts.insert().values(slug=slug,name=name,kind=kind,created_at=datetime.utcnow()))
                     log('setup','Default accounts; no source assignments or linked customers')
                 elif not ready(): raise ValueError('Önce kasaları hazırlayın.')
+                elif action=='setup_cards':
+                    backup();existing={a['slug'] for a in rows()}
+                    for slug,name in CARD_DEFAULTS:
+                        if slug not in existing: db.session.execute(accounts.insert().values(slug=slug,name=name,kind='Kredi Kartı',created_at=datetime.utcnow()))
+                    log('setup_cards','Credit card accounts; no historical assignments')
+                elif action=='add_card':
+                    name=request.form.get('name','').strip()
+                    if not name or len(name)>120: raise ValueError('Kart adını 1–120 karakter olarak girin.')
+                    if any(a['name'].casefold()==name.casefold() for a in rows()): raise ValueError('Bu isimde bir hesap zaten var.')
+                    backup();db.session.execute(accounts.insert().values(slug='card-'+str(uuid4()),name=name,kind='Kredi Kartı',created_at=datetime.utcnow()));log('add_card',name)
                 elif action=='assign':
                     backup();assign(request.form.get('source_key',''),request.form.get('account_id',''))
                 elif action=='unassign':
@@ -204,9 +223,9 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         amap={a['id']:a for a in data};bykey={e['source_key']:e for e in entries}
         pending=[]
         for tx in Transaction.query.options(db.joinedload(Transaction.customer)).filter(Transaction.transaction_type.in_(['Tahsilat','Ödeme']),or_(Transaction.payment_method!='Çek',Transaction.payment_method.is_(None))).all():
-            pending.append(dict(key='tx:'+str(tx.id),date=tx.transaction_date,method=tx.payment_method or 'Belirtilmemiş',party=tx.customer.name,description=tx.description,amount=Decimal(tx.credit or 0)-Decimal(tx.debit or 0),direct=bool(tx.linked_transaction_id)))
-        for x in Expense.query.all(): pending.append(dict(key='expense:'+str(x.id),date=x.expense_date,method=x.payment_method,party=x.payee or x.category,description=x.description,amount=-Decimal(x.amount),direct=False))
-        for x in Cash.query.all(): pending.append(dict(key='cash:'+str(x.id),date=x.movement_date,method='Nakit',party='Kasa',description=x.description,amount=Decimal(x.amount)*(1 if x.movement_type=='Giriş' else -1),direct=False))
+            pending.append(dict(key='tx:'+str(tx.id),date=tx.transaction_date,method=tx.payment_method or 'Belirtilmemiş',party=tx.customer.name,description=tx.description,amount=Decimal(tx.credit or 0)-Decimal(tx.debit or 0),direct=bool(tx.linked_transaction_id),own_card=tx.transaction_type=='Ödeme' and tx.payment_method=='Kredi Kartı' and tx.card_owner_type=='Kendi Kartımız'))
+        for x in Expense.query.all(): pending.append(dict(key='expense:'+str(x.id),date=x.expense_date,method=x.payment_method,party=x.payee or x.category,description=x.description,amount=-Decimal(x.amount),direct=False,own_card=x.payment_method=='Kredi Kartı'))
+        for x in Cash.query.all(): pending.append(dict(key='cash:'+str(x.id),date=x.movement_date,method='Nakit',party='Kasa',description=x.description,amount=Decimal(x.amount)*(1 if x.movement_type=='Giriş' else -1),direct=False,own_card=False))
         for p in pending:
             p['posting']=bykey.get(p['key']);p['account']=amap.get(p['posting']['account_id']) if p['posting'] else None
         pending.sort(key=lambda p:(p['date'],p['key']),reverse=True)

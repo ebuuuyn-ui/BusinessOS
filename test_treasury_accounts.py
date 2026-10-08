@@ -73,6 +73,31 @@ class FundTests(unittest.TestCase):
         self.assertEqual(m.calculate_treasury()['cash_balance'],Decimal('62000'))
         self.assertEqual(self.ahmet.balance,0)
 
+    def test_own_card_payment_and_bank_virman_reverse_without_second_expense(self):
+        self.post(action='setup_cards');self.post(action='setup_cards')
+        cards=[a for a in self.ext['rows']() if a['kind']=='Kredi Kartı'];self.assertEqual(len(cards),4)
+        card=cards[0]['id']
+        t=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Maximum ödeme',debit=100,credit=0)
+        m.db.session.add(t);m.db.session.commit()
+        self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['ahmet']);self.assertEqual(self.count(),0)
+        self.post(action='assign',source_key='tx:'+str(t.id),account_id=card)
+        self.assertEqual(self.balances()['card-maximum'],-100);self.assertEqual(m.calculate_treasury()['cash_balance'],0)
+        before=m.AccountTransaction.query.count()
+        self.post(action='transfer',from_id=self.ids['enpara'],to_id=card,amount='40',date=date.today().isoformat(),description='Ekstre ödemesi',token=self.context()['token'])
+        self.assertEqual(self.balances()['card-maximum'],-60);self.assertEqual(self.balances()['enpara'],-40)
+        self.assertEqual(m.calculate_treasury()['cash_balance'],-40);self.assertEqual(m.AccountTransaction.query.count(),before)
+        transfer=m.db.session.execute(select(self.postings).where(self.postings.c.source_key.like('transfer:%'))).mappings().first()
+        self.post(action='unassign',source_key=transfer['source_key']);self.assertEqual(self.balances()['card-maximum'],-100);self.assertEqual(m.calculate_treasury()['cash_balance'],0)
+        incoming=self.tx();self.post(action='assign',source_key='tx:'+str(incoming.id),account_id=card);self.assertEqual(self.count(),1)
+
+    def test_new_own_card_payment_requires_card_and_posts_once(self):
+        self.post(action='setup_cards');card=next(a['id'] for a in self.ext['rows']() if a['slug']=='card-maximum')
+        data=dict(customer_id=self.supplier.id,amount='100',payment_method='Kredi Kartı',transaction_date=date.today().isoformat(),card_installments='1',card_owner_type='Kendi Kartımız',description='Kart ödeme')
+        self.client.post('/odeme-girisi',data=data)
+        self.assertEqual(m.AccountTransaction.query.count(),0)
+        data['treasury_account_id']=card;self.client.post('/odeme-girisi',data=data)
+        self.assertEqual(m.AccountTransaction.query.count(),1);self.assertEqual(self.balances()['card-maximum'],-100)
+
     def test_invalid_and_duplicate_assignment_preserve_money(self):
         self.link();t=self.tx();key='tx:'+str(t.id)
         self.post(action='assign',source_key=key,account_id=self.ids['kuveyt']);self.assertEqual(self.count(),0)

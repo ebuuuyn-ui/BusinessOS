@@ -1,2 +1,15 @@
-{% set fund_accounts = treasury_accounts() %}{% if fund_accounts %}<label>Paranın Bulunduğu Kasa / Hesap<select name="treasury_account_id" data-fund-select><option value="">Hesap Seçilmemiş</option>{% for a in fund_accounts if a.kind!='Mahsup' %}<option value="{{ a.id }}" data-method="{{ 'Kredi Kartı' if a.kind=='Tahsilat Sistemi' else a.kind }}">{{ a.name }}</option>{% endfor %}</select><small data-fund-note>Nakit, banka veya tahsilat sistemini seçin.</small></label>
-<script>document.addEventListener('DOMContentLoaded',()=>{const field=document.querySelector('[data-fund-select]'),method=document.querySelector('[name="payment_method"]'),direct=document.querySelector('[name="direct_to_supplier"]'),note=document.querySelector('[data-fund-note]');if(!field||!method)return;function update(){const isDirect=method.value==='Kredi Kartı'&&direct?.checked;field.disabled=isDirect||method.value==='Çek';for(const o of field.options){o.hidden=!!o.value&&o.dataset.method!==method.value;o.disabled=o.hidden}if(field.selectedOptions[0]?.disabled||field.disabled)field.value='';note.textContent=isDirect?'Tedarikçi aktarımı giriş ve çıkış olarak Mahsup hesabına işlenir.':method.value==='Çek'?'Çek, çek takibinde tutulur.':'Seçilmezse hareket daha sonra Kasalar ekranından bağlanabilir.'}method.addEventListener('change',update);direct?.addEventListener('change',update);update()});</script>{% endif %}
+{% set fund_accounts = treasury_accounts() %}{% if fund_accounts %}
+<label>Kasa / Banka / Kart Hesabı<select name="treasury_account_id" data-fund-select data-payment="{{ '1' if is_payment|default(false) else '0' }}"><option value="">Hesap Seçilmemiş</option>{% for a in fund_accounts if a.kind!='Mahsup' %}<option value="{{ a.id }}" data-kind="{{ a.kind }}">{{ a.name }}</option>{% endfor %}</select><small data-fund-note>İşlemin ait olduğu hesabı seçin.</small></label>
+<script>document.addEventListener('DOMContentLoaded',()=>{
+ const field=document.querySelector('[data-fund-select]'),method=document.querySelector('[name="payment_method"]'),direct=document.querySelector('[name="direct_to_supplier"]'),note=document.querySelector('[data-fund-note]'),owner=document.querySelector('[name="card_owner_type"]'),type=document.querySelector('[name="transaction_type"]');
+ if(!field||!method)return;
+ function update(){
+ const payment=type?type.value==='Ödeme':field.dataset.payment==='1',own=payment&&method.value==='Kredi Kartı'&&owner?.value==='Kendi Kartımız',isDirect=!payment&&method.value==='Kredi Kartı'&&direct?.checked;
+ field.disabled=isDirect||method.value==='Çek'||!method.value;
+ for(const o of field.options){const match=method.value==='Kredi Kartı'?o.dataset.kind===(own?'Kredi Kartı':'Tahsilat Sistemi'):o.dataset.kind===method.value;o.hidden=!!o.value&&!match;o.disabled=o.hidden}
+ if(field.selectedOptions[0]?.disabled||field.disabled)field.value='';
+ field.required=own&&[...field.options].some(o=>o.value&&!o.disabled);
+ note.textContent=isDirect?'Tedarikçi aktarımı giriş ve çıkış olarak Mahsup hesabına işlenir.':own?'Kart seçimi zorunludur. Ödeme kart bakiyesini eksiye düşürür; banka bakiyesi virman yaptığınızda azalır.':method.value==='Çek'?'Çek, çek takibinde tutulur.':'Seçilmezse hareket daha sonra Kasalar ekranından bağlanabilir.';
+ }
+ [method,direct,owner,type].forEach(e=>e?.addEventListener('change',update));update();
+});</script>{% endif %}
