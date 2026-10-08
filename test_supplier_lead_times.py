@@ -13,9 +13,26 @@ class LeadTests(unittest.TestCase):
     def test_shipping_wait_is_excluded_and_first_shipped_wins(self):
         o=self.order([(0,'Bekliyor'),(5,'Sevkiyat Bekliyor'),(7,'Sevk Edildi'),(9,'Teslim Edildi'),(10,'Teslim Edildi')])
         r=self.report(o);self.assertEqual(r['lead_average'],7);self.assertNotIn('delivery_average',r)
-    def test_first_transition_survives_reversal(self):
+    def test_recompletion_uses_transition_after_reopening(self):
         o=self.order([(0,'Bekliyor'),(2.5,'Sevk Edildi'),(3,'Bekliyor'),(7,'Teslim Edildi')]);r=self.report(o)
-        self.assertEqual(r['lead_average'],Decimal('2.5'))
+        self.assertEqual(r['lead_average'],Decimal('7'))
+    def test_reopened_order_is_pending_and_has_no_completion(self):
+        for events in ([(0,'Bekliyor'),(5,'Sevk Edildi'),(10,'Bekliyor')],
+                       [(0,'Bekliyor'),(5,'Sevk Edildi')]):
+            with self.subTest(events=events):
+                r=self.report(self.order(events,status='Bekliyor'))
+                self.assertEqual(r['pending_count'],1)
+                self.assertEqual(r['measured_count'],0)
+                self.assertIsNone(r['lead_average'])
+                row=r['report_rows'][0]
+                self.assertIsNone(row['first']);self.assertIsNone(row['first_status'])
+                self.assertIsNone(row['lead']);self.assertIsNotNone(row['age'])
+    def test_missing_recompletion_history_is_excluded(self):
+        r=self.report(self.order([(0,'Bekliyor'),(5,'Sevk Edildi'),(10,'Bekliyor')]))
+        self.assertEqual(r['missing_count'],1);self.assertEqual(r['measured_count'],0)
+    def test_duplicate_history_keeps_first_completion_in_current_cycle(self):
+        r=self.report(self.order([(0,'Bekliyor'),(2,'Sevk Edildi'),(3,'Bekliyor'),(4,'Bekliyor'),(7,'Sevk Edildi'),(8,'Sevk Edildi'),(9,'Teslim Edildi')]))
+        self.assertEqual(r['lead_average'],7)
     def test_shipping_wait_remains_pending(self):
         r=self.report(self.order([(0,'Bekliyor'),(5,'Sevkiyat Bekliyor')],status='Sevkiyat Bekliyor'))
         self.assertIsNone(r['lead_average']);self.assertEqual(r['pending_count'],1)

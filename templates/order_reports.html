@@ -12,7 +12,7 @@ body.bos-ui .lead-summary td:first-child{white-space:nowrap;overflow:hidden;text
 body.bos-ui .lead-report-table tr:nth-child(even){background:#f1f4f8}
 </style>
 <section class="panel">
-<div class="panel-head"><div><h2>Tedarikçi Termin Raporu</h2><p>Sisteme giriş → ilk Sevk Edildi / Teslim Edildi geçişi. Süreler takvim günüdür; her sipariş eşit ağırlıktadır.</p></div></div>
+<div class="panel-head"><div><h2>Tedarikçi Termin Raporu</h2><p>Sisteme giriş → geçerli Sevk Edildi / Teslim Edildi geçişi. Süreler takvim günüdür; her sipariş eşit ağırlıktadır.</p></div></div>
 <form method="get" class="filters">
 <label>Tedarikçi<input name="customer_q" value="{{ filters.customer_q }}" placeholder="Tedarikçi adı veya kodu"></label>
 <label>Sipariş No<input name="q" value="{{ filters.q }}"></label>
@@ -25,8 +25,8 @@ body.bos-ui .lead-report-table tr:nth-child(even){background:#f1f4f8}
 {% for g in supplier_groups %}<tr><td title="{{ g.customer.name }}"><a href="{{ url_for('customer_account',customer_id=g.customer.id) }}">{{ g.customer.name }}</a></td><td>{{ g.rows|length }}</td><td>{{ g.leads|length }}</td><td>{{ (g.average|money)+' gün' if g.average is not none else '—' }}</td><td>{{ g.pending }}</td><td>{{ g.missing }}</td><td>{{ g.cancelled }}</td></tr>{% else %}<tr><td colspan="7">Bu filtreye uygun tedarik siparişi yok.</td></tr>{% endfor %}
 </tbody></table></div>
 </section>
-<section class="panel"><div class="panel-head"><div><h2>Sipariş Bazında Süreler</h2><p>Başlangıç sipariş üzerindeki tarih değil, sisteme kayıt zamanıdır. İptaller, devam edenler ve geçiş geçmişi eksik kayıtlar ortalamaya katılmaz. “Sevkiyat Bekliyor” termin süresini sonlandırmaz. İlk “Sevk Edildi” veya “Teslim Edildi” geçişi esas alınır.</p></div></div>
-<div class="table-wrap"><table class="compact-table lead-report-table"><thead><tr><th>Sipariş No</th><th>Tedarikçi</th><th>Sisteme Giriş</th><th>İlk Geçiş</th><th>Geçiş Durumu</th><th>Termin</th><th>Güncel Durum</th><th>Ölçüm</th></tr></thead><tbody>
+<section class="panel"><div class="panel-head"><div><h2>Sipariş Bazında Süreler</h2><p>Başlangıç sipariş üzerindeki tarih değil, sisteme kayıt zamanıdır. İptaller, devam edenler ve geçiş geçmişi eksik kayıtlar ortalamaya katılmaz. “Sevkiyat Bekliyor” termin süresini sonlandırmaz. Güncel durumu “Sevk Edildi” veya “Teslim Edildi” olan siparişler ölçülür. Beklemeye dönen siparişin eski ölçümü kaldırılır; tekrar sevk veya teslim edilirse son bekleme döneminden sonraki ilk geçiş esas alınır.</p></div></div>
+<div class="table-wrap"><table class="compact-table lead-report-table"><thead><tr><th>Sipariş No</th><th>Tedarikçi</th><th>Sisteme Giriş</th><th>Geçerli Geçiş</th><th>Geçiş Durumu</th><th>Termin</th><th>Güncel Durum</th><th>Ölçüm</th></tr></thead><tbody>
 {% for r in report_rows %}<tr><td><a href="{{ url_for('order_detail',order_id=r.order.id) }}">{{ r.order.order_no }}</a></td><td title="{{ r.order.customer.name }}">{{ r.order.customer.name }}</td><td>{{ r.created.strftime('%d.%m.%Y %H:%M') if r.created else '—' }}</td><td>{{ r.first.strftime('%d.%m.%Y %H:%M') if r.first else '—' }}</td><td>{{ r.first_status or '—' }}</td><td>{{ (r.lead|money)+' gün' if r.lead is not none else '—' }}</td><td>{{ r.order.status }}</td><td>{{ r.state }}{% if r.age is not none %} · {{ r.age|money }} gün{% endif %}</td></tr>{% else %}<tr><td colspan="8">Sipariş bulunamadı.</td></tr>{% endfor %}
 </tbody></table></div></section>
 {% endblock %}

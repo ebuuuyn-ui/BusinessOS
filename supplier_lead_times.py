@@ -30,7 +30,14 @@ def build_report(orders,normalize,filters,now=None):
                 if previous is None:uncertain=True
                 elif event.status!=previous:
                     if first is None and previous not in TARGETS:first=event
+            else:
+                # A reopened order invalidates the earlier completion milestone.
+                first=None
+                uncertain=False
             previous=event.status
+        if order.status not in TARGETS:
+            first=None
+            uncertain=False
         invalid=not created or any(e and utc(e.created_at)<utc(created) for e in (first,))
         cancelled=order.status=='İptal Edildi'
         missing=invalid or uncertain or (order.status in TARGETS and first is None)
