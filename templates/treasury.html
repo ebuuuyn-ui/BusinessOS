@@ -6,7 +6,7 @@
 {% block content %}
 <div class="treasury-unified">
 <div class="treasury-summary page-summary">
-<div class="treasury-card cash"><small>Kasa + Banka Bakiyesi</small><strong>₺{{ summary.cash_balance|money }}</strong><span>BOS kayıtlarına göre · kart ve çek hariç</span></div>
+<div class="treasury-card cash"><small>Toplam Hesap Bakiyesi</small><strong>₺{{ summary.account_balance|money }}</strong><span>Kasa + banka + Ahmet + kartlar (eksi dahil) · Hesap seçilmemişler ve çekler hariç</span></div>
 <div class="treasury-card incoming"><small>Alınan Bekleyen Çekler</small><strong>₺{{ summary.incoming_checks|money }}</strong><span>Müşterilerden alınan</span></div>
 <div class="treasury-card outgoing"><small>Verilen Bekleyen Çekler</small><strong>₺{{ summary.outgoing_checks|money }}</strong><span>Tedarikçilere verilen</span></div>
 <div class="treasury-card due"><small>Yaklaşan / Geçen Vade</small><strong>{{ summary.due_soon|length }} / {{ summary.overdue_checks|length }}</strong><span>30 gün içinde / vadesi geçmiş çek adedi</span></div>

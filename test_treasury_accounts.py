@@ -88,6 +88,21 @@ class FundTests(unittest.TestCase):
             data['return_to']=unsafe;r=self.client.post(route,data=data)
             self.assertEqual(r.location,f'/musteriler/{t.customer_id}/cari-hesap')
 
+    def test_total_balance_includes_intermediary_and_negative_cards_once(self):
+        self.link();a=self.tx(method='Nakit',amount=100);b=self.tx(amount=80)
+        self.post(action='assign',source_key='tx:'+str(a.id),account_id=self.ids['cash'])
+        self.post(action='assign',source_key='tx:'+str(b.id),account_id=self.ids['ahmet'])
+        self.tx(amount=999) # Unassigned money is not an account balance.
+        self.post(action='setup_cards')
+        card=next(x for x in self.ext['rows']() if x['slug']=='card-maximum')
+        t=m.AccountTransaction(customer=self.supplier,transaction_type='Ödeme',payment_method='Kredi Kartı',card_owner_type='Kendi Kartımız',transaction_date=date.today(),description='Kart ödeme',debit=30,credit=0)
+        m.db.session.add(t);m.db.session.commit();self.post(action='assign',source_key='tx:'+str(t.id),account_id=card['id'])
+        self.assertEqual(self.ext['total_balance'](),Decimal('150'))
+        self.post(action='transfer',from_id=self.ids['cash'],to_id=self.ids['enpara'],amount='25',date=date.today().isoformat(),description='Virman',token=self.context()['token'])
+        self.assertEqual(self.ext['total_balance'](),Decimal('150'))
+        self.assertEqual(sum(self.balances().values()),Decimal('150'))
+        self.assertIn('Toplam Hesap Bakiyesi',self.client.get('/kasa-cek').get_data(as_text=True))
+
     def test_setup_is_idempotent_and_does_not_link_or_backfill(self):
         self.tx();self.post(action='setup')
         self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),0)

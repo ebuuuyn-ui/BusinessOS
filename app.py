@@ -3417,6 +3417,7 @@ def create_app(test_config=None):
     def treasury():
         today = date.today()
         summary = calculate_treasury(today)
+        summary["account_balance"] = app.extensions["treasury_accounts"]["total_balance"]()
         movements = []
         kinds = {"Nakit": "Kasa", "Banka": "Banka", "Kredi Kartı": "Kredi Kartı", "Çek": "Çek"}
         transactions = AccountTransaction.query.options(db.joinedload(AccountTransaction.customer)).filter(

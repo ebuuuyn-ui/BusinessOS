@@ -121,6 +121,11 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
             except (ValueError,TypeError) as error: raise TreasuryLocked(str(error))
     app.extensions['treasury_accounts'].update(expense_account=expense_account,prepare_expense=prepare_expense,finish_expense=finish_expense)
 
+    def total_balance():
+        if not ready(): return Decimal(0)
+        return db.session.execute(select(db.func.coalesce(db.func.sum(postings.c.amount),0))).scalar()
+    app.extensions['treasury_accounts']['total_balance']=total_balance
+
     def liquid_transfer(end=None):
         if not ready(): return Decimal(0)
         stmt=select(db.func.coalesce(db.func.sum(postings.c.amount),0)).join(accounts,postings.c.account_id==accounts.c.id).where(postings.c.source_key.like('transfer:%'),accounts.c.kind.in_(['Nakit','Banka']))
