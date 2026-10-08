@@ -21,8 +21,8 @@
   if(window.top===window&&document.body.classList.contains('workspace-web-shell'))return;
   if(origin){
    const bar=document.querySelector('.topbar');
-   if(bar){const a=document.createElement('a');a.href=origin;a.className='button no-print';a.dataset.returnOrigin='1';a.textContent='← Önceki Listeye Dön';bar.append(a)}
-   document.querySelectorAll('a').forEach(a=>{if(/^(Vazgeç|.*Dön)$/.test(a.textContent.trim())&&!a.closest('nav,aside')){a.href=origin;a.dataset.returnOrigin='1'}});
+   document.querySelectorAll('a').forEach(a=>{if(/^(Vazgeç|.*Dön)$/.test(a.textContent.trim())&&!a.closest('nav,aside')){a.href=origin;a.dataset.returnOrigin='1';if(a.textContent.trim()!=='Vazgeç')a.textContent='← Önceki Listeye Dön'}});
+   if(bar&&!bar.querySelector('[data-return-origin]')){const a=document.createElement('a');a.href=origin;a.className='button no-print';a.dataset.returnOrigin='1';a.textContent='← Önceki Listeye Dön';bar.append(a)}
   }
   const position=read('position:'+here);if(!position)return;
   requestAnimationFrame(()=>requestAnimationFrame(()=>{scrollTo(position.x,position.y);document.querySelectorAll('main,.table-wrap,.workspace-source').forEach((e,i)=>{const p=position.containers[i];if(p){e.scrollLeft=p.x;e.scrollTop=p.y}})}));
