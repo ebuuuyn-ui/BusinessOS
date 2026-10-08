@@ -339,3 +339,28 @@ body.bos-ui .topbar .list-header-actions{align-items:center;flex:0 1 auto;margin
 body.bos-ui .topbar .list-header-actions>.header-actions{margin:0;flex:0 1 auto;width:auto}
 body.bos-ui .topbar .list-header-actions>.list-refresh{flex:0 0 auto;width:auto;min-width:76px;align-self:center;white-space:nowrap}
 body.bos-ui .topbar .list-header-actions:empty{display:none}
+
+/* Unified treasury: compact desktop ledger and contained mobile records. */
+body.bos-ui .treasury-unified .treasury-summary{gap:8px;margin-bottom:10px;grid-template-columns:repeat(4,minmax(0,1fr))}
+body.bos-ui .treasury-unified .treasury-card{padding:9px 12px;border-radius:6px}
+body.bos-ui .treasury-unified .treasury-card strong{font-size:20px}
+body.bos-ui .treasury-unified .panel{border:1px solid #bac7d8;border-radius:6px;box-shadow:none;min-width:0}
+body.bos-ui .treasury-unified .panel-head{padding:10px 12px}
+body.bos-ui .treasury-unified h2{font-size:15px;margin:0}
+body.bos-ui .treasury-unified .panel-head p,.treasury-hint,.treasury-entry p{font-size:12px;margin:4px 0;color:#53647a}
+.treasury-hint{padding:0 12px 8px}
+.treasury-unified-filters{display:grid;grid-template-columns:minmax(180px,1.6fr) repeat(3,minmax(115px,1fr)) repeat(2,minmax(125px,1fr)) auto auto;gap:7px;align-items:end;padding:10px 12px}
+body.bos-ui .treasury-unified label{font-size:12px;min-width:0;margin:0}
+body.bos-ui .treasury-unified input,body.bos-ui .treasury-unified select,body.bos-ui .treasury-unified button,body.bos-ui .treasury-unified .button{font-size:12px;min-height:30px;height:30px;padding:4px 8px;border-radius:4px;line-height:20px;box-sizing:border-box;margin:0;max-width:100%}
+body.bos-ui .treasury-unified label input,body.bos-ui .treasury-unified label select{width:100%;display:block;margin-top:3px;min-width:0}
+.treasury-unified-table{width:100%;table-layout:fixed;font-size:12px}
+.treasury-unified-table th,.treasury-unified-table td{font-size:12px;line-height:18px;padding:5px 7px;border:1px solid #b8c5d5;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:auto}
+.treasury-unified-table th{background:#e7edf5;font-weight:700}
+.treasury-unified-table tbody tr:nth-child(even){background:#f2f5f9}
+.treasury-unified-table th:nth-child(1){width:85px}.treasury-unified-table th:nth-child(2){width:130px}.treasury-unified-table th:nth-child(3){width:55px}.treasury-unified-table th:nth-child(4){width:18%}.treasury-unified-table th:nth-child(5){width:20%}.treasury-unified-table th:nth-child(7){width:85px}.treasury-unified-table th:nth-child(8){width:115px}.treasury-unified-table th:nth-child(9){width:110px}.treasury-unified-table th:nth-child(10){width:45px}
+.treasury-unified-table a{color:#1764b0;font-weight:600}.treasury-method{font-weight:600}.treasury-source{font-size:11px;color:#53647a}
+.treasury-description summary{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.treasury-description details[open]{white-space:normal;overflow-wrap:anywhere}.treasury-description details>div{padding-top:6px}.treasury-description p{margin:4px 0}
+.treasury-check-status{display:flex;flex-wrap:wrap;gap:3px}.treasury-check-status select{width:100%}.treasury-check-status button{height:24px;min-height:24px;padding:1px 5px}
+.treasury-entry{padding:8px 12px;margin-bottom:10px}.treasury-entry>summary{font-size:12px;font-weight:600;cursor:pointer}.treasury-entry-form{display:grid;grid-template-columns:140px 110px minmax(150px,1fr) 140px auto;gap:8px;align-items:end;margin-top:8px}
+@media(max-width:1250px){.treasury-unified-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.treasury-unified-table th:nth-child(2){width:100px}.treasury-unified-table th:nth-child(4){width:15%}.treasury-unified-table th:nth-child(5){width:16%}}
+@media(max-width:760px){body.bos-ui .treasury-unified .treasury-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.treasury-unified-filters,.treasury-entry-form{grid-template-columns:repeat(2,minmax(0,1fr))}.treasury-search{grid-column:1/-1}body.bos-ui .treasury-unified .table-wrap{overflow:visible}.treasury-unified-table,.treasury-unified-table tbody{display:block;min-width:0;width:100%}.treasury-unified-table thead{display:none}.treasury-unified-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:2px solid #acbbce;padding:6px}.treasury-unified-table td{display:block;width:auto!important;min-width:0;border:0;padding:3px 6px;white-space:normal;overflow-wrap:anywhere;text-align:left}.treasury-unified-table td::before{content:attr(data-label);display:block;font-size:10px;font-weight:600;color:#53647a}.treasury-unified-table td:nth-child(4),.treasury-unified-table td:nth-child(5){grid-column:1/-1}body.bos-ui .treasury-unified input,body.bos-ui .treasury-unified select{font-size:16px;height:36px;min-height:36px}body.bos-ui .treasury-unified button,body.bos-ui .treasury-unified .button{height:36px;min-height:36px}.treasury-unified-table .treasury-check-status{display:block}body.bos-ui .treasury-unified .treasury-card strong{font-size:18px}}

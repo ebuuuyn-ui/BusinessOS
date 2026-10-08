@@ -35,7 +35,7 @@
 <script defer src="{{ url_for('static',filename='ui.js',v='20261006-1') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static',filename='mobile.css',v='20261006-1') }}">
 <script defer src="{{ url_for('static',filename='mobile.js',v='20261006-2') }}"></script>
-<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261007-refresh-1') }}">
+<link rel="stylesheet" href="{{ url_for('static',filename='density.css',v='20261008-treasury-1') }}">
 </head>
 <body class="bos-ui{% if request.endpoint == 'orders' %} orders-page{% endif %}{% block body_class %}{% endblock %}">
   <aside class="sidebar" id="main-sidebar" aria-label="Ana menü"><button type="button" class="mobile-nav-close" aria-label="Menüyü kapat" data-mobile-menu-close>×</button>
@@ -66,7 +66,7 @@
           <a class="{{ 'active' if request.endpoint in ['expenses','edit_expense'] }}" href="{{ url_for('expenses') }}">Masraflar</a>
           <a class="{{ 'active' if request.endpoint == 'profitability' }}" href="{{ url_for('profitability') }}">Kâr / Zarar</a>
           <a class="{{ 'active' if request.endpoint == 'financial_statements' }}" href="{{ url_for('financial_statements') }}">Mali Tablolar</a>
-          <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}">Kasa & Çekler</a>
+          <a class="{{ 'active' if request.endpoint == 'treasury' }}" href="{{ url_for('treasury') }}">Kasa, Banka ve Çekler</a>
         </div>
       </details>
       {% if not config.WEB_AUTH_ENABLED or g.web_is_owner %}

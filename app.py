@@ -3405,42 +3405,52 @@ def create_app(test_config=None):
     def treasury():
         today = date.today()
         summary = calculate_treasury(today)
-        checks = AccountTransaction.query.filter_by(payment_method="Çek").order_by(AccountTransaction.check_due_date, AccountTransaction.id).all()
-        cash_movements = CashMovement.query.order_by(CashMovement.movement_date.desc(), CashMovement.id.desc()).limit(100).all()
         movements = []
-        for transaction in AccountTransaction.query.filter(AccountTransaction.transaction_type.in_(["Tahsilat", "Ödeme"]), AccountTransaction.payment_method.in_(["Nakit", "Banka", "Çek"])).all():
-            is_incoming = transaction.transaction_type == "Tahsilat"
+        kinds = {"Nakit": "Kasa", "Banka": "Banka", "Kredi Kartı": "Kredi Kartı", "Çek": "Çek"}
+        transactions = AccountTransaction.query.options(db.joinedload(AccountTransaction.customer)).filter(
+            AccountTransaction.transaction_type.in_(["Tahsilat", "Ödeme"])).all()
+        for transaction in transactions:
+            incoming = transaction.transaction_type == "Tahsilat"
             is_check = transaction.payment_method == "Çek"
+            details = []
+            if transaction.payment_method == "Kredi Kartı":
+                if transaction.card_owner_type:
+                    details.append(transaction.card_owner_type)
+                if transaction.card_customer_name:
+                    details.append(transaction.card_customer_name)
+                if transaction.card_installments:
+                    details.append(f"{transaction.card_installments} taksit")
+                if transaction.linked_transaction_id:
+                    details.append(f"Doğrudan tedarikçiye aktarım · Bağlı hareket #{transaction.linked_transaction_id}")
+            if is_check and transaction.check_bank:
+                details.append(transaction.check_bank)
             movements.append({
                 "date": transaction.transaction_date,
-                "kind": "Çek" if is_check else "Kasa",
-                "direction": ("Alınan" if is_incoming else "Verilen") if is_check else ("Giriş" if is_incoming else "Çıkış"),
-                "description": transaction.description,
+                "kind": kinds.get(transaction.payment_method, transaction.payment_method or "Belirtilmemiş"),
+                "direction": "Giriş" if incoming else "Çıkış",
+                "description": transaction.description, "details": " · ".join(details),
                 "party": transaction.customer.name,
                 "reference": transaction.check_no if is_check else transaction.reference_no,
                 "due_date": transaction.check_due_date if is_check else None,
                 "status": transaction.check_status if is_check else "Gerçekleşti",
-                "amount": transaction.credit if is_incoming else transaction.debit,
-                "customer_id": transaction.customer_id,
-                "sort_time": transaction.created_at,
-                "source": ("Banka Tahsilatı" if is_incoming else "Banka Ödemesi") if transaction.payment_method == "Banka" else ("Cari Tahsilat" if is_incoming else "Cari Ödeme"),
-                "manual_id": None,
+                "amount": transaction.credit if incoming else transaction.debit,
+                "customer_id": transaction.customer_id, "sort_time": transaction.created_at,
+                "source": transaction.transaction_type, "manual_id": None,
+                "check_id": transaction.id if is_check else None,
             })
-        for expense in Expense.query.filter_by(payment_method="Nakit").all():
-            movements.append({"date": expense.expense_date, "kind": "Kasa", "direction": "Çıkış", "description": expense.description, "party": expense.payee or expense.category, "reference": expense.document_no, "due_date": None, "status": "Gerçekleşti", "amount": expense.amount, "customer_id": None, "sort_time": expense.created_at, "source": "Masraf", "manual_id": None})
+        for expense in Expense.query.all():
+            movements.append({"date": expense.expense_date, "kind": kinds.get(expense.payment_method, expense.payment_method), "direction": "Çıkış", "description": expense.description, "details": expense.category, "party": expense.payee or expense.category, "reference": expense.document_no, "due_date": None, "status": "Gerçekleşti", "amount": expense.amount, "customer_id": None, "sort_time": expense.created_at, "source": "Masraf", "manual_id": None, "check_id": None})
         for movement in CashMovement.query.all():
-            movements.append({"date": movement.movement_date, "kind": "Kasa", "direction": movement.movement_type, "description": movement.description, "party": "Kasa", "reference": None, "due_date": None, "status": "Gerçekleşti", "amount": movement.amount, "customer_id": None, "sort_time": movement.created_at, "source": "Manuel", "manual_id": movement.id})
-        all_cash_movements = [movement for movement in movements if movement["kind"] == "Kasa"]
-        all_cash_movements.sort(key=lambda movement: (movement["date"], movement["sort_time"]), reverse=True)
+            movements.append({"date": movement.movement_date, "kind": "Kasa", "direction": movement.movement_type, "description": movement.description, "details": "", "party": "Kasa", "reference": None, "due_date": None, "status": "Gerçekleşti", "amount": movement.amount, "customer_id": None, "sort_time": movement.created_at, "source": "Manuel", "manual_id": movement.id, "check_id": None})
         movement_filter = request.args.get("movement", "all")
         direction_filter = request.args.get("direction", "all")
         status_filter = request.args.get("status", "all")
         query = request.args.get("q", "").strip()
         start_date = parse_date(request.args.get("start_date"))
         end_date = parse_date(request.args.get("end_date"))
-        if movement_filter in {"cash", "check"}:
-            expected_kind = "Kasa" if movement_filter == "cash" else "Çek"
-            movements = [movement for movement in movements if movement["kind"] == expected_kind]
+        method_filters = {"cash": "Kasa", "bank": "Banka", "card": "Kredi Kartı", "check": "Çek", "unknown": "Belirtilmemiş"}
+        if movement_filter in method_filters:
+            movements = [movement for movement in movements if movement["kind"] == method_filters[movement_filter]]
         else:
             movement_filter = "all"
         if direction_filter == "in":
@@ -3457,11 +3467,11 @@ def create_app(test_config=None):
             movements = [movement for movement in movements if movement["date"] <= end_date]
         if query:
             normalized_query = normalize_search_text(query)
-            movements = [movement for movement in movements if normalized_query in normalize_search_text(" ".join(str(movement.get(field) or "") for field in ["description", "party", "reference"]))]
+            movements = [movement for movement in movements if normalized_query in normalize_search_text(" ".join(str(movement.get(field) or "") for field in ["description", "party", "reference", "details"]))]
         movements.sort(key=lambda movement: (movement["date"], movement["sort_time"]), reverse=True)
         filtered_in = sum((movement["amount"] or 0 for movement in movements if movement["direction"] in {"Giriş", "Alınan"}), Decimal("0"))
         filtered_out = sum((movement["amount"] or 0 for movement in movements if movement["direction"] in {"Çıkış", "Verilen"}), Decimal("0"))
-        return render_template("treasury.html", summary=summary, checks=checks, cash_movements=cash_movements, all_cash_movements=all_cash_movements, movements=movements, filtered_in=filtered_in, filtered_out=filtered_out, today=today.isoformat(), check_statuses=CHECK_STATUSES, movement_filter=movement_filter, direction_filter=direction_filter, status_filter=status_filter, query=query, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""))
+        return render_template("treasury.html", summary=summary, movements=movements, filtered_in=filtered_in, filtered_out=filtered_out, today=today.isoformat(), check_statuses=CHECK_STATUSES, movement_filter=movement_filter, direction_filter=direction_filter, status_filter=status_filter, query=query, start_date=request.args.get("start_date", ""), end_date=request.args.get("end_date", ""))
 
     @app.post("/kasa-cek/kasa-hareketi")
     def add_cash_movement():
