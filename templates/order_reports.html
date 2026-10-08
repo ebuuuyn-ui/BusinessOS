@@ -8,6 +8,7 @@ body.bos-ui .lead-report-table{width:100%;table-layout:fixed}
 body.bos-ui .lead-report-table th,body.bos-ui .lead-report-table td{font-size:11px;padding:5px 6px!important;line-height:1.3;border:1px solid #aebdce;overflow-wrap:anywhere}
 body.bos-ui .lead-report-table th{background:#e8eef5}
 body.bos-ui .lead-report-table td:nth-child(2){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.bos-ui .lead-summary td:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.bos-ui .lead-report-table tr:nth-child(even){background:#f1f4f8}
 </style>
 <section class="panel">
@@ -20,8 +21,8 @@ body.bos-ui .lead-report-table tr:nth-child(even){background:#f1f4f8}
 <button>Filtrele</button><a class="button" href="{{ url_for('order_reports') }}">Temizle</a>
 </form>
 <p style="padding:0 10px;font-size:12px">Ortalama Termin: <b>{{ (lead_average|money)+' gün' if lead_average is not none else '—' }}</b> ({{ measured_count }} sipariş) · Teslim Edildi Ortalaması: <b>{{ (delivery_average|money)+' gün' if delivery_average is not none else '—' }}</b> ({{ delivered_count }} sipariş) · Devam Eden: <b>{{ pending_count }}</b> · Geçmişi Eksik: <b>{{ missing_count }}</b></p>
-<div class="table-wrap"><table class="compact-table"><thead><tr><th>Tedarikçi</th><th>Sipariş</th><th>Ölçülen</th><th>Ortalama Termin</th><th>Teslim Edilen</th><th>Ort. Teslim Süresi</th><th>Devam Eden</th><th>Geçmişi Eksik</th><th>İptal</th></tr></thead><tbody>
-{% for g in supplier_groups %}<tr><td><a href="{{ url_for('customer_account',customer_id=g.customer.id) }}">{{ g.customer.name }}</a></td><td>{{ g.rows|length }}</td><td>{{ g.leads|length }}</td><td>{{ (g.average|money)+' gün' if g.average is not none else '—' }}</td><td>{{ g.deliveries|length }}</td><td>{{ (g.delivery_average|money)+' gün' if g.delivery_average is not none else '—' }}</td><td>{{ g.pending }}</td><td>{{ g.missing }}</td><td>{{ g.cancelled }}</td></tr>{% else %}<tr><td colspan="9">Bu filtreye uygun tedarik siparişi yok.</td></tr>{% endfor %}
+<div class="table-wrap"><table class="compact-table lead-summary"><colgroup><col style="width:26%"><col style="width:9.25%"><col style="width:9.25%"><col style="width:9.25%"><col style="width:9.25%"><col style="width:9.25%"><col style="width:9.25%"><col style="width:9.25%"><col style="width:9.25%"></colgroup><thead><tr><th>Tedarikçi</th><th>Sipariş</th><th>Ölçülen</th><th>Ortalama Termin</th><th>Teslim Edilen</th><th>Ort. Teslim Süresi</th><th>Devam Eden</th><th>Geçmişi Eksik</th><th>İptal</th></tr></thead><tbody>
+{% for g in supplier_groups %}<tr><td title="{{ g.customer.name }}"><a href="{{ url_for('customer_account',customer_id=g.customer.id) }}">{{ g.customer.name }}</a></td><td>{{ g.rows|length }}</td><td>{{ g.leads|length }}</td><td>{{ (g.average|money)+' gün' if g.average is not none else '—' }}</td><td>{{ g.deliveries|length }}</td><td>{{ (g.delivery_average|money)+' gün' if g.delivery_average is not none else '—' }}</td><td>{{ g.pending }}</td><td>{{ g.missing }}</td><td>{{ g.cancelled }}</td></tr>{% else %}<tr><td colspan="9">Bu filtreye uygun tedarik siparişi yok.</td></tr>{% endfor %}
 </tbody></table></div>
 </section>
 <section class="panel"><div class="panel-head"><div><h2>Sipariş Bazında Süreler</h2><p>Başlangıç sipariş üzerindeki tarih değil, sisteme kayıt zamanıdır. İptaller, devam edenler ve geçiş geçmişi eksik kayıtlar ortalamaya katılmaz. Teslim süresi yalnız “Teslim Edildi” geçişi bilinen siparişlerden hesaplanır.</p></div></div>
