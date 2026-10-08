@@ -26,6 +26,14 @@ class CustomerCaseSearchTests(unittest.TestCase):
         self.assertEqual(result.status_code,302)
         self.assertFalse(m.Customer.query.filter_by(name='Vergisiz Test').one().tax_number)
 
+    def test_shared_email_domain_does_not_hide_company_results(self):
+        m.db.session.add_all([m.Customer(name='DECOFİS A.Ş.'),m.Customer(name='Başka Cari',email='ssh@decofis.com.tr')]);m.db.session.commit()
+        for query in ['decofis','DECOFİS','Decofis']:
+            matches=m.apply_customer_text_filter(m.Customer.query,query).all()
+            self.assertEqual([c.name for c in matches],['DECOFİS A.Ş.'])
+        matches=m.apply_customer_text_filter(m.Customer.query,'ssh@decofis.com.tr').all()
+        self.assertEqual([c.name for c in matches],['Başka Cari'])
+
     def test_turkish_names_in_both_database_expressions(self):
         names=['YANILMAZ MOBİLYA', 'İŞIK ÇÖZÜM', 'ÖZGÜR ŞEN', 'Firma %50']
         for name in names: m.db.session.add(m.Customer(name=name))

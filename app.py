@@ -91,7 +91,10 @@ def apply_customer_text_filter(records, query, dialect_name=None):
     dialect_name = dialect_name or db.engine.dialect.name
     terms = normalize_search_text(query).split()
     columns = (Customer.name, Customer.code, Customer.contact_name, Customer.phone,
-               Customer.mobile, Customer.email, Customer.city)
+               Customer.mobile, Customer.city)
+    # Shared supplier email domains must not swamp company-name searches.
+    if "@" in query:
+        columns += (Customer.email,)
     def normalized(column):
         if dialect_name == "sqlite":
             return func.normalize_tr(column)
