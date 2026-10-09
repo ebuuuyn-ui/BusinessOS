@@ -11,7 +11,7 @@
 <form method="post" class="transfer-edit-form">
 <input type="hidden" name="version" value="{{ version }}">
 <label>Tarih<input type="date" name="date" value="{{ values.date }}" required></label>
-<label>Tutar (₺)<input type="text" inputmode="decimal" data-money-input="true" name="amount" value="{{ values.amount }}" required><small>252.000,00 = iki yüz elli iki bin TL</small></label>
+<label>Tutar (₺)<input type="text" inputmode="decimal" data-money-input="true" name="amount" value="{{ values.amount }}" required></label>
 <label>Açıklama<input name="description" value="{{ values.description }}" maxlength="300" required></label>
 <div class="transfer-actions"><button class="button primary" name="action" value="save">Değişiklikleri Kaydet</button>
 <button class="button danger" name="action" value="delete" formnovalidate onclick="return confirm('Bu virman silinsin mi? İki hesap ve varsa bağlı cari karşılığı birlikte geri alınacak.')">Virmanı Sil</button></div>
