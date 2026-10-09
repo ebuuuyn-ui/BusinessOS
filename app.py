@@ -4444,20 +4444,29 @@ def create_app(test_config=None):
     def order_reports():
         if request.args.get('report') not in ('seller','lead'):
             return render_template('order_reports_index.html')
+        def respond(template,kind,context):
+            format=request.args.get('format')
+            if format:
+                if format not in ('xlsx','pdf'): abort(400)
+                from order_report_exports import export_report
+                title='Satici-Siparis-Raporu' if kind=='seller' else 'Tedarikci-Termin-Raporu'
+                mimetype='application/pdf' if format=='pdf' else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                return send_file(export_report(kind,context,format),as_attachment=True,download_name=title+'.'+format,mimetype=mimetype)
+            return render_template(template,**context)
         if request.args.get('report')=='seller':
             from seller_reports import build_report, load_owners
             filters={key:request.args.get(key,'').strip() for key in ('q','seller','start_date','end_date')}
             for key in ('start_date','end_date'):
                 parsed=parse_date(filters[key]);filters[key]=parsed.isoformat() if parsed else ''
             records=Order.query.options(joinedload(Order.customer),selectinload(Order.items)).filter(Order.order_type=='Satış').all()
-            return render_template('seller_order_reports.html',**build_report(records,load_owners(db),filters,normalize_search_text))
+            return respond('seller_order_reports.html','seller',build_report(records,load_owners(db),filters,normalize_search_text))
         from supplier_lead_times import build_report
         filters={key:request.args.get(key, '').strip() for key in ('q','customer_q','start_date','end_date')}
         for key in ('start_date','end_date'):
             parsed=parse_date(filters[key])
             filters[key]=parsed.isoformat() if parsed else ''
         records=Order.query.options(joinedload(Order.customer),selectinload(Order.history)).filter(Order.order_type=='Satın Alma').all()
-        return render_template('order_reports.html', **build_report(records,normalize_search_text,filters))
+        return respond('order_reports.html','lead',build_report(records,normalize_search_text,filters))
 
     @app.get("/siparisler/excel")
     def export_orders_excel():
