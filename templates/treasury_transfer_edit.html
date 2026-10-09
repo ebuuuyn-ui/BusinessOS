@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Virmanı Düzenle · Business OS{% endblock %}
+{% block heading %}Virmanı Düzenle{% endblock %}
+{% block subheading %}{{ source.name }} → {{ target.name }}{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('treasury_accounts_page') }}">← Kasalara Dön</a>{% endblock %}
+{% block content %}
+<section class="panel treasury-unified">
+<form method="post" class="fund-transfer">
+<input type="hidden" name="version" value="{{ version }}">
+<label>Tarih<input type="date" name="date" value="{{ values.date }}" required></label>
+<label>Tutar (₺)<input type="text" inputmode="decimal" data-money-input="true" name="amount" value="{{ values.amount }}" required><small>252.000,00 = iki yüz elli iki bin TL</small></label>
+<label>Açıklama<input name="description" value="{{ values.description }}" maxlength="300" required></label>
+<button class="button primary" name="action" value="save">Değişiklikleri Kaydet</button>
+<button class="button danger" name="action" value="delete" formnovalidate onclick="return confirm('Bu virman silinsin mi? İki hesap ve varsa bağlı cari karşılığı birlikte geri alınacak.')">Virmanı Sil</button>
+</form>
+<p>Kaydettiğiniz tutar virmanın yeni toplam tutarıdır. İki hesap bakiyesi ve varsa bağlı Ahmet cari hareketi birlikte güncellenir.</p>
+</section>
+{% endblock %}

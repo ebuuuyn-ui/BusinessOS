@@ -2,6 +2,9 @@
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
+import re
+import json
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 from navigation import return_destination
 from flask import request, render_template, redirect, url_for, flash, abort, has_request_context, g, current_app
 from sqlalchemy import inspect, select, event, or_
@@ -29,7 +32,14 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
     def log(action,detail):
         db.session.execute(audit.insert().values(id=str(uuid4()),action=action,detail=str(detail),actor=getattr(g,'web_username','local') if has_request_context() else 'test',created_at=datetime.utcnow()))
     def money(value):
-        try: n=Decimal(str(value))
+        raw=str(value).strip()
+        # Forms display Turkish grouping; a three-digit dot group is thousands.
+        if re.fullmatch(r'[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?',raw):
+            raw=raw.replace('.','').replace(',','.')
+        elif re.fullmatch(r'[0-9]+(?:[,.][0-9]{1,2})?',raw):
+            raw=raw.replace(',','.')
+        else: raise ValueError('Geçerli bir tutar girin. Örnek: 252.000,00')
+        try: n=Decimal(raw)
         except InvalidOperation: raise ValueError('Geçerli bir tutar girin.')
         if not n.is_finite() or n<=0 or n!=n.quantize(Decimal('.01')) or n>=Decimal('1000000000000'):
             raise ValueError('Tutar pozitif ve en fazla iki ondalık basamaklı olmalıdır.')
@@ -152,7 +162,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         for p in pp:
             if not p['source_key'].startswith('transfer:'): continue
             a=amap[p['account_id']]
-            movements.append(dict(date=p['date'],kind=a['kind'],direction='Giriş' if p['amount']>0 else 'Çıkış',description=p['description'],details='Hesaplar arası transfer',party=a['name'],reference=None,due_date=None,status='Gerçekleşti',amount=abs(p['amount']),customer_id=None,sort_time=p['created_at'],source='Transfer',manual_id=None,check_id=None,account_name=a['name'],account_id=a['id']))
+            movements.append(dict(date=p['date'],kind=a['kind'],direction='Giriş' if p['amount']>0 else 'Çıkış',description=p['description'],details='Hesaplar arası transfer',party=a['name'],reference=None,due_date=None,status='Gerçekleşti',amount=abs(p['amount']),customer_id=None,sort_time=p['created_at'],source='Transfer',edit_url=url_for('edit_treasury_transfer',batch=p['batch']),manual_id=None,check_id=None,account_name=a['name'],account_id=a['id']))
         return movements
     app.extensions['treasury_accounts']['enrich']=enrich
     def finish_inner(new_transactions):
@@ -255,6 +265,55 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                 return redirect(return_destination(url_for('customer_account',customer_id=customer_id)))
         return show()
 
+    @app.route('/kasa-cek/virman/<uuid:batch>/duzenle',methods=['GET','POST'])
+    def edit_treasury_transfer(batch):
+        batch=str(batch)
+        if not ready(): abort(404)
+        pair=[dict(p) for p in db.session.execute(select(postings).where(postings.c.batch==batch).order_by(postings.c.id).with_for_update()).mappings()]
+        if not pair: abort(404)
+        outgoing=next((p for p in pair if p['source_key']=='transfer:'+batch+':out'),None)
+        incoming=next((p for p in pair if p['source_key']=='transfer:'+batch+':in'),None)
+        if len(pair)!=2 or not outgoing or not incoming or outgoing['amount']>=0 or incoming['amount']!=-outgoing['amount'] or outgoing['account_id']==incoming['account_id']:
+            abort(409,description='Virmanın iki tarafı tutarsız; kayıt değiştirilmedi.')
+        a=account(outgoing['account_id']);b=account(incoming['account_id'])
+        serializer=URLSafeTimedSerializer(app.secret_key,salt='treasury-transfer-edit')
+        snapshot=json.dumps(pair,sort_keys=True,default=str,ensure_ascii=False)
+        description=outgoing['description'].partition(' · ')[2]
+        values=dict(amount=format(incoming['amount'],',.2f').replace(',','_').replace('.',',').replace('_','.'),date=incoming['date'].isoformat(),description=description)
+        if request.method=='POST':
+            values.update({k:request.form.get(k,'') for k in values})
+            try:
+                try: original=serializer.loads(request.form.get('version',''),max_age=3600)
+                except BadSignature: raise ValueError('Düzenleme ekranını yenileyip tekrar deneyin.')
+                if original!=snapshot: raise ValueError('Virman başka bir işlemde değişmiş. Ekranı yenileyin.')
+                action=request.form.get('action')
+                if action not in ('save','delete'): raise ValueError('Geçersiz işlem.')
+                if action=='save':
+                    amount=money(values['amount']);day=date.fromisoformat(values['date']);note=values['description'].strip()
+                    if not note or len(note)>300: raise ValueError('Açıklama 1–300 karakter olmalıdır.')
+                backup()
+                log('transfer_'+action,snapshot)
+                if action=='delete': unassign(outgoing['source_key'])
+                else:
+                    db.session.info['treasury_internal']=True
+                    try:
+                        for entry,acc,other,sign,arrow in ((outgoing,a,b,-1,'→'),(incoming,b,a,1,'←')):
+                            n=amount*sign;desc='Transfer '+arrow+' '+other['name']+' · '+note
+                            db.session.execute(postings.update().where(postings.c.id==entry['id']).values(amount=n,date=day,description=desc))
+                            if entry['mirror_id']:
+                                mirror=db.session.get(Transaction,entry['mirror_id'])
+                                if not mirror or mirror.customer_id!=acc['customer_id']: raise ValueError('Bağlı cari kaydı tutarsız; işlem iptal edildi.')
+                                mirror.debit=max(n,Decimal(0));mirror.credit=max(-n,Decimal(0))
+                                mirror.transaction_date=day;mirror.description=(acc['name']+' · '+desc)[:240]
+                        db.session.flush()
+                    finally: db.session.info.pop('treasury_internal',None)
+                db.session.commit()
+                flash('Virman silindi; iki hesap ve bağlı cari karşılığı geri alındı.' if action=='delete' else 'Virman güncellendi; iki hesap ve bağlı cari karşılığı birlikte düzeltildi.','success')
+                return redirect(return_destination(url_for('treasury_accounts_page')))
+            except (ValueError,TypeError) as error:
+                db.session.rollback();flash(str(error),'error')
+        return render_template('treasury_transfer_edit.html',source=a,target=b,values=values,version=serializer.dumps(snapshot))
+
     @app.route('/kasa-cek/kasalar',methods=['GET','POST'])
     def treasury_accounts_page():
         if request.method=='POST':
@@ -335,7 +394,12 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                     except BadSignature: raise ValueError('Transfer formunu yenileyin.')
                     backup();add(a,'transfer:'+batch+':out',day,-n,'Transfer → '+b['name']+' · '+desc,batch);add(b,'transfer:'+batch+':in',day,n,'Transfer ← '+a['name']+' · '+desc,batch)
                 else: raise ValueError('Geçersiz işlem.')
-                db.session.commit();flash('Kasa işlemi kaydedildi.','success')
+                db.session.commit()
+                message='Kasa işlemi kaydedildi.'
+                if action=='transfer':
+                    formatted=format(n,',.2f').replace(',','_').replace('.',',').replace('_','.')
+                    message=f'Virman kaydedildi: {a["name"]} → {b["name"]} · {formatted} TL'
+                flash(message,'success')
             except (ValueError,TypeError) as error:
                 db.session.rollback();flash(str(error),'error')
             except IntegrityError:

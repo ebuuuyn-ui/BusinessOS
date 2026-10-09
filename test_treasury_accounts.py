@@ -252,8 +252,41 @@ class FundTests(unittest.TestCase):
         self.assertEqual(m.calculate_treasury()['cash_balance'],120);self.assertEqual(self.balances()['enpara'],120)
         c=self.context();self.post(action='transfer',from_id=self.ids['enpara'],to_id=self.ids['kuveyt'],date=date.today().isoformat(),amount='20',description='Virman',token=c['token'])
         self.assertEqual(m.calculate_treasury()['cash_balance'],120)
+    def transfer(self,amount):
+        self.post(action='transfer',from_id=self.ids['ahmet'],to_id=self.ids['kuveyt'],amount=amount,date=date.today().isoformat(),description='Virman',token=self.context()['token'])
+        return m.db.session.execute(select(self.postings).where(self.postings.c.source_key.like('transfer:%:out')).order_by(self.postings.c.created_at.desc())).mappings().first()
+    def edit_context(self,batch):
+        c={}
+        def save(sender,template,context,**extra):c.update(context)
+        template_rendered.connect(save,m.app)
+        try:r=self.client.get('/kasa-cek/virman/'+batch+'/duzenle')
+        finally:template_rendered.disconnect(save,m.app)
+        self.assertEqual(r.status_code,200);return c
+    def test_turkish_transfer_amount_and_remainder(self):
+        self.link();self.transfer('252.000')
+        self.assertEqual(self.balances()['kuveyt'],252000);self.assertEqual(self.ahmet.balance,-252000)
+        self.transfer('251.748,50')
+        self.assertEqual(self.balances()['kuveyt'],Decimal('503748.50'));self.assertEqual(self.count(),4)
+    def test_edit_transfer_updates_both_sides_and_mirror_and_rejects_stale(self):
+        self.link();p=self.transfer('252');route='/kasa-cek/virman/'+p['batch']+'/duzenle'
+        c=self.edit_context(p['batch']);mid=p['mirror_id']
+        data=dict(action='save',version=c['version'],amount='252.000,00',date='2026-10-09',description='Düzeltildi',return_to='/kasa-cek?account=4')
+        r=self.client.post(route,data=data);self.assertEqual(r.status_code,302);self.assertEqual(r.location,'/kasa-cek?account=4')
+        self.assertEqual(self.count(),2);self.assertEqual(self.balances()['kuveyt'],252000);self.assertEqual(self.balances()['ahmet'],-252000);self.assertEqual(self.ahmet.balance,-252000)
+        mirror=m.db.session.get(m.AccountTransaction,mid);self.assertEqual(mirror.credit,252000);self.assertEqual(mirror.transaction_date,date(2026,10,9))
+        data['amount']='5';self.client.post(route,data=data);self.assertEqual(self.balances()['kuveyt'],252000)
+        current=self.edit_context(p['batch']);data.update(version=current['version'],amount='NaN')
+        self.client.post(route,data=data);self.assertEqual(self.balances()['kuveyt'],252000)
+        self.client.post(route,data=dict(action='delete',version=current['version']))
+        self.assertEqual(self.count(),0);self.assertEqual(self.ahmet.balance,0);self.assertEqual(m.AccountTransaction.query.count(),0)
+        self.assertEqual(self.client.post(route,data=dict(action='delete',version=current['version'])).status_code,404)
+    def test_transfer_actions_visible_on_both_lists(self):
+        p=self.transfer('252');route='/kasa-cek/virman/'+p['batch']+'/duzenle'
+        self.assertIn(route,self.client.get('/kasa-cek').text)
+        self.assertIn(route,self.client.get('/kasa-cek/kasalar').text)
+
     def test_invalid_transfers_no_partial_posting(self):
-        for amount in ['NaN','-1','0','1.234']:
+        for amount in ['NaN','-1','0','1.2345','251.7489','1,234','1.23.456']:
             self.post(action='transfer',from_id=self.ids['ahmet'],to_id=self.ids['enpara'],date=date.today().isoformat(),amount=amount,description='Test',token=self.context()['token'])
         self.assertEqual(self.count(),0)
 
