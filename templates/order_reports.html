@@ -14,12 +14,12 @@ body.bos-ui .lead-report-table tr:nth-child(even){background:#f1f4f8}
 </style>
 <section class="panel">
 <div class="panel-head"><div><h2>Tedarikçi Termin Raporu</h2><p>Sisteme giriş → geçerli Sevk Edildi / Teslim Edildi geçişi. Süreler takvim günüdür; her sipariş eşit ağırlıktadır.</p></div></div>
-<form method="get" class="filters">
+<form method="get" class="filters"><input type="hidden" name="report" value="lead">
 <label>Tedarikçi<input name="customer_q" value="{{ filters.customer_q }}" placeholder="Tedarikçi adı veya kodu"></label>
 <label>Sipariş No<input name="q" value="{{ filters.q }}"></label>
 <label>Giriş Başlangıcı<input type="date" name="start_date" value="{{ filters.start_date }}"></label>
 <label>Giriş Bitişi<input type="date" name="end_date" value="{{ filters.end_date }}"></label>
-<button>Filtrele</button><a class="button" href="{{ url_for('order_reports') }}">Temizle</a>
+<button>Filtrele</button><a class="button" href="{{ url_for('order_reports',report='lead') }}">Temizle</a>
 </form>
 <p style="padding:0 10px;font-size:12px">Ortalama Termin: <b>{{ (lead_average|money)+' gün' if lead_average is not none else '—' }}</b> ({{ measured_count }} sipariş) · Devam Eden: <b>{{ pending_count }}</b> · Geçmişi Eksik: <b>{{ missing_count }}</b></p>
 <div class="table-wrap"><table class="compact-table lead-summary"><colgroup><col style="width:28%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:12%"></colgroup><thead><tr><th>Tedarikçi</th><th>Sipariş</th><th>Ölçülen</th><th>Ortalama Termin</th><th>Devam Eden</th><th>Geçmişi Eksik</th><th>İptal</th></tr></thead><tbody>

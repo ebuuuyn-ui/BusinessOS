@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Sipariş Raporları · Business OS{% endblock %}
+{% block heading %}Sipariş Raporları{% endblock %}
+{% block subheading %}Görüntülemek istediğiniz raporu seçin{% endblock %}
+{% block content %}
+<style>.report-headings{padding:0;overflow:hidden}.report-headings a{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #b8c5d5;font-size:13px;font-weight:600;color:#175899;text-decoration:none}.report-headings a:last-child{border-bottom:0}.report-headings a:hover{background:#edf5ff}.report-headings a:focus-visible{outline:2px solid #175899;outline-offset:-2px}</style>
+<section class="panel report-headings" aria-label="Rapor başlıkları">
+<a href="{{ url_for('order_reports',report='lead') }}"><span>Tedarikçi Termin Raporu</span><span aria-hidden="true">→</span></a>
+<a href="{{ url_for('order_reports',report='seller') }}"><span>Satıcı Bazlı Sipariş Raporu</span><span aria-hidden="true">→</span></a>
+</section>
+{% endblock %}

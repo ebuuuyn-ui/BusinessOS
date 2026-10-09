@@ -4442,6 +4442,8 @@ def create_app(test_config=None):
 
     @app.get("/siparisler/raporlar")
     def order_reports():
+        if request.args.get('report') not in ('seller','lead'):
+            return render_template('order_reports_index.html')
         if request.args.get('report')=='seller':
             from seller_reports import build_report, load_owners
             filters={key:request.args.get(key,'').strip() for key in ('q','seller','start_date','end_date')}
