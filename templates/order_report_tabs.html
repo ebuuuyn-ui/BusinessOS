@@ -1,0 +1,1 @@
+<nav class="fund-tabs"><a class="button {{ 'primary' if request.args.get('report')!='seller' }}" href="{{ url_for('order_reports') }}">Tedarikçi Termin Raporu</a><a class="button {{ 'primary' if request.args.get('report')=='seller' }}" href="{{ url_for('order_reports',report='seller') }}">Satıcı Bazlı Sipariş Raporu</a></nav>

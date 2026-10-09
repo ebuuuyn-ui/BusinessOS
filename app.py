@@ -4442,6 +4442,13 @@ def create_app(test_config=None):
 
     @app.get("/siparisler/raporlar")
     def order_reports():
+        if request.args.get('report')=='seller':
+            from seller_reports import build_report, load_owners
+            filters={key:request.args.get(key,'').strip() for key in ('q','seller','start_date','end_date')}
+            for key in ('start_date','end_date'):
+                parsed=parse_date(filters[key]);filters[key]=parsed.isoformat() if parsed else ''
+            records=Order.query.options(joinedload(Order.customer),selectinload(Order.items)).filter(Order.order_type=='Satış').all()
+            return render_template('seller_order_reports.html',**build_report(records,load_owners(db),filters,normalize_search_text))
         from supplier_lead_times import build_report
         filters={key:request.args.get(key, '').strip() for key in ('q','customer_q','start_date','end_date')}
         for key in ('start_date','end_date'):
