@@ -30,8 +30,8 @@ def allowed_order(order):
     return order.order_type == "Satın Alma" and order.customer_id == SUPPLIER_ID
 
 
-def order_rows(order, actor, now=None):
-    if not allowed_order(order):
+def order_rows(order, actor, now=None, *, trello=False):
+    if not (order.order_type in ("Satış","Satın Alma") if trello else allowed_order(order)):
         raise SheetExportError("Bu tabloya yalnızca ABİKA satın alma siparişleri aktarılabilir.")
     stamp = (now or datetime.now(ZoneInfo("Europe/Istanbul"))).strftime("%d.%m.%Y %H:%M")
     day = lambda d: d.strftime("%d.%m.%Y") if d else ""

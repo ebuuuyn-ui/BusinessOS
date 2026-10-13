@@ -25,6 +25,50 @@ class TrelloTests(SupplierRouteTests):
         self.p=patch('supplier_trello.Client',return_value=self.mock);self.p.start();self.addCleanup(self.p.stop)
         r=self.client.post('/yonetim/trello',base_url=BASE,headers={'Origin':BASE},data={'key':'testkey','token':'testtoken'})
         self.assertEqual(r.status_code,302);self.mock.reset_mock()
+    def test_anonymous_and_other_suppliers_cannot_access(self):
+        self.assertEqual(self.app.test_client().get(self.path,base_url=BASE).status_code,302)
+        order=m.db.session.get(m.Order,self.order_id)
+        other=m.Customer(name='Diğer Firma',city='ANKARA');m.db.session.add(other);order.customer=other;m.db.session.commit()
+        self.assertEqual(self.client.get(self.path,base_url=BASE).status_code,200)
+        order.order_type='Satış';m.db.session.commit()
+        self.assertEqual(self.client.get(self.path,base_url=BASE).status_code,200)
+
+    def test_images_for_both_order_types_and_retry_without_duplicate(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        product=m.Product(name='Görselli Koltuk',code='IMAGE-TEST',unit_price=10)
+        m.db.session.add(product);m.db.session.flush();order.items[0].product=product
+        m.db.session.add(m.ProductQuoteImage(product_id=product.id,content=b'jpeg-test'));m.db.session.commit()
+        token=self.token();self.post({'confirm':token})
+        self.mock.attach_image.assert_called_once()
+        self.assertEqual(self.mock.attach_image.call_args.args[1]['content'],b'jpeg-test')
+        self.post({'confirm':token});self.mock.attach_image.assert_called_once()
+        order.order_type='Satış';m.db.session.commit()
+        self.assertIn('Ürün görseli karta eklenecek',self.client.get(self.path,base_url=BASE).text)
+        self.assertNotIn('ABİKA Google Chat sohbetine',self.client.get(self.path,base_url=BASE).text)
+
+    def test_image_change_invalidates_preview_and_can_complete_existing_card(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        token=self.token();self.post({'confirm':token})
+        product=m.Product(name='Yeni Görsel',code='IMG2',unit_price=10);m.db.session.add(product);m.db.session.flush()
+        order.items[0].product=product;m.db.session.add(m.ProductQuoteImage(product_id=product.id,content=b'new'));m.db.session.commit()
+        self.assertIn('Sipariş değişti',self.post({'confirm':token}).text)
+        self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':''}]
+        self.mock.reset_mock();self.post({'confirm':self.token()})
+        self.mock.attach_image.assert_called_once()
+        self.assertFalse(any(call.args[:2]==('POST','cards') for call in self.mock.call.call_args_list))
+
+    def test_image_failure_keeps_existing_card_for_retry(self):
+        order=m.db.session.get(m.Order,self.order_id)
+        product=m.Product(name='Koltuk',code='IMGFAIL',unit_price=10);m.db.session.add(product);m.db.session.flush();order.items[0].product=product
+        m.db.session.add(m.ProductQuoteImage(product_id=product.id,content=b'image'));m.db.session.commit()
+        self.mock.attach_image.side_effect=t.TrelloError('Görsel yüklenemedi')
+        token=self.token();r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(r.status_code,409);self.assertEqual(r.json['remaining'],1)
+        self.mock.attach_image.side_effect=None;self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':''}];self.mock.reset_mock()
+        r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(r.json['remaining'],0)
+        self.assertFalse(any(call.args[:2]==('POST','cards') for call in self.mock.call.call_args_list))
+
     def staff_client(self, name):
         password='test-password-1234'
         r=self.client.post('/kullanicilar',base_url=BASE,headers={'Origin':BASE},
