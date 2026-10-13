@@ -5127,8 +5127,19 @@ def create_app(test_config=None):
         percentage_text = lambda value: f"%{Decimal(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         for index, item in enumerate(order.items, 1):
             image=images.get(f'bos:order:{order.id}:item:{item.id}')
-            visual=pdf_image(image['content'],width=80,height=60) if image else None
-            product_cell=[Paragraph(xml_escape(item.product_name),body_style),visual] if visual else Paragraph(xml_escape(item.product_name)+'<br/>Görsel yok',body_style)
+            visual = pdf_image(image['content'], width=17*mm, height=60) if image else None
+            product_name = Paragraph(xml_escape(item.product_name), body_style)
+            if visual:
+                product_cell = Table([[visual, product_name]], colWidths=[18*mm, 30*mm-8])
+                product_cell.setStyle(TableStyle([
+                    ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                    ("LEFTPADDING", (0,0), (-1,-1), 0),
+                    ("RIGHTPADDING", (0,0), (-1,-1), 0),
+                    ("TOPPADDING", (0,0), (-1,-1), 0),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+                ]))
+            else:
+                product_cell = Paragraph(xml_escape(item.product_name)+'<br/>Görsel yok', body_style)
             data.append([
                 Paragraph(str(index), body_style), product_cell, Paragraph(item.variant or "-", body_style),
                 Paragraph(item.detail_2 or "-", body_style), Paragraph(item.detail_3 or "-", body_style), Paragraph(str(item.quantity), right_style),
@@ -5136,7 +5147,7 @@ def create_app(test_config=None):
                 Paragraph(percentage_text(item.discount_rate), right_style), Paragraph(money_text(item.net_amount), right_style),
                 Paragraph(percentage_text(item.vat_rate), right_style), Paragraph(money_text(item.vat_amount), right_style), Paragraph(money_text(item.total_amount), right_style),
             ])
-        item_table = Table(data, repeatRows=1, colWidths=[9*mm, 33*mm, 19*mm, 19*mm, 20*mm, 10*mm, 13*mm, 20*mm, 14*mm, 22*mm, 13*mm, 19*mm, 22*mm])
+        item_table = Table(data, repeatRows=1, colWidths=[9*mm, 48*mm, 19*mm, 19*mm, 20*mm, 10*mm, 13*mm, 20*mm, 14*mm, 22*mm, 13*mm, 19*mm, 22*mm])
         item_table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#2563EB")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("FONTNAME",(0,0),(-1,-1),font_name),("VALIGN",(0,0),(-1,-1),"TOP"),("LINEBELOW",(0,0),(-1,-1),0.35,colors.HexColor("#D8E0EC")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F8FAFC")]),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
         story.extend([item_table, Spacer(1, 4*mm)])
         list_total = sum(((item.unit_price or Decimal("0")) * item.quantity for item in order.items), Decimal("0"))
