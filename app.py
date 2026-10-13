@@ -4956,6 +4956,8 @@ def create_app(test_config=None):
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
         order = db.get_or_404(Order, order_id)
+        from order_images import product_images, pdf_image
+        images=product_images(app,db,order)
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Sipariş"
@@ -4999,6 +5001,7 @@ def create_app(test_config=None):
             "Sıra", "Ürün", "Ayrıntı 1", "Ayrıntı 2", "Ayrıntı 3", "Adet", "Birim",
             "Liste Birim Fiyat", "İskonto %", "İskonto Sonrası Tutar", "KDV %", "KDV Tutarı", "KDV Dahil Toplam",
         ]
+        headers.append("Ürün Görseli")
         header_row = max(8, len(info) + 4)
         sheet.freeze_panes = f"A{header_row + 1}"
         for column, heading in enumerate(headers, 1):
@@ -5028,6 +5031,17 @@ def create_app(test_config=None):
             for column in (9, 11):
                 sheet.cell(row_no, column).number_format = "0.00%"
             sheet.row_dimensions[row_no].height = 30
+            image=images.get(f'bos:order:{order.id}:item:{item.id}')
+            if image:
+                from openpyxl.drawing.image import Image as ExcelImage
+                from PIL import Image as PILImage
+                try:
+                    with PILImage.open(BytesIO(image['content'])) as im:
+                        im.load();im.thumbnail((110,80));blob=BytesIO();im.convert('RGB').save(blob,format='PNG')
+                    drawing=ExcelImage(BytesIO(blob.getvalue()));sheet.add_image(drawing,f'N{row_no}')
+                    sheet.row_dimensions[row_no].height=64
+                except (OSError,ValueError):sheet.cell(row_no,14,'Görsel yok')
+            else:sheet.cell(row_no,14,'Görsel yok')
         last_data_row = header_row + len(order.items)
         total_row = last_data_row + 2
         sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=7)
@@ -5057,7 +5071,8 @@ def create_app(test_config=None):
         widths = [7, 30, 18, 18, 18, 10, 10, 16, 11, 19, 10, 15, 18]
         for column, width in enumerate(widths, 1):
             sheet.column_dimensions[chr(64 + column)].width = width
-        sheet.auto_filter.ref = f"A{header_row}:M{last_data_row}"
+        sheet.column_dimensions["N"].width=17
+        sheet.auto_filter.ref = f"A{header_row}:N{last_data_row}"
         sheet.print_title_rows = f"1:{header_row}"
         sheet.page_setup.orientation = "landscape"
         sheet.page_setup.fitToWidth = 1
@@ -5077,6 +5092,8 @@ def create_app(test_config=None):
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         order = db.get_or_404(Order, order_id)
+        from order_images import product_images, pdf_image
+        images=product_images(app,db,order)
         from pdf_fonts import register_pdf_fonts
         font_name, bold_name = register_pdf_fonts()
         output = BytesIO()
@@ -5109,8 +5126,11 @@ def create_app(test_config=None):
         money_text = lambda value: f"TL {Decimal(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         percentage_text = lambda value: f"%{Decimal(value or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         for index, item in enumerate(order.items, 1):
+            image=images.get(f'bos:order:{order.id}:item:{item.id}')
+            visual=pdf_image(image['content'],width=80,height=60) if image else None
+            product_cell=[Paragraph(xml_escape(item.product_name),body_style),visual] if visual else Paragraph(xml_escape(item.product_name)+'<br/>Görsel yok',body_style)
             data.append([
-                Paragraph(str(index), body_style), Paragraph(item.product_name, body_style), Paragraph(item.variant or "-", body_style),
+                Paragraph(str(index), body_style), product_cell, Paragraph(item.variant or "-", body_style),
                 Paragraph(item.detail_2 or "-", body_style), Paragraph(item.detail_3 or "-", body_style), Paragraph(str(item.quantity), right_style),
                 Paragraph(item.unit, body_style), Paragraph(money_text(item.unit_price or 0), right_style),
                 Paragraph(percentage_text(item.discount_rate), right_style), Paragraph(money_text(item.net_amount), right_style),

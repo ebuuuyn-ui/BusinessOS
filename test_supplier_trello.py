@@ -39,11 +39,12 @@ class TrelloTests(SupplierRouteTests):
         m.db.session.add(product);m.db.session.flush();order.items[0].product=product
         m.db.session.add(m.ProductQuoteImage(product_id=product.id,content=b'jpeg-test'));m.db.session.commit()
         token=self.token();self.post({'confirm':token})
-        self.mock.attach_image.assert_called_once()
-        self.assertEqual(self.mock.attach_image.call_args.args[1]['content'],b'jpeg-test')
-        self.post({'confirm':token});self.mock.attach_image.assert_called_once()
+        self.mock.attach_form.assert_called_once()
+        self.assertTrue(self.mock.attach_form.call_args.args[2].startswith(b'%PDF'))
+        self.mock.attach_image.assert_not_called()
+        self.post({'confirm':token});self.mock.attach_form.assert_called_once()
         order.order_type='Satış';m.db.session.commit()
-        self.assertIn('Ürün görseli karta eklenecek',self.client.get(self.path,base_url=BASE).text)
+        self.assertIn('Ürün görseli sipariş formunda gösterilecek',self.client.get(self.path,base_url=BASE).text)
         self.assertNotIn('ABİKA Google Chat sohbetine',self.client.get(self.path,base_url=BASE).text)
 
     def test_image_change_invalidates_preview_and_can_complete_existing_card(self):
@@ -54,17 +55,17 @@ class TrelloTests(SupplierRouteTests):
         self.assertIn('Sipariş değişti',self.post({'confirm':token}).text)
         self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':''}]
         self.mock.reset_mock();self.post({'confirm':self.token()})
-        self.mock.attach_image.assert_called_once()
+        self.mock.attach_form.assert_called_once()
         self.assertFalse(any(call.args[:2]==('POST','cards') for call in self.mock.call.call_args_list))
 
     def test_image_failure_keeps_existing_card_for_retry(self):
         order=m.db.session.get(m.Order,self.order_id)
         product=m.Product(name='Koltuk',code='IMGFAIL',unit_price=10);m.db.session.add(product);m.db.session.flush();order.items[0].product=product
         m.db.session.add(m.ProductQuoteImage(product_id=product.id,content=b'image'));m.db.session.commit()
-        self.mock.attach_image.side_effect=t.TrelloError('Görsel yüklenemedi')
+        self.mock.attach_form.side_effect=t.TrelloError('Görsel yüklenemedi')
         token=self.token();r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
         self.assertEqual(r.status_code,409);self.assertEqual(r.json['remaining'],1)
-        self.mock.attach_image.side_effect=None;self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':''}];self.mock.reset_mock()
+        self.mock.attach_form.side_effect=None;self.mock.cards.return_value=[{'id':'card1','url':'https://trello.com/c/example','desc':''}];self.mock.reset_mock()
         r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
         self.assertEqual(r.json['remaining'],0)
         self.assertFalse(any(call.args[:2]==('POST','cards') for call in self.mock.call.call_args_list))

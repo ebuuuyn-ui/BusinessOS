@@ -94,15 +94,11 @@ def order_sent(db,order):
 
 
 def form_pdf(db,order,rows):
+    from flask import current_app
     from supplier_trello import order_form_pdf
-    meta.create_all(db.engine)
-    with db.engine.begin() as conn:
-        lock(db,conn)
-        pdf=conn.execute(select(forms.c.pdf).where(forms.c.order_id==order.id)).scalar()
-        if pdf is None:
-            pdf=order_form_pdf(rows)
-            conn.execute(insert(forms).values(order_id=order.id,pdf=pdf))
-        return pdf
+    from order_images import product_images
+    # Build from current product images, never reuse an older image-free snapshot.
+    return order_form_pdf(rows,product_images(current_app,db,order))
 
 
 def send_order(app,db,order,rows):

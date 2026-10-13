@@ -21,23 +21,7 @@ def order_rows(order,actor):
         for row in rows: row[7]=order.customer.city or ""
     return rows
 
-def product_images(app,db,order):
-    table=db.metadata.tables.get("product_quote_image")
-    ready=table is not None and inspect(db.session.connection()).has_table(table.name)
-    result={}
-    for item in order.items:
-        blob=None
-        if item.product:
-            if ready: blob=db.session.execute(select(table.c.content).where(table.c.product_id==item.product_id)).scalar()
-            code=item.product.code or ""
-            if not blob and code and "/" not in code and "\\" not in code:
-                path=Path(app.root_path)/"static"/"quote-products"/(code+".jpg")
-                if path.is_file(): blob=path.read_bytes()
-        if blob:
-            digest=hashlib.sha256(blob).hexdigest()[:24]
-            key=f"bos:order:{order.id}:item:{item.id}"
-            result[key]=dict(content=blob,name=f"Urun-{item.product_id}-{digest}.jpg",key=key+":img:"+digest,product_id=item.product_id)
-    return result
+from order_images import product_images, pdf_image
 
 from trello_locations import location
 
@@ -57,7 +41,8 @@ extras = Table('businessos_trello_card_extras', meta,
 
 class TrelloError(Exception): pass
 
-def order_form_pdf(rows):
+def order_form_pdf(rows,images=None):
+    images=images or {}
     from io import BytesIO
     from xml.sax.saxutils import escape
     from reportlab.lib import colors
@@ -76,15 +61,16 @@ def order_form_pdf(rows):
         for label, value in [('Sipariş',r[1]),('Sipariş tarihi',r[2]),('Teslim tarihi',r[3]),('Teslim ili',r[7])]:
             if value: story.append(para(f'{label}: {value}'))
         story.append(Spacer(1,12))
-        data=[[para('Ürün / Ayrıntılar'),para('Adet')]]
+        data=[[para('Görsel'),para('Ürün / Ayrıntılar'),para('Adet')]]
         for r in rows:
             details=[str(r[13])]+[f'{label}: {r[i]}' for i,label in [(12,'Kod'),(14,'Açıklama'),(15,'Ayrıntı 1'),(16,'Ayrıntı 2'),(17,'Ayrıntı 3'),(20,'Not')] if r[i]]
-            data.append([para('\n'.join(details)),para(f'{r[18]} {r[19]}')])
-        table=Table(data,colWidths=[425,90],repeatRows=1,hAlign='LEFT')
+            image=pdf_image(images[r[0]]['content']) if r[0] in images else None
+            data.append([image or para('Görsel yok'),para('\n'.join(details)),para(f'{r[18]} {r[19]}')])
+        table=Table(data,colWidths=[85,360,70],repeatRows=1,hAlign='LEFT')
         table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#eaf1fa')),('VALIGN',(0,0),(-1,-1),'TOP'),('GRID',(0,0),(-1,-1),.4,colors.HexColor('#ccd5e0')),('TOPPADDING',(0,0),(-1,-1),8),('BOTTOMPADDING',(0,0),(-1,-1),8)]))
         story.append(table)
         if rows[0][21]: story.extend([Spacer(1,12),para('Sipariş notu: '+str(rows[0][21]))])
-    SimpleDocTemplate(out,pagesize=A4,leftMargin=40,rightMargin=40,topMargin=35,bottomMargin=35).build(story)
+    SimpleDocTemplate(out,pagesize=A4,leftMargin=40,rightMargin=40,topMargin=35,bottomMargin=35,invariant=1).build(story)
     return out.getvalue()
 
 
@@ -120,11 +106,6 @@ class Client:
         if not any(x.get('name')==filename for x in existing):
             self.call('POST',f'cards/{card}/attachments',name=filename,
                       files={'file':(filename,pdf,'application/pdf')})
-
-    def attach_image(self,card,image):
-        existing=self.call('GET',f'cards/{card}/attachments',fields='name')
-        if not any(x.get('name')==image['name'] for x in existing):
-            self.call('POST',f'cards/{card}/attachments',name=image['name'],files={'file':(image['name'],image['content'],'image/jpeg')})
 
     def lists(self): return self.call('GET',f'boards/{BOARD}/lists',filter='open',fields='name,closed')
     def cards(self): return self.call('GET',f'boards/{BOARD}/cards',filter='all',fields='id,desc,url,locationName,address,coordinates')
@@ -236,6 +217,8 @@ def register_supplier_trello(app, db, Order):
         signer=URLSafeTimedSerializer(app.secret_key,salt='trello-export')
         identity={'order':order.id,'hash':fingerprint(rows),'actor':g.web_username}
         if images: identity['images']={key:value['key'] for key,value in images.items()}
+        form_version=hashlib.sha256(json.dumps(dict(hash=identity['hash'],images=identity.get('images',{})),sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:20]
+        form_keys={r[0]:r[0]+':form:'+form_version for r in rows}
         error=None; cfg={}
         batch_request = request.method == 'POST' and request.headers.get('Accept') == 'application/json'
         try:
@@ -250,15 +233,12 @@ def register_supplier_trello(app, db, Order):
                 meta.create_all(db.engine)
                 cards=client.cards()
                 pdf=form_pdf(db,order,rows)
-                filename=f'{order.order_no}-Siparis-Formu.pdf'
+                filename=f'{order.order_no}-Siparis-Formu-{form_version}.pdf'
                 sent=0
                 for row in rows:
                     with db.engine.connect() as c: previous=c.execute(select(deliveries).where(deliveries.c.key==row[0])).mappings().first()
-                    with db.engine.connect() as c: done=c.execute(select(extras.c.card_id).where(extras.c.key==row[0])).scalar()
-                    image=images.get(row[0]);image_done=None
-                    if image:
-                        with db.engine.connect() as c: image_done=c.execute(select(extras.c.card_id).where(extras.c.key==image['key'])).scalar()
-                    if previous and previous['card_id'] and done==previous['card_id'] and (not image or image_done==previous['card_id']): continue
+                    with db.engine.connect() as c: done=c.execute(select(extras.c.card_id).where(extras.c.key==form_keys[row[0]])).scalar()
+                    if previous and previous['card_id'] and done==previous['card_id']: continue
                     if sent>=3: break
                     card=None
                     if previous and previous['card_id']:
@@ -291,14 +271,9 @@ def register_supplier_trello(app, db, Order):
                         updates['desc']=card.get('desc','')+'\n\nTeslim ili: '+str(row[7])
                     if updates: client.call('PUT',f'cards/{card["id"]}',**updates)
                     client.attach_form(card['id'],filename,pdf)
-                    if image and image_done!=card['id']:
-                        client.attach_image(card['id'],image)
-                        with db.engine.begin() as c:
-                            if image_done: c.execute(update(extras).where(extras.c.key==image['key']).values(card_id=card['id']))
-                            else: c.execute(insert(extras).values(key=image['key'],card_id=card['id']))
                     with db.engine.begin() as c:
-                        if done: c.execute(update(extras).where(extras.c.key==row[0]).values(card_id=card['id']))
-                        else: c.execute(insert(extras).values(key=row[0],card_id=card['id']))
+                        if done: c.execute(update(extras).where(extras.c.key==form_keys[row[0]]).values(card_id=card['id']))
+                        else: c.execute(insert(extras).values(key=form_keys[row[0]],card_id=card['id']))
                     sent+=1
         except TrelloError as exc: error=str(exc)
         states={}
@@ -306,8 +281,8 @@ def register_supplier_trello(app, db, Order):
             with db.engine.connect() as c: states={x['key']:dict(x) for x in c.execute(select(deliveries).where(deliveries.c.key.in_([r[0] for r in rows]))).mappings()}
         completed={}
         if inspect(db.engine).has_table(extras.name):
-            with db.engine.connect() as c: completed=dict(c.execute(select(extras.c.key,extras.c.card_id).where(extras.c.key.in_([r[0] for r in rows]+[v['key'] for v in images.values()]))).all())
-        remaining = sum(not states.get(r[0],{}).get('card_id') or completed.get(r[0])!=states[r[0]]['card_id'] or (r[0] in images and completed.get(images[r[0]]['key'])!=states.get(r[0],{}).get('card_id')) for r in rows)
+            with db.engine.connect() as c: completed=dict(c.execute(select(extras.c.key,extras.c.card_id).where(extras.c.key.in_(list(form_keys.values())))).all())
+        remaining = sum(not states.get(r[0],{}).get('card_id') or completed.get(form_keys[r[0]])!=states[r[0]]['card_id'] for r in rows)
         chat_enabled=chat_allowed(order)
         chat_done=order_sent(db,order) if chat_enabled else True
         if request.method=='POST' and not error and not remaining and not chat_done:
