@@ -4341,6 +4341,7 @@ def create_app(test_config=None):
     def delete_expense(expense_id):
         expense = db.get_or_404(Expense, expense_id)
         create_database_backup(app, "before_expense_delete")
+        app.extensions['treasury_accounts']['prepare_expense'](expense)
         db.session.delete(expense)
         db.session.commit()
         flash("Masraf kaydı silindi.", "success")
