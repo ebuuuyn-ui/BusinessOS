@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Faturaya Aktar · {{ order.order_no }}{% endblock %}
+{% block heading %}Faturaya Aktar{% endblock %}
+{% block subheading %}{{ order.order_no }} · {{ order.customer.name }}{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+<h2>Kayıt yöntemini seçin</h2>
+{% if config.WEB_AUTH_ENABLED and order.order_type == 'Satış' %}
+<p>Uyumsoft üzerinden resmî fatura taslağı hazırlayın.</p>
+<a class="button primary" href="{{ url_for('uyumsoft_order_preview', order_id=order.id) }}">Uyumsoft</a>
+{% else %}
+<a class="button primary" href="{{ url_for('invoices', entry=1, order_id=order.id) }}">Fatura Kaydet</a>
+{% endif %}
+<p>GR, Uyumsoft’a gönderilmeden cari ve stok hareketlerini işleyen iç kayıttır. Kod otomatik verilir.</p>
+<a class="button" href="{{ url_for('order_gr', order_id=order.id) }}">GR · İç Kayıt</a>
+</section>
+{% endblock %}

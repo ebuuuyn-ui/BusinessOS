@@ -1,10 +1,11 @@
 {% extends 'base.html' %}
 {% block title %}{{ invoice.invoice_no }} · Fatura{% endblock %}
-{% block heading %}{{ invoice.invoice_type }} Faturası {{ invoice.invoice_no }}{% endblock %}
+{% block heading %}{{ 'GR · İç Kayıt' if invoice.is_gr else invoice.invoice_type + ' Faturası' }} {{ invoice.invoice_no }}{% endblock %}
 {% block subheading %}{{ invoice.customer.name }} · {{ invoice.invoice_date.strftime('%d.%m.%Y') }}{% endblock %}
 {% block header_action %}<div class="header-actions">{% if invoice.invoice_type == "Satış" %}<a class="button primary" href="{{ url_for('invoice_return', invoice_id=invoice.id) }}">İade Gir</a>{% endif %}<a class="button" href="{{ url_for('invoices') }}">← Faturalara Dön</a>{% if invoice.invoice_type != "Satış İadesi" and not returns %}<a class="button primary" href="{{ url_for('edit_invoice', invoice_id=invoice.id) }}">Faturayı Düzenle</a>{% endif %}<a class="button" href="{{ url_for('customer_account', customer_id=invoice.customer_id) }}">Cari Hesabı Aç</a></div>{% endblock %}
 {% block content %}
-{% if config.WEB_AUTH_ENABLED and invoice.invoice_type == 'Satış' %}<div class="detail-navigation"><a class="button primary" href="{{ url_for('uyumsoft_preview',invoice_id=invoice.id) }}">Uyumsoft Fatura Taslağı</a></div>{% endif %}
+{% if invoice.is_gr %}<p class="note">GR · İç kayıt. Resmî fatura değildir; Uyumsoft’a gönderilmedi.</p>{% endif %}
+{% if config.WEB_AUTH_ENABLED and invoice.invoice_type == 'Satış' and not invoice.is_gr %}<div class="detail-navigation"><a class="button primary" href="{{ url_for('uyumsoft_preview',invoice_id=invoice.id) }}">Uyumsoft Fatura Taslağı</a></div>{% endif %}
 {% if uyumsoft_imported(invoice.id) %}<div class="detail-navigation"><a class="button primary" data-native-download data-export-name="{{ invoice.invoice_no }}.pdf" href="{{ url_for('uyumsoft_invoice_pdf',invoice_id=invoice.id) }}">Uyumsoft Fatura PDF’sini İndir</a></div>{% endif %}
 {% if source_invoice %}<div class="linked-purchases"><b>İade alınan fatura:</b><a href="{{ url_for('invoice_detail', invoice_id=source_invoice.id) }}">{{ source_invoice.invoice_no }}</a></div>{% endif %}
 {% if returns %}<div class="linked-purchases"><b>Bu faturanın iadeleri:</b>{% for document in returns %}<a href="{{ url_for('invoice_detail', invoice_id=document.id) }}">{{ document.invoice_no }} · ₺{{ document.total_amount|money }}</a>{% endfor %}</div>{% endif %}

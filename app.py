@@ -396,6 +396,12 @@ class OrderDocument(db.Model):
     order = db.relationship("Order", back_populates="documents")
 
 
+class GRSequence(db.Model):
+    __tablename__ = "businessos_gr_sequence"
+    id = db.Column(db.Integer, primary_key=True)
+    last_number = db.Column(db.Integer, nullable=False)
+
+
 class Invoice(db.Model):
     """Cari ve fiziksel stok etkisi olan alış/satış faturası."""
     id = db.Column(db.Integer, primary_key=True)
@@ -411,6 +417,10 @@ class Invoice(db.Model):
     customer = db.relationship("Customer", back_populates="invoices")
     order = db.relationship("Order", back_populates="invoices")
     items = db.relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan", order_by="InvoiceItem.id")
+
+    @property
+    def is_gr(self):
+        return bool(re.fullmatch(r"GR[0-9]{4,}", self.invoice_no or ""))
 
     @property
     def linked_orders(self):
@@ -2138,6 +2148,8 @@ def create_app(test_config=None):
     register_supplier_chat(app, db, Order, OrderHistory)
     from supplier_trello import register_supplier_trello
     register_supplier_trello(app, db, Order)
+    from gr_invoices import register_gr
+    register_gr(app, db, Order, Invoice, InvoiceItem, StockMovement, lambda: create_database_backup(app, "before_gr_create"))
     from uyumsoft import register_uyumsoft
     register_uyumsoft(app, db, Invoice, Order, InvoiceItem, StockMovement, Customer, Product, lambda: create_database_backup(app, "before_uyumsoft_import"))
     from invoice_amounts import register_schema
@@ -2619,9 +2631,7 @@ def create_app(test_config=None):
     @app.get("/siparisler/<int:order_id>/faturaya-aktar")
     def order_to_invoice(order_id):
         order = db.get_or_404(Order, order_id)
-        if app.config.get('WEB_AUTH_ENABLED') and order.order_type == 'Satış':
-            return redirect(url_for('uyumsoft_order_preview', order_id=order.id))
-        return redirect(url_for("invoices", entry=1, order_id=order.id))
+        return render_template('order_invoice_method.html', order=order)
 
     @app.get("/faturalar/<int:invoice_id>")
     def invoice_detail(invoice_id):
@@ -2702,6 +2712,8 @@ def create_app(test_config=None):
                 from invoice_ssh import allows_nonstock_rows
                 if not allows_nonstock_rows(db.session.connection()):
                     errors.append("SSH fatura desteği için veritabanı uyumluluğu henüz hazırlanmadı. Yönetimden SSH fatura uyumluluğunu tamamlayın.")
+            if invoice.is_gr and invoice_no != invoice.invoice_no:
+                errors.append("GR kayıt kodu değiştirilemez.")
             duplicate = Invoice.query.filter(Invoice.invoice_no == invoice_no, Invoice.id != invoice.id).first() if invoice_no else None
             if not invoice_no:
                 errors.append("Fatura numarası zorunludur.")

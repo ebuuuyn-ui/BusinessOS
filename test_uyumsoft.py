@@ -177,7 +177,9 @@ class OrderDraftTests(UyumTests):
         from uyumsoft import month_after
         o=self.make_order();self.assertEqual(month_after(date(2026,1,31)),date(2026,2,28))
         r=self.client.get(f'/siparisler/{o.id}/faturaya-aktar',base_url=BASE)
-        self.assertTrue(r.location.endswith(self.path))
+        self.assertEqual(r.status_code,200)
+        self.assertIn(self.path,r.text)
+        self.assertIn("GR · İç Kayıt",r.text)
         before=(m.Invoice.query.count(),m.StockMovement.query.count(),m.AccountTransaction.query.count())
         with patch('uyumsoft.Client') as c, patch('uyumsoft.DEFAULT_SELLER',DEFAULT_SELLER):
             page=self.client.get(self.path,base_url=BASE)

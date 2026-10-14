@@ -143,7 +143,7 @@ def register_uyumsoft(app,db,Invoice,Order,InvoiceItem,StockMovement,Customer,Pr
     @app.route('/faturalar/<int:invoice_id>/uyumsoft',methods=['GET','POST'])
     def uyumsoft_preview(invoice_id):
         access();invoice=db.get_or_404(Invoice,invoice_id)
-        if invoice.invoice_type!='Satış':abort(403)
+        if invoice.invoice_type!='Satış' or invoice.is_gr:abort(403)
         if invoice.order_id and record(invoice.order_id,order_attempts):
             return redirect(url_for('uyumsoft_order_preview',order_id=invoice.order_id))
         return draft_page(invoice)
