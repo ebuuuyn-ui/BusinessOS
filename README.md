@@ -144,3 +144,19 @@ Mevcut tablo sütunlarını değiştiren bir migration aracı değildir. Gelecek
 Masaüstü SQLite uygulamasının başlangıç yedeği, uyumluluk kontrolleri ve eski
 veri aktarım davranışı korunur. Web PostgreSQL yedekleri barındırma/veritabanı
 sağlayıcısı üzerinden ayrıca yönetilmelidir; yerel SQLite yedeği değildir.
+
+## GR iç kayıt
+
+Sipariş detayındaki **Faturaya Aktar** artık kayıt yöntemini seçtirir. **GR · İç Kayıt**,
+Uyumsoft bağlantısı olmadan sipariş kalemlerini cari ve stok hesaplarına işler.
+Bu kayıt resmî fatura değildir; listede ve detayda GR olarak gösterilir.
+Satış cari borcu ve stok çıkışı, alış cari alacağı ve stok girişi oluşturur.
+Fiyat, iskonto ve KDV hesapları siparişten korunur. Stok kartı bulunmayan kalemler
+stok hareketi oluşturmaz; eski veritabanlarında SSH uyumluluğu gerekir.
+
+Numaralar **GR1001, GR1002, GR1003…** şeklinde, yıl değişiminden ve diğer
+faturalardan bağımsız ilerler. Sayaç aynı veritabanı işlemi içinde artırılır;
+silinen kayıtların kodu yeniden kullanılmaz. Mevcut veritabanlarında sayaç
+tablosu ilk GR kaydında hazırlanır. Aynı siparişin yeniden gönderilmesi ikinci
+cari veya stok etkisi oluşturmaz. Uyumsoft aktarımı bulunan, kalem bazında
+faturalanmış veya iptal edilmiş siparişlerde GR oluşturulmaz.

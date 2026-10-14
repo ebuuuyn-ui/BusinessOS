@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}GR · {{ order.order_no }}{% endblock %}
+{% block heading %}GR · İç Kayıt{% endblock %}
+{% block subheading %}{{ order.order_no }} · {{ order.customer.name }}{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+{% if error %}<p class="note" role="alert">{{ error }}</p>{% endif %}
+<p>GR kodu otomatik oluşturulur. Bu işlem Uyumsoft’a gönderilmez ve resmî fatura oluşturmaz. Cari hesaba {{ 'borç' if order.order_type == 'Satış' else 'alacak' }} olarak işlenir; stok hareketleri kaydedilir.</p>
+<form method="post">
+<input type="hidden" name="preview" value="{{ preview }}">
+<div class="form-grid">
+<label>Kayıt kodu<input value="GR ile başlayan otomatik kod" readonly></label>
+<label>Kayıt tarihi<input type="date" name="invoice_date" value="{{ issued }}" required></label>
+<label>Vade tarihi<input type="date" name="due_date" value="{{ due }}"></label>
+</div>
+<div class="table-wrap"><table><thead><tr><th>Ürün</th><th>Adet</th><th>Birim fiyat</th><th>İskonto</th><th>KDV</th><th>Toplam</th></tr></thead><tbody>
+{% for item in order.items %}<tr><td>{{ item.product_name }}</td><td>{{ item.quantity }} {{ item.unit }}</td><td>₺{{ item.unit_price|money }} (KDV {{ 'dâhil' if item.vat_included else 'hariç' }})</td><td>%{{ item.discount_rate|money }}</td><td>%{{ item.vat_rate|money }}</td><td>₺{{ item.total_amount|money }}</td></tr>{% endfor %}
+</tbody></table></div>
+<p><b>Genel toplam: ₺{{ order.total_amount|money }}</b></p>
+<button class="button primary">GR Kaydını Oluştur</button>
+<a class="button" href="{{ url_for('order_to_invoice', order_id=order.id) }}">Geri</a>
+</form></section>
+{% endblock %}
