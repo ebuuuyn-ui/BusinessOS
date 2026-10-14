@@ -24,6 +24,7 @@ html.workspace-frame-document .mobile-bottom-nav,html.workspace-frame-document .
   body.bos-ui :is(.panel,.form-panel,.split,.detail-grid,.dashboard-grid,.table-wrap,.header-actions,.actions){min-width:0;max-width:100%}
   body.bos-ui :is(.split,.detail-grid,.detail-grid.wide,.dashboard-grid,.order-detail-layout,.import-layout){display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
   body.bos-ui .topbar{display:flex;flex-wrap:wrap;gap:12px;min-height:0;padding:14px 12px;background:#fff}
+  body.bos-ui .topbar .menu{display:none}
   body.bos-ui .topbar>div:first-of-type{flex:1 1 calc(100% - 60px);min-width:0}
   body.bos-ui .topbar b{font-size:22px;line-height:1.25}
   body.bos-ui .topbar small{font-size:12px;line-height:1.4}
