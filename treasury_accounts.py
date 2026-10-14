@@ -119,13 +119,14 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
             if not ready(): raise TreasuryLocked('Önce Kasalar ekranından hesapları hazırlayın.')
             try: a=account(chosen)
             except (ValueError,TypeError): raise TreasuryLocked('Geçerli bir ödeme hesabı seçin.')
-            if a['kind'] not in ('Nakit','Banka','Kredi Kartı'): raise TreasuryLocked('Masraf için kasa, banka veya kendi kredi kartınızı seçin.')
+            if a['kind'] not in ('Nakit','Banka','Kredi Kartı','Tahsilat Sistemi'): raise TreasuryLocked('Masraf için kasa, banka, kendi kredi kartınızı veya tahsilat sistemini seçin.')
         if expense and expense.id and ready() and posted('expense:'+str(expense.id)):
             unassign('expense:'+str(expense.id))
         return chosen
     def finish_expense(expense,chosen):
         if chosen:
-            expense.payment_method=account(chosen)['kind']
+            kind=account(chosen)['kind']
+            expense.payment_method='Kredi Kartı' if kind=='Tahsilat Sistemi' else kind
             db.session.flush()
             try: assign('expense:'+str(expense.id),chosen)
             except (ValueError,TypeError) as error: raise TreasuryLocked(str(error))
