@@ -23,9 +23,9 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation
 
-from flask import Flask, current_app, abort, flash, make_response, redirect, render_template, request, send_file, url_for
+from flask import Flask, current_app, g, abort, flash, make_response, redirect, render_template, request, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Numeric, case, cast, event, func, inspect, text
+from sqlalchemy import Numeric, case, cast, event, func, inspect, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
@@ -319,6 +319,17 @@ class Order(db.Model):
     @property
     def total_amount(self):
         return self.net_amount + self.vat_amount
+
+
+class OrderSellerAssignment(db.Model):
+    """Seller corrections retain the original creation user and an assignment history."""
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, nullable=False, index=True)
+    order_no = db.Column(db.String(30), nullable=False)
+    order_created_at = db.Column(db.DateTime, nullable=False)
+    seller = db.Column(db.String(40), nullable=False)
+    actor = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class OrderItem(db.Model):
@@ -4452,6 +4463,25 @@ def create_app(test_config=None):
         page_args = request.args.to_dict(flat=False)
         page_args.pop("page", None)
         return render_template("orders.html", orders=listed_orders, statuses=ORDER_STATUSES, query=query, customer_query=customer_query, selected_statuses=selected_statuses, selected_invoice_status=selected_invoice_status, selected_type=order_type, selected_customer=selected_customer, customers=customers_list, active_only=active_only, delivery_pending=delivery_pending, listed_total=listed_total, pending_expected=pending_expected, type_counts=counts, status_summary=status_summary, procurement_summaries=procurement_summaries, invoice_counts=invoice_counts, invoice_progress=invoice_progress, source_orders_by_id=source_orders_by_id, export_args=export_args, page=page, total_pages=total_pages, total_count=total_count, page_args=page_args)
+
+    @app.post("/siparisler/<int:order_id>/satici")
+    def assign_order_seller(order_id):
+        seller = request.form.get('assigned_seller', '')
+        if seller not in ('Bekir', 'Ahmet'):
+            abort(400)
+        order = db.session.execute(select(Order).where(Order.id == order_id).with_for_update()).scalar_one_or_none()
+        if order is None:
+            abort(404)
+        if order.order_type != 'Satış':
+            abort(400)
+        OrderSellerAssignment.__table__.create(db.session.connection(), checkfirst=True)
+        db.session.add(OrderSellerAssignment(order_id=order.id, order_no=order.order_no,
+            order_created_at=order.created_at, seller=seller,
+            actor=getattr(g, 'web_username', 'Yerel kullanıcı')))
+        db.session.commit()
+        flash('Siparişin satıcısı ' + seller + ' olarak kaydedildi.', 'success')
+        filters = {key: request.form.get(key, '') for key in ('q', 'seller', 'start_date', 'end_date')}
+        return redirect(url_for('order_reports', report='seller', **filters) + '#order-' + str(order_id))
 
     @app.get("/siparisler/raporlar")
     def order_reports():

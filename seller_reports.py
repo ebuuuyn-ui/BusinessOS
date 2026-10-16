@@ -1,4 +1,4 @@
-"""Sales attribution from immutable order creation events, never later edits."""
+"""Sales attribution defaults to creation user, with explicit seller corrections."""
 import json
 from decimal import Decimal
 from datetime import datetime
@@ -23,9 +23,18 @@ def creation_owners(events):
     return {k:next(iter(v)) if len(v)==1 else UNKNOWN for k,v in owners.items()}
 
 def load_owners(db):
-    if not inspect(db.session.connection()).has_table('business_audit_event'): return {}
-    records=db.session.execute(text("SELECT actor_id,actor_name,endpoint,operation,table_name,after_data FROM business_audit_event WHERE table_name='order' AND operation='INSERT' ORDER BY id")).mappings()
-    return creation_owners(records)
+    inspector = inspect(db.session.connection())
+    owners = {}
+    if inspector.has_table('business_audit_event'):
+        records=db.session.execute(text("SELECT actor_id,actor_name,endpoint,operation,table_name,after_data FROM business_audit_event WHERE table_name='order' AND operation='INSERT' ORDER BY id")).mappings()
+        owners = creation_owners(records)
+    if inspector.has_table('order_seller_assignment'):
+        records = db.session.execute(text("SELECT order_id, order_no, order_created_at, seller FROM order_seller_assignment ORDER BY id")).mappings()
+        for row in records:
+            created = row['order_created_at']
+            if isinstance(created, str): created = datetime.fromisoformat(created)
+            owners[(str(row['order_id']), row['order_no'], created)] = row['seller']
+    return owners
 
 def build_report(orders,owners,filters,normalize):
     rows=[]
