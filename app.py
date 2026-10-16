@@ -1018,6 +1018,7 @@ def build_account_statement(customer):
             "order": None,
             "transaction_id": transaction.id,
             "editable_description": transaction.transaction_type in ("Tahsilat", "Ödeme"),
+            "is_customer_transfer": transaction.transaction_type.startswith("Cari Virman"),
             "payment_method": transaction.payment_method,
             "check_no": transaction.check_no,
             "check_bank": transaction.check_bank,
@@ -2177,6 +2178,9 @@ def create_app(test_config=None):
     from treasury_accounts import register_accounts
     register_accounts(app, db, Customer, AccountTransaction, Expense, CashMovement,
                       lambda: create_database_backup(app, "before_treasury_account_change"))
+    from customer_transfers import register_customer_transfers
+    register_customer_transfers(app, db, Customer, AccountTransaction, calculate_customer_balances,
+                                lambda: create_database_backup(app, "before_customer_transfer"))
     from invoice_profitability import register_profitability
     register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense)
 
@@ -3564,6 +3568,9 @@ def create_app(test_config=None):
         transaction = db.get_or_404(AccountTransaction, transaction_id)
         if transaction.customer_id != customer_id:
             return ("Geçersiz cari hareketi", 400)
+        if transaction.transaction_type.startswith("Cari Virman"):
+            flash("Virmanı iki cari için birlikte iptal etmek üzere Cari Virman ekranını kullanın.", "error")
+            return redirect(url_for("customer_transfers"))
         create_database_backup(app, "before_account_transaction_delete")
         linked = db.session.get(AccountTransaction, transaction.linked_transaction_id) if transaction.linked_transaction_id else None
         if linked:

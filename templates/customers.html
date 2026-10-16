@@ -4,6 +4,7 @@
 <div class="order-tabs customer-tabs">
   <a class="{{ 'active' if view == 'cards' }}" href="{{ url_for('customers') }}">Cari Kartları</a>
   <a class="{{ 'active' if view == 'balances' }}" href="{{ url_for('customers', view='balances') }}">Bakiyeler</a>
+  <a href="{{ url_for('customer_transfers') }}">Cari Virman</a>
   <a href="{{ url_for('customer_total_movements') }}">Cari Toplam Hareket Bakiyeleri</a>
 </div>
 {% if view == 'balances' %}

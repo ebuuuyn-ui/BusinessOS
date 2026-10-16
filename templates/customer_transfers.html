@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Cari Virman · Business OS{% endblock %}
+{% block heading %}Cari Virman{% endblock %}
+{% block subheading %}Cariler arasında borç veya alacak bakiyesi aktarımı{% endblock %}
+{% block header_action %}<a class="button" href="{{ url_for('customers',view='balances') }}">← Cari Bakiyelerine Dön</a>{% endblock %}
+{% macro balance(value) %}₺{{ (value|abs)|money }} · {{ 'Borç' if value > 0 else 'Alacak' if value < 0 else 'Bakiye yok' }}{% endmacro %}
+{% block content %}
+<style>.customer-transfer-form .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.customer-transfer-form .form-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.customer-transfer-form label{min-width:0}.customer-transfer-form select{max-width:100%}@media(max-width:700px){.customer-transfer-form .form-grid,.customer-transfer-form .form-grid.three{grid-template-columns:1fr}}</style>
+{% if preview %}
+<div class="panel"><div class="panel-head"><h2>Virmanı Kontrol Et</h2></div><div class="table-wrap"><table class="compact-table register-table"><thead><tr><th>Cari</th><th>Mevcut Bakiye</th><th>Virman Sonrası</th></tr></thead><tbody>{% for cid in [preview.data.source,preview.data.target] %}<tr><td>{{ 'Kaynak' if loop.first else 'Hedef' }} · {{ preview.customers[cid].name }}</td><td>{{ balance(preview.before[cid]) }}</td><td><b>{{ balance(preview.after[cid]) }}</b></td></tr>{% endfor %}</tbody></table></div><form method="post" class="form-panel"><input type="hidden" name="confirmation" value="{{ confirmation }}"><p>{{ preview.data.day }} · ₺{{ preview.data.amount|float|money }} · {{ 'Carinin alacağı aktarılacak' if preview.data.kind == 'credit' else 'Carinin borcu aktarılacak' }}{% if preview.data.note %} · {{ preview.data.note }}{% endif %}</p><div class="actions"><a class="button" href="{{ url_for('customer_transfers') }}">Vazgeç</a><button class="button primary">Virmanı Onayla ve Kaydet</button></div></form></div>
+{% else %}
+<form method="post" class="panel form-panel customer-transfer-form">
+<div class="panel-head"><h2>Yeni Virman</h2></div>
+<div class="form-grid">
+{% for key,label in [('source','Bakiyesi Aktarılacak Cari'),('target','Bakiyenin Aktarılacağı Cari')] %}<label>{{ label }} *<select name="{{ key }}" required><option value="">Cari seçin</option>{% for customer in customers %}<option value="{{ customer.id }}" {{ 'selected' if request.form.get(key,request.args.get(key,'')) == customer.id|string }}>{{ customer.name }} · {{ balance(balances[customer.id]) }}</option>{% endfor %}</select></label>{% endfor %}
+</div><div class="form-grid three"><label>Aktarılacak Bakiye *<select name="kind"><option value="credit" {{ 'selected' if request.form.get('kind') == 'credit' }}>Carinin alacağı (bizim borcumuz)</option><option value="debit" {{ 'selected' if request.form.get('kind') == 'debit' }}>Carinin borcu (bizim alacağımız)</option></select></label><label>Tarih *<input type="date" name="day" required value="{{ request.form.get('day',today) }}"></label><label>Tutar (₺) *<input name="amount" inputmode="decimal" required value="{{ request.form.get('amount','') }}"></label></div>
+<label>Açıklama<input name="note" maxlength="100" value="{{ request.form.get('note','') }}"></label>
+<p class="muted">Kaynak carinin seçilen bakiyesi azalır, hedef cariye aktarılır. Kasa ve banka bakiyeleri değişmez.</p><div class="actions"><button class="button primary">Devam Et · Bakiyeleri Gör</button></div>
+</form>
+{% endif %}
+<div class="panel"><div class="panel-head"><h2>Son Virmanlar</h2><p>Son 100 işlem · İptal edilen virmanların bakiyeye etkisi sıfırlanır.</p></div><div class="table-wrap"><table class="compact-table register-table"><thead><tr><th>Tarih</th><th>Kaynak Cari</th><th>Açıklama / Hedef Cari</th><th>Tutar (₺)</th><th>İşlem</th></tr></thead><tbody>{% for tx in recent %}<tr><td>{{ tx.transaction_date.strftime('%d.%m.%Y') }}</td><td><a href="{{ url_for('customer_account',customer_id=tx.customer_id) }}">{{ tx.customer.name }}</a></td><td>{{ tx.description }}</td><td class="number-cell">{{ (tx.debit + tx.credit)|money }}</td><td>{% if 'İptal' in tx.transaction_type %}İptal edildi{% else %}<form method="post" action="{{ url_for('cancel_customer_transfer',transaction_id=tx.id) }}" onsubmit="return confirm('Bu virman iki cari için birlikte iptal edilsin mi?')"><button class="button">İptal Et</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Henüz cari virman kaydı yok.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}
