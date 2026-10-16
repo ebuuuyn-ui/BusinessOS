@@ -403,14 +403,14 @@ main{margin:0}
 /* Masraf modülü */
 .expense-create-panel{overflow:visible}
 .expense-create-panel .panel-head{padding:15px 20px;background:linear-gradient(90deg,#f8faff,#fff)}
-.expense-create-grid{display:grid;grid-template-columns:1fr 1.35fr;gap:0;padding:0}
+.expense-create-grid{display:grid;grid-template-columns:1fr;gap:0;padding:0}
 .expense-section{padding:16px 20px 18px}
-.expense-section+.expense-section{border-left:1px solid var(--line)}
+.expense-section+.expense-section{border-top:1px solid var(--line)}
 .expense-section-title{display:block;margin-bottom:9px;color:#3155a5;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
 .expense-fields{display:grid;gap:10px;align-items:end}
-.expense-fields.four-fields{grid-template-columns:1fr 1.35fr 1fr 1fr}
+.expense-fields.payment-fields{grid-template-columns:1fr 1.25fr 1fr 1.3fr 1fr}
 .expense-fields.detail-fields{grid-template-columns:.85fr 1.2fr 1.6fr auto}
-.expense-fields label{margin:0}
+.expense-fields label{margin:0;min-width:0}
 .expense-fields input,.expense-fields select{margin-top:4px;padding:9px 10px;height:38px}
 .expense-amount-input{font-weight:800;color:#b42318}
 .expense-submit{height:38px;align-self:end;white-space:nowrap;padding:8px 20px}
@@ -433,11 +433,11 @@ main{margin:0}
 .expense-section+.expense-section{border-left:0;border-top:1px solid var(--line)}
 }
 
-@media(max-width:800px){.expense-fields.four-fields,.expense-fields.detail-fields{grid-template-columns:1fr 1fr}
+@media(max-width:800px){.expense-fields.payment-fields,.expense-fields.detail-fields{grid-template-columns:1fr 1fr}
 .expense-submit{width:100%}
 }
 
-@media(max-width:700px){.expense-fields.four-fields,.expense-fields.detail-fields{grid-template-columns:1fr}
+@media(max-width:700px){.expense-fields.payment-fields,.expense-fields.detail-fields{grid-template-columns:1fr}
 .expense-filters{flex-direction:column}
 .expense-filters input,.expense-filters input[type=date],.expense-filters select{max-width:none}
 .span-two,.span-four{grid-column:auto}
@@ -450,8 +450,8 @@ main{margin:0}
 .recurring-dashboard-card strong{font-size:23px;color:#6d47b8}
 .recurring-dashboard-card em{color:#6d47b8;font-size:10px;font-style:normal;text-align:right}
 .recurring-panel{scroll-margin-top:18px}
-.recurring-form{display:grid;grid-template-columns:1.5fr 1.2fr 1fr .8fr .65fr .8fr auto;gap:10px;align-items:end;padding:15px 20px;background:#fafbff;border-bottom:1px solid var(--line)}
-.recurring-form label{margin:0}
+.recurring-form{display:grid;grid-template-columns:1.5fr 1.1fr 1fr .9fr .65fr 1.2fr .9fr auto;gap:10px;align-items:end;padding:15px 20px;background:#fafbff;border-bottom:1px solid var(--line)}
+.recurring-form label{margin:0;min-width:0}
 .recurring-form input,.recurring-form select{height:38px;margin-top:4px;padding:8px 9px}
 .recurring-form button{height:38px;white-space:nowrap}
 .recurring-table td:first-child{display:flex;flex-direction:column}
