@@ -18,18 +18,27 @@ def statement_period(all_entries, start=None, end=None):
 
 
 def payment_details(entry):
+    if entry.get('payment_method') == 'Kredi Kartı':
+        installments = entry.get('card_installments')
+        return f'{installments} taksit' if installments else ''
     parts = [entry.get('payment_method') or '']
     for key, label in [('check_no', 'Çek'), ('check_bank', 'Banka'), ('check_due_date', 'Vade'),
-                       ('check_status', 'Çek durumu'), ('card_installments', 'Taksit'),
-                       ('card_owner_type', 'Kart sahibi'), ('card_customer_name', 'Müşteri')]:
+                       ('check_status', 'Çek durumu')]:
         value = entry.get(key)
         if value:
             parts.append(f'{label}: {value:%d.%m.%Y}' if isinstance(value, date) else f'{label}: {value}')
     return ' · '.join(filter(None, parts))
 
 
+def primary_description(entry):
+    if entry.get('payment_method') == 'Kredi Kartı':
+        return 'Kredi kartı tahsilatı' if entry.get('credit', ZERO) > ZERO else 'Kredi kartı ödemesi'
+    return entry.get('description') or ''
+
+
 def description(entry):
-    return '\n'.join(filter(None, [entry.get('description'), payment_details(entry)]))
+    separator = ' · ' if entry.get('payment_method') == 'Kredi Kartı' else '\n'
+    return separator.join(filter(None, [primary_description(entry), payment_details(entry)]))
 
 
 def period_label(start, end):
@@ -125,7 +134,7 @@ def export_xlsx(customer, period, start='', end='', detailed=False):
         sheet('Fatura Kalemleri', headers, invoice_rows, widths, {10, 14, 15, 16})
         sheet('Bağlı Sipariş Kalemleri', ['Bilgi Amaçlı - Bakiyeye Eklenmez'] + headers[1:], order_rows, widths, {10, 14, 15, 16})
         sheet('Ödeme ve Tahsilat', ['Tarih', 'Referans', 'Açıklama', 'Ödeme Ayrıntıları', 'Borç', 'Alacak', 'Bakiye'],
-              [[e['date'], e['reference'], e['description'], payment_details(e), e['debit'], e['credit'], e['balance']] for e in entries if e.get('transaction_id')],
+              [[e['date'], e['reference'], primary_description(e), payment_details(e), e['debit'], e['credit'], e['balance']] for e in entries if e.get('transaction_id')],
               [16, 28, 60, 65, 22, 22, 22], {5, 6, 7})
     output = BytesIO()
     book.save(output)
@@ -170,7 +179,7 @@ def export_pdf(customer, period, start='', end='', detailed=False):
     if detailed and period['entries']:
         story.extend([PageBreak(), para('Hareket Ayrıntıları', title)])
         for e in period['entries']:
-            story.append(para(f"{e['date']:%d.%m.%Y} | {e['reference']} | {e['description'] or ''}", heading))
+            story.append(para(f"{e['date']:%d.%m.%Y} | {e['reference']} | {primary_description(e)}", heading))
             story.append(para(f"Borç: {money(e['debit'])} TL | Alacak: {money(e['credit'])} TL | Bakiye: {money(e['balance'])} TL"))
             invoice = e.get('invoice')
             if not invoice:

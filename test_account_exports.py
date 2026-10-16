@@ -88,6 +88,35 @@ class StatementExportTests(unittest.TestCase):
         self.assertEqual(empty['Ekstre']['F5'].value,408)
         self.assertEqual(empty['Ekstre']['F6'].value,408)
 
+    def test_card_exports_hide_internal_processing_details(self):
+        from pypdf import PdfReader
+        transaction = AccountTransaction(customer=self.customer, transaction_date=date(2026,9,6),
+            transaction_type='Tahsilat', debit=0, credit=100, reference_no='CARD',
+            description='Ahmetten çekildi · ABİKA firmasına doğrudan aktarıldı',
+            payment_method='Kredi Kartı', card_installments=3,
+            card_owner_type='Müşteri Kartı', card_customer_name='Gizli kart sahibi')
+        db.session.add(transaction)
+        db.session.commit()
+        for detail in ('ozet', 'ayrintili'):
+            excel = self.client.get(self.path+f'/ekstre/{detail}/excel'+self.query)
+            book = load_workbook(BytesIO(excel.data))
+            values = str([list(ws.values) for ws in book])
+            pdf = self.client.get(self.path+f'/ekstre/{detail}/pdf'+self.query)
+            text = '\n'.join(page.extract_text() for page in PdfReader(BytesIO(pdf.data)).pages)
+            for output in (values, text):
+                self.assertIn('Kredi kartı tahsilatı', output)
+                self.assertIn('3 taksit', output)
+                for hidden in ('Ahmetten', 'ABİKA', 'Gizli kart sahibi', 'Kart sahibi:'):
+                    self.assertNotIn(hidden, output)
+            if os.environ.get('STATEMENT_QA_DIR'):
+                Path(os.environ['STATEMENT_QA_DIR'],f'card-{detail}.pdf').write_bytes(pdf.data)
+        csv = self.client.get(self.path+'/ekstre.csv'+self.query).get_data(as_text=True)
+        self.assertIn('Kredi kartı tahsilatı · 3 taksit', csv)
+        self.assertNotIn('Ahmetten', csv)
+        self.assertEqual(transaction.description, 'Ahmetten çekildi · ABİKA firmasına doğrudan aktarıldı')
+        period = statement_period(build_account_statement(self.customer),date(2026,9,1),date(2026,9,30))
+        self.assertEqual(period['closing_balance'], 308)
+
     def test_pdf_and_multipage(self):
         # Enough rows to exercise pagination, headers and Turkish text wrapping.
         for index in range(30):

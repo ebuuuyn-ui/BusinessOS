@@ -34,7 +34,7 @@ from stock_sorting import stock_text_sort_key
 from web_auth import install_web_auth
 from database_migration import MigrationError, migrate_sqlite_database
 from database_export import create_sqlite_transfer_package
-from account_exports import statement_period, export_xlsx as account_export_xlsx, export_pdf as account_export_pdf
+from account_exports import description as account_export_description, statement_period, export_xlsx as account_export_xlsx, export_pdf as account_export_pdf
 
 try:
     # macOS Anahtarlık'taki kurumsal/ağ sertifikalarını da kullanır.
@@ -3580,7 +3580,7 @@ def create_app(test_config=None):
         writer.writerow(["Cari Kodu", customer.code or "", "Cari Ünvanı", customer.name])
         writer.writerow(["Tarih", "Sipariş / Referans No", "Açıklama", "Borç", "Alacak", "Bakiye"])
         for entry in entries:
-            writer.writerow([entry["date"].strftime("%d.%m.%Y"), entry["reference"], entry["description"], f"{entry['debit']:.2f}", f"{entry['credit']:.2f}", f"{entry['balance']:.2f}"])
+            writer.writerow([entry["date"].strftime("%d.%m.%Y"), entry["reference"], account_export_description(entry) if entry.get("payment_method") == "Kredi Kartı" else entry["description"], f"{entry['debit']:.2f}", f"{entry['credit']:.2f}", f"{entry['balance']:.2f}"])
         response = make_response("\ufeff" + output.getvalue())
         response.headers["Content-Type"] = "text/csv; charset=utf-8"
         response.headers["Content-Disposition"] = f'attachment; filename="cari-ekstre-{customer.code or customer.id}.csv"'
