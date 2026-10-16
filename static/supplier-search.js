@@ -1,17 +1,21 @@
 // Enhance the existing supplier select; the submitted field and server validation stay unchanged.
 (() => {
   const norm = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[Iİı]/g, 'i').toLowerCase();
-  document.querySelectorAll('select[name="direct_supplier_id"]').forEach((select, index) => {
+  document.querySelectorAll('select[name="direct_supplier_id"], select[data-customer-search], select[name="customer_id"], select[name="card_customer_id"], select[name="supplier_id"]').forEach((select, index) => {
     if (select.dataset.searchEnhanced) return;
     select.dataset.searchEnhanced = 'true';
     const form = select.form;
+    if (!form) return;
+    const required = select.required || select.name === 'direct_supplier_id';
+    select.required = false;
+    const label = select.dataset.searchLabel || 'Cari ara';
     const wrapper = document.createElement('div');
     wrapper.className = 'supplier-search';
     const input = document.createElement('input');
     input.type = 'search';
     input.autocomplete = 'off';
-    input.placeholder = 'Tedarikçi adı veya cari kodu yazın';
-    input.setAttribute('aria-label', 'Tedarikçi ara');
+    input.placeholder = 'Cari adı veya cari kodu yazın';
+    input.setAttribute('aria-label', label);
     input.setAttribute('role', 'combobox');
     input.setAttribute('aria-autocomplete', 'list');
     input.setAttribute('aria-expanded', 'false');
@@ -19,20 +23,20 @@
     toggle.type = 'button';
     toggle.className = 'supplier-list-toggle';
     toggle.textContent = '⌄';
-    toggle.title = 'Tüm tedarikçileri listele';
-    toggle.setAttribute('aria-label', 'Tedarikçi listesini aç');
+    toggle.title = 'Carileri listele';
+    toggle.setAttribute('aria-label', label + ' · Listeyi aç');
     const list = document.createElement('div');
     list.id = `supplier-search-list-${index}`;
     list.className = 'supplier-search-results';
     list.setAttribute('role', 'listbox');
-    list.setAttribute('aria-label', 'Tedarikçiler');
+    list.setAttribute('aria-label', 'Cariler');
     list.hidden = true;
     input.setAttribute('aria-controls', list.id);
     toggle.setAttribute('aria-controls', list.id);
     toggle.setAttribute('aria-expanded', 'false');
     const empty = document.createElement('div');
     empty.className = 'supplier-search-empty';
-    empty.textContent = 'Eşleşen tedarikçi bulunamadı';
+    empty.textContent = 'Eşleşen cari bulunamadı';
     empty.setAttribute('role', 'status');
     const options = [...select.options].filter(o => o.value).map((option, n) => {
       const button = document.createElement('button');
@@ -43,15 +47,15 @@
       name.className = 'supplier-option-name';
       name.textContent = option.dataset.name || option.textContent;
       button.appendChild(name);
-      if (option.dataset.code) {
+      if (option.dataset.code || option.dataset.detail) {
         const code = document.createElement('small');
         code.className = 'supplier-option-code';
-        code.textContent = option.dataset.code;
+        code.textContent = [option.dataset.code, option.dataset.detail].filter(Boolean).join(' · ');
         button.appendChild(code);
       }
       button.dataset.label = option.textContent;
       button.dataset.value = option.value;
-      button.dataset.search = norm(option.textContent);
+      button.dataset.search = norm(option.textContent + ' ' + (option.dataset.code || '') + ' ' + (option.dataset.name || ''));
       button.setAttribute('role', 'option');
       button.setAttribute('aria-selected', String(select.value === option.value));
       list.appendChild(button);
@@ -128,10 +132,10 @@
     document.addEventListener('click', e => { if (!wrapper.contains(e.target)) close(); });
     form.addEventListener('change', () => input.setCustomValidity(''));
     form.addEventListener('submit', e => {
-      if (!wrapper.closest('[hidden]') && !select.value) {
+      if (!wrapper.closest('[hidden]') && !select.disabled && !select.value && (required || input.value.trim())) {
         e.preventDefault();
         input.focus();
-        input.setCustomValidity('Lütfen arama sonuçlarından veya listeden bir tedarikçi seçin.');
+        input.setCustomValidity('Lütfen arama sonuçlarından veya listeden bir cari seçin.');
         input.reportValidity();
       }
     });

@@ -15,3 +15,6 @@
 .account-entry #direct-supplier-field,.collection-card-fields #direct-supplier-field{grid-column:1/-1;width:100%;min-width:0}
 .supplier-option-name{display:block;color:#25324a;font-weight:600;line-height:1.45}
 .supplier-option-code{display:block;margin-top:3px;color:#667085;font-size:11px;font-weight:400;line-height:1.4;white-space:nowrap}
+
+select[data-search-enhanced][hidden]{display:none!important}
+.customer-transfer-form:has(.supplier-search){overflow:visible}
