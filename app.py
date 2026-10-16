@@ -1271,9 +1271,14 @@ def procurement_summary(sales_order, converted_orders=None):
     sale_groups = {}
     for sale_item in sales_order.items:
         sale_groups.setdefault(item_key(sale_item), []).append(sale_item)
+    from procurement_links import historical_sale_items
+    historical = historical_sale_items(db, sales_order.id, legacy_items)
     for purchase_item in legacy_items:
         remaining = purchase_item.quantity
-        for sale_item in sale_groups.get(item_key(purchase_item), []):
+        original = historical.get(purchase_item.source_order_item_id)
+        # The immutable original sales row restores the link even when the supplier note differs.
+        match_key = item_key(original) if (original and original.product_id == purchase_item.product_id and normalize_search_text(original.product_name) == normalize_search_text(purchase_item.product_name)) else item_key(purchase_item)
+        for sale_item in sale_groups.get(match_key, []):
             available = max(required[sale_item.id] - covered[sale_item.id], 0)
             allocated = min(remaining, available)
             covered[sale_item.id] += allocated
@@ -5231,6 +5236,9 @@ def create_app(test_config=None):
             source_order = db.session.get(Order, source_order_id) if source_order_id else None
             names = request.form.getlist("product_name[]")
             quantities = request.form.getlist("quantity[]")
+            if len(request.form.getlist("order_item_id[]")) != len(names):
+                flash("Sipariş formu güncellendi. Lütfen sayfayı yenileyip değişikliklerinizi yeniden kaydedin.", "error")
+                return redirect(url_for("edit_order", order_id=order.id))
             if not customer_id or not db.session.get(Customer, customer_id):
                 flash("Lütfen bir müşteri veya tedarikçi seçin.", "error")
             elif source_order_id and (not source_order or source_order.order_type != "Satış"):
@@ -5255,7 +5263,13 @@ def create_app(test_config=None):
                 order.source_order_id = source_order.id if source_order else None
                 order.notes = request.form.get("notes", "").strip()
                 previous_costs = {(item.product_id, item.product_name): item.cost_unit_price for item in order.items}
-                order.items.clear()
+                existing_items = {item.id: item for item in order.items}
+                submitted_ids = request.form.getlist("order_item_id[]")
+                provided_ids = [value for value in submitted_ids if value]
+                if (len(provided_ids) != len(set(provided_ids)) or
+                        any(not value.isdigit() or int(value) not in existing_items for value in provided_ids)):
+                    abort(400)
+                retained_items = []
                 product_ids = request.form.getlist("product_id[]")
                 variants = request.form.getlist("variant[]")
                 details_2 = request.form.getlist("detail_2[]")
@@ -5279,7 +5293,21 @@ def create_app(test_config=None):
                     discount_rate = parse_money(discount_rates[index] if index < len(discount_rates) else "0")
                     saved_cost = previous_costs.get((product_id, name.strip()))
                     cost = saved_cost if saved_cost is not None else Decimal("0")
-                    order.items.append(OrderItem(product_id=product_id, product_name=name.strip(), description="", variant=variants[index] if index < len(variants) else "", detail_2=details_2[index] if index < len(details_2) else "", detail_3=details_3[index] if index < len(details_3) else "", quantity=quantity, unit=units[index] if index < len(units) and units[index] else "Adet", unit_price=parse_money(prices[index] if index < len(prices) else "0"), discount_rate=max(Decimal("0"), min(discount_rate, Decimal("100"))), cost_unit_price=cost, vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), vat_included=(vat_included_values[index] if index < len(vat_included_values) else "0") == "1", note=item_notes[index] if index < len(item_notes) else ""))
+                    item_id = submitted_ids[index] if index < len(submitted_ids) else ''
+                    item = existing_items.get(int(item_id)) if item_id else None
+                    product_changed = item is not None and (item.product_id != product_id or (not product_id and item.product_name != name.strip()))
+                    if item is None or (product_changed and order.order_type == 'Satış'):
+                        item = OrderItem()
+                    values = dict(product_id=product_id, product_name=name.strip(), description="", variant=variants[index] if index < len(variants) else "", detail_2=details_2[index] if index < len(details_2) else "", detail_3=details_3[index] if index < len(details_3) else "", quantity=quantity, unit=units[index] if index < len(units) and units[index] else "Adet", unit_price=parse_money(prices[index] if index < len(prices) else "0"), discount_rate=max(Decimal("0"), min(discount_rate, Decimal("100"))), cost_unit_price=cost, vat_rate=max(Decimal("0"), min(vat_rate, Decimal("100"))), vat_included=(vat_included_values[index] if index < len(vat_included_values) else "0") == "1", note=item_notes[index] if index < len(item_notes) else "")
+                    if item.id:
+                        if not product_changed:
+                            values['cost_unit_price'] = item.cost_unit_price
+                        if product_changed or previous_source_order_id != order.source_order_id:
+                            item.source_order_item_id = None
+                    for field, value in values.items():
+                        setattr(item, field, value)
+                    retained_items.append(item)
+                order.items = retained_items
                 if previous_source_order_id != order.source_order_id:
                     source_note = f"{source_order.order_no} numaralı satış siparişi bağlandı" if source_order else "Satış siparişi bağlantısı kaldırıldı"
                     order.history.append(OrderHistory(status=order.status, note=source_note))
@@ -5287,7 +5315,7 @@ def create_app(test_config=None):
                 db.session.commit()
                 flash(f"{order.order_no} numaralı sipariş güncellendi.", "success")
                 return redirect(url_for("order_detail", order_id=order.id))
-        initial_items = [{"product_id": item.product_id, "product_name": item.product_name, "product_label": (f"{item.product.name} · {item.product.code}" if item.product and item.product.code else item.product.name if item.product else item.product_name), "variant": item.variant or "", "detail_2": item.detail_2 or "", "detail_3": item.detail_3 or "", "quantity": item.quantity, "unit": item.unit, "unit_price": str(item.unit_price or 0), "discount_rate": str(item.discount_rate or 0), "vat_rate": str(item.vat_rate or 0), "vat_included": bool(item.vat_included), "note": item.note or ""} for item in order.items]
+        initial_items = [{"order_item_id": item.id, "product_id": item.product_id, "product_name": item.product_name, "product_label": (f"{item.product.name} · {item.product.code}" if item.product and item.product.code else item.product.name if item.product else item.product_name), "variant": item.variant or "", "detail_2": item.detail_2 or "", "detail_3": item.detail_3 or "", "quantity": item.quantity, "unit": item.unit, "unit_price": str(item.unit_price or 0), "discount_rate": str(item.discount_rate or 0), "vat_rate": str(item.vat_rate or 0), "vat_included": bool(item.vat_included), "note": item.note or ""} for item in order.items]
         return render_template("order_form.html", order=order, initial_items=initial_items, customers=customers_list, products=products_list, sales_orders=sales_orders, order_types=ORDER_TYPES, order_payment_methods=ORDER_PAYMENT_METHODS, selected_type=order.order_type, today=order.order_date.isoformat())
 
     @app.route("/siparisler/<int:order_id>/satinalmaya-donustur", methods=["GET", "POST"])
