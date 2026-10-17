@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block heading %}Trello'ya Aktar · {{ order.order_no }}{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+  <h2>Tedarik siparişini seçin</h2>
+  <p>Bu satış siparişine bağlı satın alma siparişleri var. Aynı ürünlerin çift kart oluşturmaması için aktarımı ilgili tedarik siparişinden yapın.</p>
+  {% for purchase in purchases %}
+  <p><a class="button" href="{{ url_for('trello_export',order_id=purchase.id) }}">{{ purchase.order_no }} · {{ purchase.customer.name }} · {{ purchase.items|length }} kalem</a></p>
+  {% endfor %}
+  <p><a href="{{ url_for('order_detail',order_id=order.id) }}">Satış siparişine dön</a></p>
+</section>
+{% endblock %}

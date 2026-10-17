@@ -145,23 +145,27 @@ class TrelloTests(SupplierRouteTests):
         self.mock.cards.return_value=[{'id':'remote','url':'https://trello.com/c/remote','desc':t.payload(row)['desc']}]
         self.post({'confirm':token});self.mock.call.assert_called_once()
         self.assertIn('https://trello.com/c/remote',self.client.get(self.path,base_url=BASE).text)
-    def test_ten_lines_complete_in_four_batches_without_duplicates(self):
+    def test_ten_lines_complete_in_short_requests_without_duplicates(self):
         order=m.db.session.get(m.Order,self.order_id)
         for i in range(9): order.items.append(m.OrderItem(product_name=f'Ürün {i}',quantity=1,unit_price=12345))
         m.db.session.commit()
         self.mock.call.side_effect=[{'id':f'c{i}','url':f'https://trello.com/c/c{i}'} for i in range(10)]
         token=self.token(); counts=[]
-        for _ in range(4):
+        for _ in range(10):
             r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
             self.assertEqual(r.status_code,200);counts.append(r.json['completed'])
-        self.assertEqual(counts,[3,6,9,10]);self.assertEqual(r.json['remaining'],0)
+        self.assertEqual(counts,list(range(1,11)));self.assertEqual(r.json['remaining'],0)
+        self.assertFalse(r.json['chat_done'])
         self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
         self.assertEqual(self.mock.call.call_count,10)
     def test_batch_error_returns_partial_progress(self):
         order=m.db.session.get(m.Order,self.order_id)
         order.items.append(m.OrderItem(product_name='Second',quantity=1,unit_price=99));m.db.session.commit()
         self.mock.call.side_effect=[{'id':'first','url':'https://trello.com/c/first'},t.TrelloError('Bağlantı kesildi')]
-        r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':self.token()})
+        token=self.token()
+        first=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.assertEqual(first.status_code,200)
+        r=self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
         self.assertEqual(r.status_code,409);self.assertEqual(r.json['completed'],1);self.assertEqual(r.json['remaining'],1)
     def test_pdf_and_city_and_retry_without_duplicate_card(self):
         order=m.db.session.get(m.Order,self.order_id);order.delivery_city='İstanbul';m.db.session.commit()
@@ -199,9 +203,14 @@ class TrelloTests(SupplierRouteTests):
         self.chat_service.reset_mock()
         token=self.token()
         def send(): return self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
-        self.assertEqual(send().json['remaining'],1)
-        self.chat_service.spaces().messages().create.assert_not_called()
+        for remaining in [3,2,1,0]:
+            result=send()
+            self.assertEqual(result.json['remaining'],remaining)
+            self.assertFalse(result.json['chat_done'])
+            self.chat_service.spaces().messages().create.assert_not_called()
+        self.mock.cards.reset_mock();self.mock.lists.reset_mock()
         self.assertTrue(send().json['chat_done'])
+        self.mock.cards.assert_not_called();self.mock.lists.assert_not_called()
         self.assertTrue(send().json['chat_done'])
         self.chat_service.spaces().messages().create.assert_called_once()
         attachment_bytes=self.mock.attach_form.call_args.args[2]
@@ -213,6 +222,9 @@ class TrelloTests(SupplierRouteTests):
         self.chat_service.reset_mock()
         token=self.token()
         def send(): return self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        cards=send()
+        self.assertEqual(cards.status_code,200)
+        self.assertFalse(cards.json['chat_done'])
         a=send();b=send()
         self.assertEqual(a.status_code,409);self.assertEqual(a.json['remaining'],0)
         self.assertEqual(b.status_code,200);self.assertTrue(b.json['chat_done'])
@@ -247,3 +259,118 @@ class TrelloTests(SupplierRouteTests):
             values=request.call_args.kwargs
             self.assertIsNone(values['json'])
             self.assertEqual(values['data']['coordinates[latitude]'],'41.00638100')
+
+    def test_staff_three_lines_pdf_failure_owner_resumes_same_cards_then_chat(self):
+        self.chat_service.reset_mock()
+        staff=self.staff_client('ahmet')
+        self.mock.call.return_value={'id':'ahmet-id','username':'ahmet','fullName':'Ahmet'}
+        self.assertEqual(staff.post('/hesabim/trello',base_url=BASE,headers={'Origin':BASE},data={'token':'ahmet-secret'}).status_code,302)
+        result=staff.post('/siparisler/yeni',base_url=BASE,headers={'Origin':BASE},data={
+            'order_type':'Satın Alma','customer_id':'1339',
+            'product_name[]':['OME','NESSA','LETO'],'quantity[]':['1','2','10'],
+            'unit_price[]':['1','1','1'],'delivery_city':'Balıkesir'})
+        self.assertEqual(result.status_code,302)
+        order=m.Order.query.order_by(m.Order.id.desc()).first()
+        self.assertEqual(order.order_type,'Satın Alma')
+        self.order_id=order.id;self.path=f'/siparisler/{order.id}/trello'
+        token=re.search(r'name="confirm" value="([^"]+)"',staff.get(self.path,base_url=BASE).text)[1]
+        remote=[]
+        def create(method,path,**values):
+            self.assertEqual((method,path),('POST','cards'))
+            self.assertEqual(values['pos'],'top')
+            card={'id':f'c{len(remote)}','url':f'https://trello.com/c/c{len(remote)}',**values}
+            remote.append(card)
+            return card
+        self.mock.call.side_effect=create
+        self.mock.cards.side_effect=lambda:list(remote)
+        self.mock.attach_form.side_effect=[None,None,t.TrelloError('PDF kesildi'),None]
+        def send(client,confirm): return client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':confirm})
+        with patch('supplier_trello.Client',return_value=self.mock) as factory:
+            for expected in [1,2]:
+                result=send(staff,token)
+                self.assertEqual(result.json['completed'],expected)
+                self.assertEqual(factory.call_args.args[0]['token'],'ahmet-secret')
+            failed=send(staff,token)
+            self.assertEqual(failed.status_code,409)
+            self.assertEqual(failed.json['completed'],2)
+        page=staff.get(self.path,base_url=BASE).text
+        self.assertIn('PDF aktarımı tamamlanmadı',page)
+        self.chat_service.spaces().messages().create.assert_not_called()
+        owner_token=self.token()
+        self.assertEqual(send(self.client,owner_token).json['completed'],3)
+        self.assertTrue(send(self.client,owner_token).json['chat_done'])
+        self.assertEqual(len(remote),3)
+        self.chat_service.spaces().messages().create.assert_called_once()
+        self.assertTrue(send(staff,token).json['chat_done'])
+        self.assertEqual(len(remote),3)
+        self.chat_service.spaces().messages().create.assert_called_once()
+
+    def linked_sale(self):
+        purchase=m.db.session.get(m.Order,self.order_id)
+        product_name=purchase.items[0].product_name
+        sale=m.Order(order_no='SS-2026-00095',order_type='Satış',customer=purchase.customer)
+        sale.items=[m.OrderItem(product_name=product_name,quantity=6,unit_price=1)]
+        m.db.session.add(sale);m.db.session.flush()
+        purchase.source_order_id=sale.id
+        purchase.items[0].source_order_item_id=sale.items[0].id
+        m.db.session.commit()
+        return sale
+
+    def test_sale_export_routes_staff_and_owner_to_same_procurement(self):
+        sale=self.linked_sale()
+        path=f'/siparisler/{sale.id}/trello'
+        for client in [self.client,self.staff_client('ahmet')]:
+            page=client.get(path,base_url=BASE)
+            self.assertEqual(page.status_code,303)
+            self.assertTrue(page.location.endswith(self.path))
+            result=client.post(path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'})
+            self.assertEqual(result.status_code,409)
+            self.assertEqual(result.json['redirect_url'],self.path)
+        self.mock.call.assert_not_called()
+
+    def test_multiple_procurements_require_selection_and_ignore_cancelled(self):
+        sale=self.linked_sale()
+        second=m.Order(order_no='SA-SECOND',order_type='Satın Alma',source_order_id=sale.id,customer=sale.customer)
+        cancelled=m.Order(order_no='SA-CANCELLED',order_type='Satın Alma',source_order_id=sale.id,customer=sale.customer,status='İptal Edildi')
+        m.db.session.add_all([second,cancelled]);m.db.session.commit()
+        page=self.client.get(f'/siparisler/{sale.id}/trello',base_url=BASE)
+        self.assertEqual(page.status_code,200)
+        self.assertIn('Tedarik siparişini seçin',page.text)
+        self.assertIn('SA-SECOND',page.text)
+        self.assertNotIn('SA-CANCELLED',page.text)
+        self.mock.call.assert_not_called()
+
+    def test_legacy_sales_card_prevents_new_procurement_card(self):
+        sale=self.linked_sale()
+        from sqlalchemy import insert
+        key=t.order_rows(sale,'test')[0][0]
+        with m.db.engine.begin() as c:
+            c.execute(insert(t.deliveries).values(key=key,card_id='sale-card',card_url='https://trello.com/c/sale'))
+        result=self.post({'confirm':self.token()})
+        self.assertIn('bağlı satış siparişinden daha önce aktarılmış',result.text)
+        self.mock.call.assert_not_called()
+
+    def test_existing_procurement_pdf_can_resume_despite_legacy_sales_duplicate(self):
+        self.chat_service.reset_mock()
+        sale=self.linked_sale()
+        from sqlalchemy import insert
+        rows=t.order_rows(m.db.session.get(m.Order,self.order_id),'test')
+        with m.db.engine.begin() as c:
+            c.execute(insert(t.deliveries),[
+                dict(key=rows[0][0],card_id='purchase-card',card_url='https://trello.com/c/purchase'),
+                dict(key=t.order_rows(sale,'test')[0][0],card_id='sale-card',card_url='https://trello.com/c/sale')])
+        self.mock.cards.return_value=[dict(id='purchase-card',url='https://trello.com/c/purchase',**t.payload(rows[0]))]
+        self.post({'confirm':self.token()})
+        self.mock.attach_form.assert_called_once()
+        self.assertFalse(any(call.args[:2]==('POST','cards') for call in self.mock.call.call_args_list))
+        self.chat_service.spaces().messages().create.assert_called_once()
+
+    def test_manually_linked_procurement_does_not_duplicate_existing_sales_cards(self):
+        sale=self.linked_sale()
+        purchase=m.db.session.get(m.Order,self.order_id)
+        purchase.items[0].source_order_item_id=None
+        m.db.session.commit()
+        self.mock.cards.return_value=[dict(id='sale-card',url='https://trello.com/c/sale',**t.payload(t.order_rows(sale,'test')[0]))]
+        result=self.post({'confirm':self.token()})
+        self.assertIn('bağlı satış siparişinden daha önce aktarılmış',result.text)
+        self.mock.call.assert_not_called()

@@ -212,6 +212,17 @@ def register_supplier_trello(app, db, Order):
         if not app.config.get('WEB_AUTH_ENABLED'): abort(404)
         order=db.get_or_404(Order,order_id)
         if not allowed_order(order): abort(403)
+        # A sale and its procurement have different line IDs. Never offer a
+        # second export of the sale once procurement exists, regardless of user.
+        if order.order_type == 'Satış':
+            purchases=Order.query.filter_by(source_order_id=order.id,order_type='Satın Alma').filter(Order.status!='İptal Edildi').order_by(Order.id).all()
+            if purchases:
+                target=url_for('trello_export',order_id=purchases[0].id) if len(purchases)==1 else None
+                if request.method=='POST' and request.headers.get('Accept')=='application/json':
+                    return jsonify(error='Bu satış siparişinin tedarik siparişinden aktarım yapılmalı.',
+                        redirect_url=target or url_for('trello_export',order_id=order.id)),409
+                if target: return redirect(target,code=303)
+                return render_template('trello_purchase_orders.html',order=order,purchases=purchases)
         rows=order_rows(order,g.web_username)
         images=product_images(app,db,order)
         signer=URLSafeTimedSerializer(app.secret_key,salt='trello-export')
@@ -229,17 +240,21 @@ def register_supplier_trello(app, db, Order):
                 if signed!=identity: raise TrelloError('Sipariş değişti; önizlemeyi yenileyin.')
                 if not cfg: raise TrelloError('Önce kendi Trello hesabınızı bağlayın.')
                 client=Client(cfg)
-                if not any(x['id']==cfg['list_id'] for x in client.lists()): raise TrelloError('Hedef liste kapalı veya bulunamadı.')
                 meta.create_all(db.engine)
-                cards=client.cards()
-                pdf=form_pdf(db,order,rows)
+                cards=None
+                pdf=None
                 filename=f'{order.order_no}-Siparis-Formu-{form_version}.pdf'
                 sent=0
                 for row in rows:
                     with db.engine.connect() as c: previous=c.execute(select(deliveries).where(deliveries.c.key==row[0])).mappings().first()
                     with db.engine.connect() as c: done=c.execute(select(extras.c.card_id).where(extras.c.key==form_keys[row[0]])).scalar()
                     if previous and previous['card_id'] and done==previous['card_id']: continue
-                    if sent>=3: break
+                    # Keep each browser request bounded: one card/PDF per
+                    # request, then Chat in its own request after the last PDF.
+                    if sent>=1: break
+                    if cards is None:
+                        if not any(x['id']==cfg['list_id'] for x in client.lists()): raise TrelloError('Hedef liste kapalı veya bulunamadı.')
+                        cards=client.cards()
                     card=None
                     if previous and previous['card_id']:
                         card=next((x for x in cards if x['id']==previous['card_id']),None)
@@ -253,12 +268,24 @@ def register_supplier_trello(app, db, Order):
                             c.execute(update(deliveries).where(deliveries.c.key==row[0]).values(card_id=card['id'],card_url=card['url']))
                     if previous and not card: raise TrelloError('Önceki aktarımın sonucu belirsiz. Mükerrer kartı önlemek için durduruldu; yönetici kontrol etmeli.')
                     if not card:
+                        item=next(item for item in order.items if row[0]==f'bos:order:{order.id}:item:{item.id}')
+                        if order.order_type=='Satın Alma' and order.source_order_id:
+                            source_prefix=f'bos:order:{order.source_order_id}:item:'
+                            source_key=source_prefix+str(item.source_order_item_id) if item.source_order_item_id else None
+                            with db.engine.connect() as c:
+                                predicate=deliveries.c.key==source_key if source_key else deliveries.c.key.startswith(source_prefix)
+                                source_delivery=c.execute(select(deliveries.c.key).where(predicate).limit(1)).scalar()
+                            source_remote=any(
+                                part==f'BOS kayıt: {source_key}' if source_key else part.startswith(f'BOS kayıt: {source_prefix}')
+                                for x in cards for part in x.get('desc','').split('\n\n'))
+                            if source_delivery or source_remote:
+                                raise TrelloError('Bu kalem bağlı satış siparişinden daha önce aktarılmış. Çift kart oluşturmamak için durduruldu; yönetici mevcut kartı kontrol etmeli.')
                         try:
                             with db.engine.begin() as c: c.execute(insert(deliveries).values(key=row[0],actor=g.web_username,created_at=datetime.now(timezone.utc).isoformat()))
                         except IntegrityError: raise TrelloError('Bu kalem başka bir işlemde aktarılıyor. Sayfayı yenileyin.') from None
                         data=payload(row)
                         if order.delivery_date: data['due']=order.delivery_date.isoformat()+'T09:00:00+03:00'
-                        card=client.call('POST','cards',idList=cfg['list_id'],**data)
+                        card=client.call('POST','cards',idList=cfg['list_id'],pos='top',**data)
                         card['desc']=data['desc']
                         card['locationName']=data.get('locationName')
                         card['address']=data.get('address')
@@ -270,6 +297,7 @@ def register_supplier_trello(app, db, Order):
                     if row[7] and f'Teslim ili: {row[7]}' not in card.get('desc','').split('\n\n'):
                         updates['desc']=card.get('desc','')+'\n\nTeslim ili: '+str(row[7])
                     if updates: client.call('PUT',f'cards/{card["id"]}',**updates)
+                    if pdf is None: pdf=order_form_pdf(rows,images)
                     client.attach_form(card['id'],filename,pdf)
                     with db.engine.begin() as c:
                         if done: c.execute(update(extras).where(extras.c.key==form_keys[row[0]]).values(card_id=card['id']))
@@ -285,16 +313,19 @@ def register_supplier_trello(app, db, Order):
         remaining = sum(not states.get(r[0],{}).get('card_id') or completed.get(form_keys[r[0]])!=states[r[0]]['card_id'] for r in rows)
         chat_enabled=chat_allowed(order)
         chat_done=order_sent(db,order) if chat_enabled else True
-        if request.method=='POST' and not error and not remaining and not chat_done:
+        if request.method=='POST' and not error and not remaining and not chat_done and (not batch_request or sent==0):
             try:
                 send_order(app,db,order,rows)
                 chat_done=True
-            except Exception:
+            except Exception as exc:
+                # Record only the exception type, never credentials or API URLs.
+                app.logger.warning('Trello Chat delivery failed for order %s (%s)',order.id,type(exc).__name__)
                 error='Trello kartları hazır, ancak Google Chat gönderimi tamamlanamadı. Tekrar deneyin; kartlar çoğaltılmaz.'
         if request.method=='POST' and not batch_request and not error:
             return redirect(url_for('trello_export',order_id=order.id))
         if batch_request:
-            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error, chat_done=chat_done), (409 if error else 200)
-        return render_template('trello_export.html',order=order,rows=rows,states=states,connected=bool(cfg),error=error,
+            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error, chat_done=chat_done,chat_enabled=chat_enabled), (409 if error else 200)
+        row_completed={r[0]:bool(states.get(r[0],{}).get('card_id') and completed.get(form_keys[r[0]])==states[r[0]]['card_id']) for r in rows}
+        return render_template('trello_export.html',order=order,rows=rows,states=states,row_completed=row_completed,connected=bool(cfg),error=error,
             confirm=signer.dumps(identity),board_url=BOARD_URL,payload=payload,
             remaining=remaining,chat_done=chat_done,chat_enabled=chat_enabled,images=images,trello_member_name=cfg.get("member_name"))
