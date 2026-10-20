@@ -16,6 +16,9 @@
   {% else %}
   <form method="post" action="{{ url_for('dealer_portal_pull') }}"><button class="button primary" type="submit">Yeni sipariş isteklerini getir</button></form>
   <p>En fazla 20 istek alınır. Daha fazla sipariş varsa yeniden getirebilirsiniz. Eski portal denemeleri aktarılmaz.</p>
+  {% if last_pull %}
+  <p role="status">{% if last_pull.ok %}<strong>Son bağlantı kontrolü başarılı.</strong> {{ last_pull.count }} sipariş isteği alındı. Satış, fatura, stok veya cari hareket oluşturulmadı.{% else %}<strong>Son bağlantı kontrolü tamamlanamadı.</strong> Kayıtlar korundu. Bağlantıyı kontrol edip yeniden deneyin.{% endif %}<br><small>{{ last_pull.checkedAt }}</small></p>
+  {% endif %}
   {% endif %}
 </section>
 <section class="panel" style="padding:24px">

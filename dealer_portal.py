@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urlsplit
 import requests
-from flask import abort, flash, g, has_request_context, redirect, render_template, request, url_for
+from flask import abort, flash, g, has_request_context, redirect, render_template, request, session, url_for
 from vercel.headers import HeadersContext
 from vercel.oidc import get_vercel_oidc_token_sync, VercelOidcTokenError
 from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, Text, UniqueConstraint, inspect, select, func
@@ -153,7 +153,9 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
         with db.engine.connect() as conn:
             installed=ready(conn)
             rows=conn.execute(select(inbox).where(inbox.c.source==config['source']).order_by(inbox.c.id.desc()).limit(100)).mappings().all() if installed and config else []
-        return render_template('dealer_portal.html',connected=bool(config),installed=installed,rows=rows,error=error)
+        last_pull=session.get('dealer_portal_last_pull')
+        if not isinstance(last_pull,dict) or not config or last_pull.get('source')!=config['source']:last_pull=None
+        return render_template('dealer_portal.html',connected=bool(config),installed=installed,rows=rows,error=error,last_pull=last_pull)
 
     @app.post('/yonetim/bayi-portali/kur')
     def dealer_portal_init():
@@ -183,8 +185,10 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
                 db.session.execute(inbox.insert().values(source=config['source'],portal_order_id=payload['portalOrderId'],
                     portal_user_id=payload['portalUserId'],payload_hash=digest,payload=encoded(payload).decode(),created_at=datetime.now(timezone.utc).replace(tzinfo=None),ack_pending=False))
             db.session.commit()
+            session['dealer_portal_last_pull']={'source':config['source'],'ok':True,'count':len(records),'checkedAt':datetime.now(timezone.utc).isoformat()}
             flash(f'{len(records)} sipariş isteği kontrol edildi. Henüz satış, stok veya cari hareket oluşturulmadı.','success')
         except (PortalError,IntegrityError):
+            session['dealer_portal_last_pull']={'source':config['source'],'ok':False,'checkedAt':datetime.now(timezone.utc).isoformat()}
             db.session.rollback();flash('Aktarım tamamlanmadı. Kayıtlar korundu; bağlantıyı ve paketleri kontrol ederek tekrar deneyin.','error')
         return redirect(url_for('dealer_portal'))
 

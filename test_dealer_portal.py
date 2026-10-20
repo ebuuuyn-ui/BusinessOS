@@ -84,6 +84,7 @@ class DealerPortalTests(unittest.TestCase):
     def test_pull_has_no_business_effect_and_requires_explicit_customer_mapping(self):
         self.init();row=self.pull()
         self.assertIsNotNone(row);self.assertEqual(m.Order.query.count(),0)
+        self.assertIn('Son bağlantı kontrolü başarılı.',self.client.get(self.base,base_url=BASE).text)
         for model in (m.Invoice,m.StockMovement,m.AccountTransaction):self.assertEqual(model.query.count(),0)
         response=self.client.get(f"{self.base}/{row['id']}",base_url=BASE)
         self.assertEqual(response.status_code,200)
