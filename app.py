@@ -2183,6 +2183,8 @@ def create_app(test_config=None):
                                 lambda: create_database_backup(app, "before_customer_transfer"))
     from invoice_profitability import register_profitability
     register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense)
+    from dealer_portal import register_portal
+    register_portal(app, db, Customer, Product, Order, OrderItem, OrderHistory)
 
     @app.before_request
     def scheduled_database_backup():

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Bayi portalı · Business OS{% endblock %}
+{% block heading %}Bayi portalı{% endblock %}
+{% block subheading %}Siparişleri al, müşteriyle eşleştir, onayla{% endblock %}
+{% block content %}
+<section class="panel" style="padding:24px;margin-bottom:24px">
+  <h2>Portal siparişleri</h2>
+  <p>İstekleri almak satış, fatura, stok veya cari hareket oluşturmaz. Satış siparişi yalnızca yönetici onayıyla açılır; ardından müşteri portalında görünür.</p>
+  {% if error %}<p class="flash error">{{ error }}</p>{% endif %}
+  {% if not connected %}<p>Bağlantı kapalı. Sunucu bağlantı ayarları henüz etkinleştirilmedi.</p>
+  {% elif not installed %}
+  <form method="post" action="{{ url_for('dealer_portal_init') }}">
+    <label><input type="checkbox" name="confirm" value="yes" required> Yalnızca iki yeni portal tablosunun oluşturulmasını onaylıyorum.</label>
+    <button type="submit" class="button primary">Bekleme listesini hazırla</button>
+  </form>
+  {% else %}
+  <form method="post" action="{{ url_for('dealer_portal_pull') }}"><button class="button primary" type="submit">Yeni sipariş isteklerini getir</button></form>
+  <p>En fazla 20 istek alınır. Daha fazla sipariş varsa yeniden getirebilirsiniz. Eski portal denemeleri aktarılmaz.</p>
+  {% endif %}
+</section>
+<section class="panel" style="padding:24px">
+<h2>Son istekler</h2>
+<table><thead><tr><th>Portal kayıt no</th><th>Durum</th><th>BOS siparişi</th><th>İşlem</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.portal_order_id }}</td><td>{{ 'Portal bildirimi bekliyor' if row.ack_pending else 'Onaylandı' if row.order_id else 'Onay bekliyor' }}</td><td>{{ row.order_no or '—' }}</td><td><a class="button" href="{{ url_for('dealer_portal_detail',identity=row.id) }}">İncele</a></td></tr>
+{% else %}<tr><td colspan="4">Henüz sipariş isteği yok.</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

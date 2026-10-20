@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Portal sipariş inceleme · Business OS{% endblock %}
+{% block heading %}{{ payload.portalOrderNo }}{% endblock %}
+{% block subheading %}Bayi portalı sipariş isteği{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('dealer_portal') }}">← Portal istekleri</a></p>
+<section class="panel" style="padding:24px;margin-bottom:24px">
+<h2>{{ payload.customer.company }}</h2><p>{{ payload.customer.name }} · {{ payload.customer.phone }} · {{ payload.customer.email }}</p>
+<p>Teslimat: {{ payload.customer.address }}</p><p>{{ payload.customer.note }}</p>
+<p>Ödeme: <strong>{{ payment }} · %{{ payload.pricing.rate }} iskonto</strong>{% if payload.pricing.methodId == 'cek-90-gun' %} · 90 gün vade{% endif %}</p>
+<p>Liste toplamı: {{ (payload.pricing.subtotalCents/100)|money }} TL · İndirimli toplam (KDV hariç): <strong>{{ (payload.pricing.totalCents/100)|money }} TL</strong></p>
+<table><thead><tr><th>Kod</th><th>Ürün / seçenekler</th><th>Adet</th><th>Birim liste fiyatı</th></tr></thead><tbody>
+{% for item in payload['items'] %}<tr><td>{{ item.code }}</td><td>{{ item.name }} · {{ item.label }} · {{ item.colorLabel }}<br>{{ item.detail }}<br>{{ item.note }}</td><td>{{ item.quantity }}</td><td>{{ (item.unitCents/100)|money }} TL</td></tr>{% endfor %}
+</tbody></table>
+{% if missing %}<p class="flash error">Eksik veya pasif ürün kodları: {{ missing|join(', ') }}. Onay engellendi; ürün oluşturulmaz veya benzer kodla eşleştirilmez.</p>{% endif %}
+</section>
+<section class="panel" style="padding:24px;margin-bottom:24px">
+<h2>BOS müşterisi</h2>
+{% if customer %}<p><strong>{{ customer.name }}</strong> · {{ customer.code }}</p><p>Bu portal hesabı bu müşteriyle eşleştirildi.</p>
+{% elif not row.order_id %}<p>Önce BOS Cariler ekranından doğru müşterinin kodunu kontrol edin. E-posta veya firma benzerliğiyle otomatik eşleştirme yapılmaz.</p>
+<form method="post" action="{{ url_for('dealer_portal_link',identity=row.id) }}" style="max-width:540px;display:grid;gap:16px">
+<label>BOS müşteri kodu<input name="customer_code" required maxlength="80"></label>
+<label><input type="checkbox" name="confirm" value="yes" required> Bu portal hesabının girdiğim BOS müşterisine ait olduğunu kontrol ettim.</label>
+<button class="button" type="submit">Müşteriyi eşleştir</button></form>{% endif %}
+</section>
+<section class="panel" style="padding:24px">
+{% if row.order_id %}<h2>BOS siparişi: {{ row.order_no }}</h2><a class="button" href="{{ url_for('order_detail',order_id=row.order_id) }}">BOS siparişini aç</a>
+{% if row.ack_pending %}<p>BOS kaydı tamamlandı; portal bildirimi bekliyor.</p><form method="post" action="{{ url_for('dealer_portal_ack',identity=row.id) }}"><button class="button primary" type="submit">Portala onayı yeniden bildir</button></form>{% else %}<p>Portal onayı bildirildi.</p>{% endif %}
+{% else %}<h2>Yönetici onayı</h2>
+<p>Fiyatlar portal gönderimindeki liste fiyatı ve ödeme iskontosuyla korunur. KDV oranı aşağıda ayrıca seçilir. Fatura, tahsilat, stok veya cari hareket açılmaz.</p>
+<form method="post" action="{{ url_for('dealer_portal_approve',identity=row.id) }}" style="max-width:600px;display:grid;gap:16px">
+<input type="hidden" name="payload_hash" value="{{ row.payload_hash }}">
+<label>KDV oranı (%)<input type="number" name="vat_rate" min="0" max="100" step="0.01" required placeholder="KDV oranını girin"></label>
+<label><input type="checkbox" name="confirm" value="yes" required> Müşteriyi, ürünleri, teslimatı ve fiyatları kontrol ettim; BOS satış siparişi oluşturulsun.</label>
+<button class="button primary" type="submit" {% if not customer or missing %}disabled{% endif %}>Onayla ve satış siparişi oluştur</button></form>{% endif %}
+</section>
+{% endblock %}

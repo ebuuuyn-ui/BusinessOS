@@ -36,3 +36,5 @@ dist/
 .codex-backups/
 *.app/
 .env.*
+.vercel
+.env*
