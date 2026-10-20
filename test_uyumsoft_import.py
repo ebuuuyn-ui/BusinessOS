@@ -63,3 +63,44 @@ class ImportTests(unittest.TestCase):
         c=Client({'environment':'test','username':'x','password':'x'})
         result=ET.fromstring(f'<R xmlns="{T}"><Value InvoiceId="wrong"><Data>JVBERi0=</Data></Value></R>')
         with patch.object(c,'call',return_value=result),self.assertRaises(UyumError):c.outbox_pdf(self.uid)
+
+    def set_amounts(self,quantity,net,tax):
+        line=self.root.find('{'+A+'}InvoiceLine')
+        line.find('{'+B+'}InvoicedQuantity').text=str(quantity)
+        line.find('{'+B+'}LineExtensionAmount').text=net
+        line.find('{'+A+'}TaxTotal/{'+B+'}TaxAmount').text=tax
+        line.find('{'+A+'}TaxTotal/{'+A+'}TaxSubtotal/{'+B+'}TaxAmount').text=tax
+        line.find('{'+A+'}TaxTotal/{'+A+'}TaxSubtotal/{'+B+'}Percent').text='10'
+        self.root.find('{'+A+'}LegalMonetaryTotal/{'+B+'}TaxExclusiveAmount').text=net
+        self.root.find('{'+A+'}TaxTotal/{'+B+'}TaxAmount').text=tax
+        from decimal import Decimal
+        self.root.find('{'+A+'}LegalMonetaryTotal/{'+B+'}PayableAmount').text=str(Decimal(net)+Decimal(tax))
+
+    def test_recurring_discounted_unit_price_preserves_official_totals(self):
+        from decimal import Decimal
+        self.fixture();self.set_amounts(3,'100.00','10.00')
+        before=m.StockMovement.query.count()
+        with patch('uyumsoft_import.Client') as c:
+            self.mocked(c)
+            page=self.post(self.path,{'action':'fetch'})
+            self.assertNotIn('manuel kontrol',page.text)
+            self.assertEqual(m.Invoice.query.count(),0)
+            token=re.search('name="token" value="([^"]+)"',page.text)[1]
+            self.assertEqual(self.post(self.path,{'action':'save','token':token}).status_code,302)
+            self.post(self.path,{'action':'save','token':token})
+        m.db.session.expire_all()
+        inv=m.Invoice.query.one();item=inv.items[0]
+        self.assertEqual(item.unit_price,Decimal('33.33333333'))
+        self.assertEqual(item.net_amount,Decimal('100.00'))
+        self.assertEqual(item.vat_amount,Decimal('10.00'))
+        self.assertEqual(inv.total_amount,Decimal('110.00'))
+        self.assertEqual(m.StockMovement.query.count(),before+1)
+        self.assertEqual(m.StockMovement.query.order_by(m.StockMovement.id.desc()).first().quantity,3)
+
+    def test_tax_half_cent_and_invalid_tax(self):
+        self.fixture();self.set_amounts(1,'0.05','0.01')
+        doc=parse_invoice(self.root,self.uid,DEFAULT_SELLER['tax_number'],'0123456789')
+        self.assertEqual(doc['total'],'0.06')
+        self.set_amounts(3,'100.00','11.00')
+        with self.assertRaisesRegex(UyumError,'KDV tutarı'):
+            parse_invoice(self.root,self.uid,DEFAULT_SELLER['tax_number'],'0123456789')

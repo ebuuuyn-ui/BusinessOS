@@ -4,7 +4,7 @@ import hashlib
 import io
 import re
 from datetime import date, datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import xml.etree.ElementTree as ET
 from flask import request, render_template, redirect, url_for, flash, send_file
 from itsdangerous import URLSafeTimedSerializer, BadSignature
@@ -49,10 +49,15 @@ def parse_invoice(root,expected_uuid,seller_id,buyer_id):
         net=dec(line,'b:LineExtensionAmount');taxes=line.findall('a:TaxTotal/a:TaxSubtotal',N)
         if len(taxes)!=1 or taxes[0].findtext('a:TaxCategory/a:TaxScheme/b:TaxTypeCode',namespaces=N)!='0015':raise UyumError('Faturanın vergi yapısı otomatik işlenemiyor.')
         rate=dec(taxes[0],'b:Percent');vat=dec(taxes[0],'b:TaxAmount')
-        # Net unit price is lossless only when BOS two-decimal storage can represent it.
-        price=(net/quantity).quantize(Decimal('.01'))
-        if rate not in (1,10,20) or net<=0 or price*quantity!=net or (net*rate/100).quantize(Decimal('.01'))!=vat:
-            raise UyumError('Kalem tutarı BOS fiyat hassasiyetiyle uyuşmuyor; manuel kontrol gerekiyor.')
+        # Keep the official line totals: a discounted net / quantity may be
+        # recurring, even with eight-decimal unit-price storage.
+        if quantity>2147483647 or net<=0 or net!=net.quantize(Decimal('.01')):
+            raise UyumError('Kalem miktarı veya tutar hassasiyeti desteklenmiyor.')
+        price=(net/quantity).quantize(Decimal('.00000001'),rounding=ROUND_HALF_UP)
+        if price>=Decimal('1000000000000'):
+            raise UyumError('Kalem birim fiyatı desteklenen sınırı aşıyor.')
+        if rate not in (1,10,20) or (net*rate/100).quantize(Decimal('.01'),rounding=ROUND_HALF_UP)!=vat:
+            raise UyumError('Kalemin KDV tutarı matrah ve oranla uyuşmuyor; manuel kontrol gerekiyor.')
         name=line.findtext('a:Item/b:Name',namespaces=N) or ''
         if not name or len(name)>160:raise UyumError('Ürün adı okunamadı.')
         lines.append(dict(name=name,quantity=int(quantity),price=str(price),vat=str(rate),net=str(net),tax=str(vat)))
@@ -132,12 +137,14 @@ def register_import(app,db,Invoice,Order,InvoiceItem,StockMovement,config,record
                             raise UyumError('Fatura numarası veya sipariş için BOS kaydı zaten var. Çift kayıt oluşturmamak için durduruldu.')
                         inv=Invoice(invoice_no=document['number'],invoice_type='Satış',customer_id=order.customer_id,order_id=order.id,
                             invoice_date=date.fromisoformat(document['date']),due_date=date.fromisoformat(document['due']) if document['due'] else None,
-                            notes=(document['notes']+'\nUyumsoft ETTN: '+attempt['uuid']).strip())
+                            notes=(document['notes']+'\nUyumsoft ETTN: '+attempt['uuid']).strip(),
+                            source_net_amount=Decimal(document['net']),source_vat_amount=Decimal(document['tax']))
                         db.session.add(inv);db.session.flush()
                         for line in document['lines']:
                             movement=StockMovement(product_id=line['product_id'],movement_type='Stok Çıkışı',quantity=line['quantity'],movement_date=inv.invoice_date,note='Satış faturası · '+inv.invoice_no)
                             db.session.add(movement);db.session.flush()
                             db.session.add(InvoiceItem(invoice_id=inv.id,product_id=line['product_id'],product_name=line['name'],quantity=line['quantity'],unit='Adet',
+                                source_net_amount=Decimal(line['net']),source_vat_amount=Decimal(line['tax']),
                                 unit_price=Decimal(line['price']),discount_rate=0,vat_rate=Decimal(line['vat']),vat_included=False,stock_movement_id=movement.id))
                         db.session.execute(insert(imports).values(uuid=attempt['uuid'],invoice_id=inv.id,number=inv.invoice_no,xml=xml,pdf=pdf,created_at=datetime.now(timezone.utc).isoformat()))
                         db.session.commit()
