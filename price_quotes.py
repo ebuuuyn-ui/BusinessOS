@@ -85,9 +85,18 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
     def image_data(product):
         obj=db.session.get(ProductImage,product.id) if ready(ProductImage) else None
         if obj:return obj.content
-        path=Path(app.root_path)/'static'/'quote-products'/((product.code or '')+'.jpg')
-        if product.code and '/' not in product.code and path.is_file():return path.read_bytes()
+        from product_image_assets import default_image_path
+        path=default_image_path(app.root_path,product)
+        if path:return path.read_bytes()
         return None
+    def fill_missing_images(data):
+        # Display-time repair only: saved commercial terms and stored payload stay intact.
+        for row in data.get('lines', []):
+            if not row.get('image'):
+                product=db.session.get(Product,row.get('product_id')) if row.get('product_id') else None
+                binary=image_data(product) if product else None
+                if binary:row['image']=base64.b64encode(binary).decode()
+        return data
     def catalog():return Product.query.filter_by(active=True).order_by(Product.name).all()
     def get_quote(uid):
         if not ready(Quote):abort(404)
@@ -101,7 +110,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
     @app.route('/fiyat-teklifleri/yeni',methods=['GET','POST'])
     @app.route('/fiyat-teklifleri/<uid>/duzenle',methods=['GET','POST'])
     def quote_edit(uid=None):
-        quote=get_quote(uid) if uid else None;data=json.loads(quote.payload) if quote else {'date':date.today().isoformat(),'lines':[],'conditions':{}}
+        quote=get_quote(uid) if uid else None;data=fill_missing_images(json.loads(quote.payload)) if quote else {'date':date.today().isoformat(),'lines':[],'conditions':{}}
         creation_id=request.form.get('creation_id') or str(uuid.uuid4())
         error=None;products=catalog();by_id={str(x.id):x for x in products}
         # Existing inactive products can remain in an older saved quote.
@@ -122,7 +131,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
                     # Preserve the saved image unless explicitly refreshed by selecting/uploading.
                     if quote and not row.get('refresh_image'):
                         original=next((x for x in old_data['lines'] if x['product_id']==product.id),None)
-                        if original:return original.get('image')
+                        if original and original.get('image'):return original['image']
                     binary=image_data(product)
                     return base64.b64encode(binary).decode() if binary else None
                 clean=validate(data,by_id,choose_image)
@@ -147,7 +156,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
         return render_template('quote_edit.html',quote=quote,data=data,author=author,error=error,products=product_data,customers=customers,conditions=CONDITIONS,creation_id=creation_id,language_labels=LABELS,english=request.args.get('english')=='1',document_type=document_type(data))
     @app.get('/fiyat-teklifleri/<uid>')
     def quote_detail(uid):
-        quote=get_quote(uid);data=json.loads(quote.payload)
+        quote=get_quote(uid);data=fill_missing_images(json.loads(quote.payload))
         from app import QuoteOrderTransfer, Order
         transfer=db.session.get(QuoteOrderTransfer,uid) if ready(QuoteOrderTransfer) else None
         linked_order=db.session.get(Order,transfer.order_id) if transfer else None
@@ -156,7 +165,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
     def quote_to_order(uid):
         from app import QuoteOrderTransfer, Order, OrderItem, OrderHistory, next_order_no, ORDER_PAYMENT_METHODS, normalize_search_text
         from sqlalchemy.exc import IntegrityError
-        quote=get_quote(uid);data=json.loads(quote.payload)
+        quote=get_quote(uid);data=fill_missing_images(json.loads(quote.payload))
         def linked():
             return db.session.get(QuoteOrderTransfer,uid) if ready(QuoteOrderTransfer) else None
         def existing_response(transfer):
@@ -239,7 +248,7 @@ def register_quotes(app,db,Product,Customer,Quote,ProductImage):
     def quote_pdf(uid):
         from quote_pdf import build_pdf
         quote=get_quote(uid)
-        return send_file(build_pdf(json.loads(quote.payload),quote.number),mimetype='application/pdf',as_attachment=True,download_name=quote.number+'.pdf')
+        return send_file(build_pdf(fill_missing_images(json.loads(quote.payload)),quote.number),mimetype='application/pdf',as_attachment=True,download_name=quote.number+'.pdf')
     @app.post('/fiyat-teklifleri/onizleme.pdf')
     def quote_preview():
         try:

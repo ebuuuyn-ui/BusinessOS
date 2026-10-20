@@ -11,10 +11,10 @@ def product_images(app,db,order):
         blob=None
         if item.product:
             if ready: blob=db.session.execute(select(table.c.content).where(table.c.product_id==item.product_id)).scalar()
-            code=item.product.code or ""
-            if not blob and code and "/" not in code and "\\" not in code:
-                path=Path(app.root_path)/"static"/"quote-products"/(code+".jpg")
-                if path.is_file(): blob=path.read_bytes()
+            if not blob:
+                from product_image_assets import default_image_path
+                path=default_image_path(app.root_path,item.product)
+                if path:blob=path.read_bytes()
         if blob:
             digest=hashlib.sha256(blob).hexdigest()[:24]
             key=f"bos:order:{order.id}:item:{item.id}"

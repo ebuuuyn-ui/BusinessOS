@@ -189,7 +189,10 @@ class QuoteTests(unittest.TestCase):
             m.db.session.add(p);m.db.session.commit()
             response=self.client.get(f'/fiyat-teklifleri/urun/{p.id}/gorsel',base_url=BASE)
             self.assertEqual(response.status_code,200,code)
-            self.assertEqual(hashlib.sha256(response.data).hexdigest(),entry['sha256'],code)
+            from product_image_assets import default_image_path
+            expected=default_image_path(root,p)
+            expected_hash=hashlib.sha256(expected.read_bytes()).hexdigest() if expected.parent.name=='quote-sofa-sets' else entry['sha256']
+            self.assertEqual(hashlib.sha256(response.data).hexdigest(),expected_hash,code)
         self.assertEqual(m.ProductQuoteImage.query.count(),0)
         p=m.Product.query.filter_by(code='M00502').one()
         m.db.session.add(m.ProductQuoteImage(product_id=p.id,content=b'manual-image'))
@@ -198,3 +201,34 @@ class QuoteTests(unittest.TestCase):
         p=m.Product(name='Unmatched',code='O04502',unit_price=1,active=True)
         m.db.session.add(p);m.db.session.commit()
         self.assertEqual(self.client.get(f'/fiyat-teklifleri/urun/{p.id}/gorsel',base_url=BASE).status_code,404)
+
+    def test_sofa_sets_and_old_missing_quote_images(self):
+        from product_image_assets import SOFA_SETS, default_image_path
+        from types import SimpleNamespace
+        import base64
+        root=Path(__file__).parent
+        for prefix,(name,suffixes) in SOFA_SETS.items():
+            for suffix in suffixes:
+                product=SimpleNamespace(code=f'{prefix}{suffix:02}',name=name+' KANEPE')
+                path=default_image_path(root,product)
+                self.assertEqual(path.name,prefix+'.jpg')
+                Image.open(path).verify()
+        d=self.sample()
+        self.p.name='ARVO ÜÇLÜ KANEPE TAKIMI';self.p.code='O04505';m.db.session.commit()
+        d['lines'][0]['name']=self.p.name
+        self.assertEqual(self.post(d).status_code,302)
+        q=m.PriceQuote.query.one();saved=json.loads(q.payload)
+        expected=base64.b64encode((root/'static/quote-sofa-sets/O045.jpg').read_bytes()).decode()
+        self.assertEqual(saved['lines'][0]['image'],expected)
+        saved['lines'][0]['image']=None;q.payload=json.dumps(saved);m.db.session.commit()
+        original=q.payload
+        for suffix in ('','/duzenle'):
+            page=self.client.get('/fiyat-teklifleri/'+q.id+suffix,base_url=BASE)
+            self.assertEqual(page.status_code,200)
+            self.assertIn(expected,page.text)
+        pdf=self.client.get('/fiyat-teklifleri/'+q.id+'/pdf',base_url=BASE)
+        self.assertEqual(pdf.status_code,200)
+        self.assertIn(b'/Subtype /Image',pdf.data)
+        m.db.session.expire_all();self.assertEqual(q.payload,original)
+        self.assertEqual(self.post(d,q.id,'1').status_code,302)
+        m.db.session.expire_all();self.assertEqual(json.loads(q.payload)['lines'][0]['image'],expected)
