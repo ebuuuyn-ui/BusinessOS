@@ -9,6 +9,31 @@ from supplier_trello import order_form_pdf,order_rows
 from order_images import product_images
 
 class FormImages(unittest.TestCase):
+ def test_free_text_ome_in_purchase_and_supplier_pdf(self):
+  from pypdf import PdfReader
+  from pathlib import Path
+  with m.app.app_context():
+   m.db.drop_all();m.db.create_all()
+   order=m.Order(order_no='SA-2026-00096',customer=m.Customer(name='ABİKA'),order_type='Satın Alma')
+   order.items=[m.OrderItem(product_name='Ome',quantity=5,unit_price=0,variant='Lizbon siyah deri')]
+   m.db.session.add(order);m.db.session.commit()
+   images=product_images(m.app,m.db,order)
+   expected=(Path(m.app.root_path)/'static/quote-sofa-sets/O057.jpg').read_bytes()
+   key=f'bos:order:{order.id}:item:{order.items[0].id}'
+   self.assertEqual(images[key]['content'],expected)
+   self.assertIsNone(order.items[0].product_id)
+   response=m.app.test_client().get(f'/siparisler/{order.id}/pdf')
+   self.assertEqual(response.status_code,200)
+   for pdf in (response.data,order_form_pdf(order_rows(order,'Test'),images)):
+    reader=PdfReader(BytesIO(pdf))
+    self.assertGreater(sum(len(page.images) for page in reader.pages),0)
+    self.assertIn('Ome',' '.join(page.extract_text() for page in reader.pages))
+   order.items[0].product_name='Ome başka model'
+   self.assertEqual(product_images(m.app,m.db,order),{})
+   order.items[0].product=m.Product(code='UNKNOWN',name='Ome',unit_price=0)
+   order.items[0].product_name='Ome'
+   self.assertEqual(product_images(m.app,m.db,order),{})
+   m.db.session.rollback()
  def test_images_in_sales_and_purchase_downloads_and_supplier_pdf(self):
   with m.app.app_context():
    m.db.create_all();c=m.Customer(name='Test');p=m.Product(name='Koltuk',code='TEST-IMAGE',unit_price=10)
