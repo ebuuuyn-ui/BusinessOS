@@ -13,6 +13,9 @@ from googleapiclient.http import MediaIoBaseUpload
 from googleapiclient.errors import HttpError
 import supplier_chat as chat
 
+# Verified in Bekir's Google Chat: Dilek Abika, dilek@abikamobilya.com.
+DILEK_SPACE='spaces/qgbYeqAAAAE'
+
 meta=MetaData()
 outbox=Table('businessos_trello_chat_outbox',meta,
     Column('key',String(100),primary_key=True),Column('body',Text,nullable=False),
@@ -51,7 +54,14 @@ def enqueue(app,db,key,body,pdf=None,filename=None,actor='Trello'):
             conn.execute(insert(outbox).values(key=key,body=body,pdf=pdf,filename=filename,actor=actor,created_at=datetime.now(timezone.utc).isoformat()))
 
 
-def deliver(app,db,key):
+def deliver(app,db,key,*,destination=None):
+    destination = destination or chat.SPACE
+    # Priced snapshots may only leave through the separately bound Dilek channel.
+    if key.startswith('priced:'):
+        if destination != DILEK_SPACE or not re.fullmatch(re.escape(f'priced:{DILEK_SPACE}:') + r'\d+',key):
+            raise chat.ChatError('Fiyatlı PDF alıcısı doğrulanamadı.')
+    elif destination != chat.SPACE:
+        raise chat.ChatError('Gönderim hedefi doğrulanamadı.')
     if not chat.schema_ready(db): raise chat.ChatError('Google Chat bağlantısı kurulmamış.')
     with db.engine.begin() as conn:
         lock(db,conn)
@@ -59,7 +69,7 @@ def deliver(app,db,key):
         if row['message_name']: return
         service=chat.chat_service(chat.read_config(app,conn))
         if row['pdf'] and not row['attachment']:
-            attachment=service.media().upload(parent=chat.SPACE,body={'filename':row['filename']},
+            attachment=service.media().upload(parent=destination,body={'filename':row['filename']},
                 media_body=MediaIoBaseUpload(BytesIO(row['pdf']),mimetype='application/pdf',resumable=False)).execute()
             if not attachment.get('attachmentDataRef'): raise chat.ChatError('PDF yüklemesi doğrulanamadı.')
             conn.execute(update(outbox).where(outbox.c.key==key).values(attachment=json.dumps(attachment)))
@@ -74,15 +84,15 @@ def deliver(app,db,key):
         body={'text':row['body']}
         if row['attachment']: body['attachment']=[json.loads(row['attachment'])]
         try:
-            result=service.spaces().messages().create(parent=chat.SPACE,
-                requestId=str(uuid.uuid5(uuid.NAMESPACE_URL,chat.SPACE+':trello-chat:'+key)),
+            result=service.spaces().messages().create(parent=destination,
+                requestId=str(uuid.uuid5(uuid.NAMESPACE_URL,destination+':trello-chat:'+key)),
                 messageId=message_id,body=body).execute()
             name=result.get('name','')
-            if not name.startswith(chat.SPACE+'/messages/'): raise chat.ChatError('Chat gönderimi doğrulanamadı.')
+            if not name.startswith(destination+'/messages/'): raise chat.ChatError('Chat gönderimi doğrulanamadı.')
         except HttpError as exc:
             if exc.resp.status!=409: raise
             # A retry after an accepted-but-timed-out request can return ALREADY_EXISTS.
-            name=chat.SPACE+'/messages/'+message_id
+            name=destination+'/messages/'+message_id
         conn.execute(update(outbox).where(outbox.c.key==key).values(message_name=name))
 
 
@@ -105,6 +115,37 @@ def send_order(app,db,order,rows):
     enqueue(app,db,order_key(order),f'{order.order_no} · Satın alma siparişi\nÜrün kartları Trello panosuna aktarıldı.',
         pdf=form_pdf(db,order,rows),filename=f'{order.order_no}-Siparis-Formu.pdf',actor=g.web_username)
     deliver(app,db,order_key(order))
+
+
+def priced_key(order): return f'priced:{DILEK_SPACE}:{order.id}'
+
+
+def priced_order_sent(db,order):
+    if not inspect(db.engine).has_table(outbox.name): return False
+    with db.engine.connect() as conn:
+        return bool(conn.execute(select(outbox.c.message_name).where(outbox.c.key==priced_key(order))).scalar())
+
+
+def send_priced_order(app,db,order):
+    from supplier_sheets import allowed_order
+    if not allowed_order(order): raise chat.ChatError('Bu sipariş Dilek gönderimine uygun değil.')
+    key=priced_key(order)
+    # Retain the original immutable PDF on retries, even after a timeout.
+    exists=False
+    if inspect(db.engine).has_table(outbox.name):
+        with db.engine.connect() as conn:
+            exists=bool(conn.execute(select(outbox.c.key).where(outbox.c.key==key)).scalar())
+    if not exists:
+        response=app.view_functions['export_order_pdf'](order.id)
+        try:
+            response.direct_passthrough=False
+            pdf=response.get_data()
+        finally:
+            response.close()
+        if not pdf.startswith(b'%PDF'): raise chat.ChatError('Fiyatlı sipariş PDF’i oluşturulamadı.')
+        enqueue(app,db,key,f'{order.order_no} · Fiyatlı satın alma siparişi',
+            pdf=pdf,filename=f'{order.order_no}-Fiyatli-Siparis-Formu.pdf',actor=g.web_username)
+    deliver(app,db,key,destination=DILEK_SPACE)
 
 
 def register(app,db,Order,get_trello_config):

@@ -180,7 +180,7 @@ def register_supplier_trello(app, db, Order):
         if not getattr(g,'web_is_owner',False): abort(403)
     app.jinja_env.globals['trello_allowed']=lambda o: app.config.get('WEB_AUTH_ENABLED') and allowed_order(o)
 
-    from trello_chat_bridge import register, send_order, order_sent, form_pdf
+    from trello_chat_bridge import register, send_order, order_sent, form_pdf, send_priced_order, priced_order_sent
     register(app, db, Order, config)
 
     @app.route('/yonetim/trello',methods=['GET','POST'])
@@ -227,6 +227,9 @@ def register_supplier_trello(app, db, Order):
         images=product_images(app,db,order)
         signer=URLSafeTimedSerializer(app.secret_key,salt='trello-export')
         identity={'order':order.id,'hash':fingerprint(rows),'actor':g.web_username}
+        if chat_allowed(order):
+            from supplier_chat import order_fingerprint
+            identity['priced_hash']=order_fingerprint(order)
         if images: identity['images']={key:value['key'] for key,value in images.items()}
         form_version=hashlib.sha256(json.dumps(dict(hash=identity['hash'],images=identity.get('images',{})),sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:20]
         form_keys={r[0]:r[0]+':form:'+form_version for r in rows}
@@ -313,6 +316,8 @@ def register_supplier_trello(app, db, Order):
         remaining = sum(not states.get(r[0],{}).get('card_id') or completed.get(form_keys[r[0]])!=states[r[0]]['card_id'] for r in rows)
         chat_enabled=chat_allowed(order)
         chat_done=order_sent(db,order) if chat_enabled else True
+        priced_done=priced_order_sent(db,order) if chat_enabled else True
+        group_was_done=chat_done
         if request.method=='POST' and not error and not remaining and not chat_done and (not batch_request or sent==0):
             try:
                 send_order(app,db,order,rows)
@@ -321,11 +326,18 @@ def register_supplier_trello(app, db, Order):
                 # Record only the exception type, never credentials or API URLs.
                 app.logger.warning('Trello Chat delivery failed for order %s (%s)',order.id,type(exc).__name__)
                 error='Trello kartları hazır, ancak Google Chat gönderimi tamamlanamadı. Tekrar deneyin; kartlar çoğaltılmaz.'
+        if request.method=='POST' and not error and not remaining and group_was_done and not priced_done and (not batch_request or sent==0):
+            try:
+                send_priced_order(app,db,order)
+                priced_done=True
+            except Exception as exc:
+                app.logger.warning('Dilek priced PDF delivery failed for order %s (%s)',order.id,type(exc).__name__)
+                error='Trello ve grup gönderimi tamamlandı; Dilek’e fiyatlı PDF gönderilemedi. Tekrar deneyin; önceki gönderimler çoğaltılmaz.'
         if request.method=='POST' and not batch_request and not error:
             return redirect(url_for('trello_export',order_id=order.id))
         if batch_request:
-            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error, chat_done=chat_done,chat_enabled=chat_enabled), (409 if error else 200)
+            return jsonify(total=len(rows), completed=len(rows)-remaining, remaining=remaining, error=error, chat_done=chat_done,priced_done=priced_done,chat_enabled=chat_enabled), (409 if error else 200)
         row_completed={r[0]:bool(states.get(r[0],{}).get('card_id') and completed.get(form_keys[r[0]])==states[r[0]]['card_id']) for r in rows}
         return render_template('trello_export.html',order=order,rows=rows,states=states,row_completed=row_completed,connected=bool(cfg),error=error,
             confirm=signer.dumps(identity),board_url=BOARD_URL,payload=payload,
-            remaining=remaining,chat_done=chat_done,chat_enabled=chat_enabled,images=images,trello_member_name=cfg.get("member_name"))
+            remaining=remaining,chat_done=chat_done,priced_done=priced_done,chat_enabled=chat_enabled,images=images,trello_member_name=cfg.get("member_name"))

@@ -15,7 +15,7 @@ class TrelloTests(SupplierRouteTests):
             chat.write_config(self.app,c,{'refresh_token':'test','client_id':'test','client_secret':'test'})
         self.chat_service=MagicMock()
         self.chat_service.media().upload().execute.return_value={'attachmentDataRef':{'resourceName':'test-file'}}
-        self.chat_service.spaces().messages().create().execute.return_value={'name':chat.SPACE+'/messages/test'}
+        self.chat_service.spaces().messages().create.side_effect=lambda **kw: MagicMock(**{'execute.return_value': {'name':kw['parent']+'/messages/test'}})
         chat_patch=patch('supplier_chat.chat_service',return_value=self.chat_service)
         chat_patch.start();self.addCleanup(chat_patch.stop)
         self.path=f'/siparisler/{self.order_id}/trello'
@@ -211,14 +211,15 @@ class TrelloTests(SupplierRouteTests):
         self.mock.cards.reset_mock();self.mock.lists.reset_mock()
         self.assertTrue(send().json['chat_done'])
         self.mock.cards.assert_not_called();self.mock.lists.assert_not_called()
-        self.assertTrue(send().json['chat_done'])
-        self.chat_service.spaces().messages().create.assert_called_once()
+        self.assertTrue(send().json['priced_done'])
+        self.assertTrue(send().json['priced_done'])
+        self.assertEqual(self.chat_service.spaces().messages().create.call_count,2)
         attachment_bytes=self.mock.attach_form.call_args.args[2]
-        upload=self.chat_service.media().upload.call_args.kwargs['media_body']
+        upload=self.chat_service.media().upload.call_args_list[0].kwargs['media_body']
         self.assertEqual(upload.getbytes(0,upload.size()),attachment_bytes)
 
     def test_chat_failure_resumes_without_new_cards(self):
-        self.chat_service.spaces().messages().create().execute.side_effect=[TimeoutError(),{'name':'spaces/AAQArMh8YcU/messages/test'}]
+        self.chat_service.spaces().messages().create.side_effect=[MagicMock(**{'execute.side_effect':TimeoutError()}), MagicMock(**{'execute.return_value':{'name':'spaces/AAQArMh8YcU/messages/test'}})]
         self.chat_service.reset_mock()
         token=self.token()
         def send(): return self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
@@ -301,9 +302,9 @@ class TrelloTests(SupplierRouteTests):
         self.assertTrue(send(self.client,owner_token).json['chat_done'])
         self.assertEqual(len(remote),3)
         self.chat_service.spaces().messages().create.assert_called_once()
-        self.assertTrue(send(staff,token).json['chat_done'])
+        self.assertTrue(send(staff,token).json['priced_done'])
         self.assertEqual(len(remote),3)
-        self.chat_service.spaces().messages().create.assert_called_once()
+        self.assertEqual(self.chat_service.spaces().messages().create.call_count,2)
 
     def linked_sale(self):
         purchase=m.db.session.get(m.Order,self.order_id)
@@ -373,4 +374,46 @@ class TrelloTests(SupplierRouteTests):
         self.mock.cards.return_value=[dict(id='sale-card',url='https://trello.com/c/sale',**t.payload(t.order_rows(sale,'test')[0]))]
         result=self.post({'confirm':self.token()})
         self.assertIn('bağlı satış siparişinden daha önce aktarılmış',result.text)
+        self.mock.call.assert_not_called()
+
+    def test_priced_pdf_only_to_dilek_and_retry_preserves_snapshot(self):
+        import trello_chat_bridge as bridge
+        from pypdf import PdfReader
+        from io import BytesIO
+        token=self.token()
+        def send(): return self.client.post(self.path,base_url=BASE,headers={'Origin':BASE,'Accept':'application/json'},data={'confirm':token})
+        self.chat_service.reset_mock()
+        self.assertFalse(send().json['chat_done'])
+        self.assertFalse(send().json['priced_done'])
+        self.chat_service.spaces().messages().create.side_effect=lambda **kw: MagicMock(**{'execute.side_effect':TimeoutError()})
+        failed=send()
+        self.assertEqual(failed.status_code,409)
+        self.assertTrue(failed.json['chat_done']);self.assertFalse(failed.json['priced_done'])
+        calls=self.chat_service.media().upload.call_args_list
+        self.assertEqual([c.kwargs['parent'] for c in calls],['spaces/AAQArMh8YcU',bridge.DILEK_SPACE])
+        group=calls[0].kwargs['media_body'];priced=calls[1].kwargs['media_body']
+        group_text=''.join(p.extract_text() for p in PdfReader(BytesIO(group.getbytes(0,group.size()))).pages)
+        priced_text=''.join(p.extract_text() for p in PdfReader(BytesIO(priced.getbytes(0,priced.size()))).pages)
+        self.assertNotIn('987.654',group_text)
+        self.assertIn('987.654',priced_text)
+        self.assertIn('KDV',priced_text)
+        previous_call=self.chat_service.spaces().messages().create.call_args
+        self.chat_service.spaces().messages().create.side_effect=lambda **kw: MagicMock(**{'execute.return_value':{'name':kw['parent']+'/messages/done'}})
+        self.assertTrue(send().json['priced_done'])
+        self.assertEqual(self.chat_service.spaces().messages().create.call_args,previous_call)
+        self.assertEqual(self.chat_service.media().upload.call_count,2)
+        self.assertTrue(send().json['priced_done'])
+        self.assertEqual(self.chat_service.spaces().messages().create.call_count,3)
+        self.mock.call.assert_called_once()
+
+    def test_priced_destination_guard_and_stale_price_preview(self):
+        import trello_chat_bridge as bridge
+        import supplier_chat as chat
+        order=m.db.session.get(m.Order,self.order_id)
+        with self.assertRaises(chat.ChatError):
+            bridge.deliver(self.app,m.db,bridge.priced_key(order))
+        token=self.token()
+        order.items[0].unit_price=12345;m.db.session.commit()
+        response=self.post({'confirm':token})
+        self.assertIn('Sipariş değişti',response.text)
         self.mock.call.assert_not_called()

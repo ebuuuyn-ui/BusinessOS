@@ -42,7 +42,7 @@ class BridgeTests(TrelloTests):
         self.action['date']='2026-10-02T00:00:00Z';self.action['data']['card']['id']='other';self.assertEqual(self.hook_post().status_code,200)
         self.chat_service.spaces().messages().create.assert_not_called()
     def test_comment_failure_retained_for_retry(self):
-        self.chat_service.spaces().messages().create().execute.side_effect=[TimeoutError(),{'name':'spaces/AAQArMh8YcU/messages/test'}]
+        self.chat_service.spaces().messages().create.side_effect=[MagicMock(**{'execute.side_effect':TimeoutError()}),MagicMock(**{'execute.return_value':{'name':'spaces/AAQArMh8YcU/messages/test'}})]
         self.chat_service.reset_mock()
         self.assertEqual(self.hook_post().status_code,503)
         with m.db.engine.connect() as c: self.assertIsNone(c.execute(select(b.outbox.c.message_name)).scalar())
