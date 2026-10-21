@@ -354,6 +354,29 @@ class FundTests(unittest.TestCase):
         self.assertEqual(len(self.ext['rows']()),7)
         self.assertFalse(m.db.session.execute(select(self.audit.c.id).where(self.audit.c.action=='consolidate_20261022')).first())
 
+    def test_unified_ledger_and_account_excel_include_transfers(self):
+        from openpyxl import load_workbook
+        from io import BytesIO
+        t=self.tx(method='Nakit',amount=100);t.description='=1+1';m.db.session.commit()
+        self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['enpara'])
+        self.post(action='transfer',from_id=self.ids['enpara'],to_id=self.ids['kuveyt'],date=date.today().isoformat(),amount='25',description='Transfer test',token=self.context()['token'])
+        html=self.client.get('/kasa-cek/kasalar',query_string={'account':self.ids['enpara']}).text
+        self.assertIn('Hesap Hareketleri',html);self.assertNotIn('Hesaplar Arası Virman Kayıtları',html)
+        self.assertIn('Transfer test',html);self.assertIn('Düzenle / Sil',html)
+        filtered=self.client.get('/kasa-cek/kasalar',query_string={'account':self.ids['enpara'],'q':'Transfer test'}).text
+        self.assertIn('1 hareket.',filtered)
+        before=self.count()
+        response=self.client.get('/kasa-cek/kasalar',query_string={'account':self.ids['enpara'],'format':'xlsx','q':'ignored'})
+        self.assertEqual(response.status_code,200)
+        sheet=load_workbook(BytesIO(response.data)).active
+        self.assertEqual(sheet.max_row,6)
+        self.assertEqual(sheet['D4'].value,'=1+1');self.assertEqual(sheet['D4'].data_type,'s')
+        self.assertEqual(sheet['G6'].value,75);self.assertEqual(sheet['E6'].value,100);self.assertEqual(sheet['F6'].value,25)
+        self.assertEqual(sheet['B5'].value,'Virman');self.assertEqual(self.count(),before)
+        self.assertEqual(self.client.get('/kasa-cek/kasalar?account=unassigned&format=xlsx').status_code,400)
+        empty=self.client.get('/kasa-cek/kasalar',query_string={'account':self.ids['cash'],'format':'xlsx'})
+        self.assertEqual(load_workbook(BytesIO(empty.data)).active['G4'].value,0)
+
     def test_invalid_transfers_no_partial_posting(self):
         for amount in ['NaN','-1','0','1.2345','251.7489','1,234','1.23.456']:
             self.post(action='transfer',from_id=self.ids['ahmet'],to_id=self.ids['enpara'],date=date.today().isoformat(),amount=amount,description='Test',token=self.context()['token'])

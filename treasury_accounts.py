@@ -6,7 +6,7 @@ import re
 import json
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from navigation import return_destination
-from flask import request, render_template, redirect, url_for, flash, abort, has_request_context, g, current_app
+from flask import request, render_template, redirect, url_for, flash, abort, has_request_context, g, current_app, send_file
 from sqlalchemy import inspect, select, event, or_
 from sqlalchemy.exc import IntegrityError
 
@@ -490,15 +490,26 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         for x in Cash.query.all(): pending.append(dict(key='cash:'+str(x.id),date=x.movement_date,method='Nakit',party='Kasa',description=x.description,amount=Decimal(x.amount)*(1 if x.movement_type=='Giriş' else -1),direct=False,own_card=False))
         for p in pending:
             p['posting']=bykey.get(p['key']);p['account']=amap.get(p['posting']['account_id']) if p['posting'] else None
-        pending.sort(key=lambda p:(p['date'],p['key']),reverse=True)
+        for e in entries:
+            if not e['source_key'].startswith('transfer:'): continue
+            pending.append(dict(key=e['source_key'],date=e['date'],method='Virman',
+                party=amap[e['account_id']]['name'],description=e['description'],amount=e['amount'],
+                posting=e,account=amap[e['account_id']],direct=False,own_card=False,
+                edit_url=url_for('edit_treasury_transfer',batch=e['batch'])))
+        pending.sort(key=lambda p:(p['date'],p['posting']['created_at'] if p['posting'] else datetime.min,p['key']),reverse=True)
         selected=request.args.get('account','');q=request.args.get('q','').strip()
         from unicodedata import normalize
         def norm(s):return normalize('NFKD',s.replace('ı','i')).encode('ascii','ignore').decode().lower()
         if selected=='unassigned': pending=[p for p in pending if not p['posting']]
         elif selected.isdigit(): pending=[p for p in pending if p['account'] and p['account']['id']==int(selected)]
+        if request.args.get('format')=='xlsx':
+            if not selected.isdigit() or int(selected) not in amap: abort(400)
+            from treasury_exports import export_account_xlsx
+            chosen=amap[int(selected)]
+            return send_file(export_account_xlsx(chosen,list(reversed(pending))),
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,download_name='hesap-'+selected+'-hareketleri.xlsx')
         if q: pending=[p for p in pending if norm(q) in norm(p['party']+' '+p['description'])]
-        transfers=[e for e in entries if e['source_key'].startswith('transfer:') and (not selected or selected.isdigit() and e['account_id']==int(selected))]
-        for e in transfers: e['account']=amap[e['account_id']]
         from itsdangerous import URLSafeTimedSerializer
         token=URLSafeTimedSerializer(app.secret_key,salt='treasury-transfer').dumps(str(uuid4()))
-        return render_template('treasury_accounts.html',accounts=data,pending=pending,transfers=transfers,selected=selected,query=q,consolidated=consolidation_done(),customers=Customer.query.order_by(Customer.name).all(),token=token,today=date.today().isoformat())
+        return render_template('treasury_accounts.html',accounts=data,pending=pending,selected=selected,query=q,consolidated=consolidation_done(),customers=Customer.query.order_by(Customer.name).all(),token=token,today=date.today().isoformat())
