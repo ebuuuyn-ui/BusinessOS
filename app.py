@@ -990,7 +990,7 @@ def calculate_treasury(today=None):
 
 def build_account_statement(customer):
     entries = []
-    invoices = Invoice.query.filter_by(customer_id=customer.id).all()
+    invoices = Invoice.query.options(selectinload(Invoice.items)).filter_by(customer_id=customer.id).all()
     for invoice in invoices:
         is_sale = invoice.invoice_type == "Satış"
         entries.append({
@@ -2185,6 +2185,8 @@ def create_app(test_config=None):
     register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense)
     from dealer_portal import register_portal
     register_portal(app, db, Customer, Product, Order, OrderItem, OrderHistory)
+    from dealer_account import register_dealer_account
+    register_dealer_account(app, db, Customer, Order, OrderItem, build_account_statement)
 
     @app.before_request
     def scheduled_database_backup():

@@ -202,6 +202,34 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
         return render_template('dealer_portal_detail.html',row=row,payload=payload,customer=customer,
                                missing=sorted(codes-found),payment=PAYMENTS[payload['pricing']['methodId']][0])
 
+    @app.route('/yonetim/bayi-portali/musteriler',methods=['GET','POST'])
+    def dealer_portal_customers():
+        owner();config=configuration();error=None;customers=[];mapped={}
+        after=request.args.get('after','0')
+        if not re.fullmatch(r'\d{1,16}',after):abort(400)
+        try:
+            result=remote(config,'GET',f'/api/bos/v1/customers?after={after}')
+            if result.get('sourceId')!=config['source'] or not isinstance(result.get('customers'),list):raise PortalError('Müşteri listesi doğrulanamadı.')
+            customers=result['customers']
+            if request.method=='POST':
+                uid=request.form.get('portal_user_id','')
+                if not uid.isdigit() or int(uid) not in {c['id'] for c in customers} or request.form.get('confirm')!='yes':abort(400)
+                uid=int(uid);customer=Customer.query.filter_by(code=request.form.get('customer_code','').strip()).first()
+                if not customer:raise PortalError('BOS müşteri kodu bulunamadı; eşleme yapılmadı.')
+                existing=db.session.execute(select(links).where(links.c.source==config['source'],links.c.portal_user_id==uid)).mappings().first()
+                if existing and existing['customer_id']!=customer.id:abort(409,'Mevcut eşleme bu formdan değiştirilemez.')
+                if not existing:
+                    db.session.execute(links.insert().values(source=config['source'],portal_user_id=uid,customer_id=customer.id,
+                        linked_by=g.web_username,linked_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+                    db.session.commit()
+                flash('Bayi cari hesabıyla eşleştirildi. Bu bayi kendi geçmiş siparişlerini ve hesap hareketlerini görebilir.','success')
+                return redirect(url_for('dealer_portal_customers',after=after))
+            rows=db.session.execute(select(links).where(links.c.source==config['source'])).mappings().all()
+            mapped={r['portal_user_id']:db.session.get(Customer,r['customer_id']) for r in rows}
+        except PortalError as exc:error=str(exc)
+        return render_template('dealer_portal_customers.html',customers=customers,mapped=mapped,error=error,
+            next_after=customers[-1]['id'] if len(customers)==100 else None)
+
     @app.post('/yonetim/bayi-portali/<int:identity>/eslestir')
     def dealer_portal_link(identity):
         owner();row=row_for(identity,True)

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Bayi cari eşlemeleri · Business OS{% endblock %}
+{% block heading %}Bayi cari eşlemeleri{% endblock %}
+{% block content %}
+<section class="panel" style="padding:24px">
+<a href="{{ url_for('dealer_portal') }}">← Portal siparişleri</a>
+<p>Bir bayi yalnızca burada eşleştirilen cari hesabın bakiyesini, ekstresini ve geçmiş satış siparişlerini görebilir. İsim benzerliğiyle otomatik eşleme yapılmaz. Eşlemeden önce firma ve BOS cari kodunu kontrol edin.</p>
+{% if error %}<p role="alert" class="flash error">{{ error }}</p>{% endif %}
+{% for customer in customers %}
+<article style="padding:20px 0;border-bottom:1px solid #ddd">
+<h3>{{ customer.company }}</h3><p>{{ customer.username }} · {{ customer.contactName }} · Portal no: {{ customer.id }}</p>
+{% if mapped.get(customer.id) %}<p>Eşleşen cari: <strong>{{ mapped[customer.id].code }} · {{ mapped[customer.id].name }}</strong></p>
+{% else %}<form method="post">
+<input type="hidden" name="portal_user_id" value="{{ customer.id }}">
+<label>BOS cari kodu <input name="customer_code" required maxlength="60" autocomplete="off"></label>
+<label><input type="checkbox" name="confirm" value="yes" required> Bu bayinin belirtilen cari hesabın sahibi olduğunu doğruladım; kendi hesap bilgilerini görmesini onaylıyorum.</label>
+<button class="button primary" type="submit">Cari hesabı bağla</button>
+</form>{% endif %}
+</article>{% endfor %}
+{% if next_after %}<a class="button" href="{{ url_for('dealer_portal_customers',after=next_after) }}">Sonraki bayiler</a>{% endif %}
+</section>
+{% endblock %}

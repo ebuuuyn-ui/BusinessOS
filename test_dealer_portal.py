@@ -5,6 +5,9 @@ import json
 import os
 import tempfile
 import unittest
+import time
+import hmac
+from datetime import date,datetime,timezone
 from unittest.mock import patch,MagicMock
 from decimal import Decimal
 from sqlalchemy import select,func,inspect
@@ -57,6 +60,66 @@ class DealerPortalTests(unittest.TestCase):
     def approve(self,row,**changes):
         data={'confirm':'yes','payload_hash':row['payload_hash'],'vat_rate':'20'};data.update(changes)
         return self.post(f"{self.base}/{row['id']}/onayla",data)
+
+    def machine(self,method,path,payload=None,stamp=None,headers=None):
+        stamp=stamp or str(int(time.time()));body=d.encoded(payload) if payload is not None else b''
+        message=f'{method}\n{path}\n{stamp}\n{hashlib.sha256(body).hexdigest()}'.encode()
+        auth={'X-BOS-Source':'portal-fixture','X-BOS-Timestamp':stamp,'X-BOS-Signature':hmac.new(b'a'*64,message,hashlib.sha256).hexdigest(),**(headers or {})}
+        return self.app.test_client().open(path,method=method,base_url=BASE,data=body,content_type='application/json',headers=auth)
+
+    def test_automatic_delivery_is_signed_idempotent_and_does_not_create_sales(self):
+        self.init();path='/api/dealer-portal/v1/orders';p=packet()
+        self.assertEqual(self.app.test_client().post(path,base_url=BASE,json=p).status_code,401)
+        self.assertEqual(self.machine('POST',path,p,headers={'Origin':BASE}).status_code,403)
+        self.assertEqual(self.machine('POST',path,p,stamp=str(int(time.time())-121)).status_code,401)
+        self.assertEqual(self.machine('POST',path,p,headers={'X-BOS-Source':'other'}).status_code,401)
+        for _ in range(2):self.assertEqual(self.machine('POST',path,p).status_code,200)
+        self.assertEqual(m.db.session.execute(select(func.count()).select_from(d.inbox)).scalar(),1)
+        self.assertEqual(m.Order.query.count(),0)
+        p['payload']['customer']['company']='Changed';p['payloadHash']=hashlib.sha256(d.encoded(p['payload'])).hexdigest()
+        self.assertEqual(self.machine('POST',path,p).status_code,409)
+
+    def test_account_isolation_period_balance_history_and_trello(self):
+        self.init();row=self.pull();self.link(row)
+        with patch('dealer_portal.remote',return_value={'acknowledged':True,'portalOrderId':1}):self.approve(row)
+        other=m.Customer(name='OTHER PRIVATE',code='OTHER');m.db.session.add(other);m.db.session.flush()
+        m.db.session.add_all([
+            m.AccountTransaction(customer_id=self.customer.id,transaction_date=date(2026,9,1),transaction_type='Açılış',description='Açılış',debit=100,credit=0),
+            m.AccountTransaction(customer_id=self.customer.id,transaction_date=date(2026,10,1),transaction_type='Tahsilat',description='Tahsilat',debit=0,credit=25),
+            m.AccountTransaction(customer_id=other.id,transaction_date=date(2026,10,1),transaction_type='Açılış',description='SECRET OTHER',debit=99999,credit=0)])
+        m.db.session.commit();item=m.Order.query.one().items[0]
+        with patch('dealer_account.trello_states',return_value=({item.id:'Üretimde'},{'connected':True,'checkedAt':'now'})):
+            response=self.machine('GET','/api/dealer-portal/v1/account?userId=7&start=2026-10-01&end=2026-10-31')
+        self.assertEqual(response.status_code,200);body=response.json
+        self.assertEqual((body['currentCents'],body['openingCents'],body['creditCents']),(7500,10000,2500))
+        self.assertEqual(body['orders'][0]['status'],'Üretimde')
+        self.assertEqual(body['orders'][0]['portalOrderId'],1)
+        self.assertNotIn('SECRET OTHER',response.text);self.assertNotIn('cost_unit_price',response.text)
+        unlinked=self.machine('GET','/api/dealer-portal/v1/account?userId=8').json
+        self.assertFalse(unlinked['linked']);self.assertNotIn('currentCents',unlinked)
+        self.assertEqual(self.machine('GET','/api/dealer-portal/v1/account?userId=7&start=bad').status_code,400)
+
+    def test_trello_uses_exact_purchase_line_mapping(self):
+        import base64
+        from cryptography.fernet import Fernet
+        from supplier_trello import meta,connection,deliveries
+        from dealer_account import trello_states
+        self.init();row=self.pull();self.link(row)
+        with patch('dealer_portal.remote',return_value={'acknowledged':True,'portalOrderId':1}):self.approve(row)
+        sale=m.Order.query.one();line=sale.items[0]
+        purchase=m.Order(order_no='TEST-PURCHASE',order_type='Satın Alma',customer_id=self.customer.id,order_date=date.today(),source_order_id=sale.id,status='Onaylandı')
+        purchase.items.append(m.OrderItem(product_id=self.product.id,product_name='SONIC',quantity=2,unit_price=1,source_order_item_id=line.id))
+        m.db.session.add(purchase);m.db.session.commit();meta.create_all(m.db.engine)
+        cipher=Fernet(base64.urlsafe_b64encode(hashlib.sha256(('bos-trello-v1:'+self.app.secret_key).encode()).digest()))
+        with m.db.engine.begin() as conn:
+            conn.execute(connection.insert().values(id=1,config=cipher.encrypt(b'{"key":"test","token":"test"}').decode()))
+            conn.execute(deliveries.insert().values(key=f'bos:order:{purchase.id}:item:{purchase.items[0].id}',card_id='owned-card'))
+        def trello_call(_self,method,path,**kwargs):
+            self.assertEqual(method,'GET')
+            return [{'id':'list1','name':'Sevkiyata hazır'}] if path.endswith('/lists') else [{'id':'owned-card','idList':'list1','closed':False},{'id':'other-card','idList':'list1','closed':False}]
+        with patch('supplier_trello.Client.call',trello_call):
+            states,health=trello_states(self.app,m.db,m.Order,m.OrderItem,[sale])
+        self.assertEqual(states,{line.id:'Sevkiyata hazır'});self.assertTrue(health['connected'])
 
     def test_startup_get_and_disabled_configuration_never_create_bridge_tables(self):
         self.assertNotIn(d.inbox.name,inspect(m.db.engine).get_table_names())

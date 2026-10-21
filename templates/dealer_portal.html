@@ -5,7 +5,7 @@
 {% block content %}
 <section class="panel" style="padding:24px;margin-bottom:24px">
   <h2>Portal siparişleri</h2>
-  <p>İstekleri almak satış, fatura, stok veya cari hareket oluşturmaz. Satış siparişi yalnızca yönetici onayıyla açılır; ardından müşteri portalında görünür.</p>
+  <p>Portalın otomatik gönderdiği siparişler burada onay bekler. İstekleri almak fatura, stok veya cari hareket oluşturmaz. Satış siparişi yalnızca yönetici onayıyla açılır. Bayi, bekleyen siparişini ve sonraki ilerlemeyi hesabında takip edebilir.</p>
   {% if error %}<p class="flash error">{{ error }}</p>{% endif %}
   {% if not connected %}<p>Bağlantı kapalı. Sunucu bağlantı ayarları henüz etkinleştirilmedi.</p>
   {% elif not installed %}
@@ -14,6 +14,7 @@
     <button type="submit" class="button primary">Bekleme listesini hazırla</button>
   </form>
   {% else %}
+  <p><a class="button" href="{{ url_for('dealer_portal_customers') }}">Bayi cari eşlemeleri</a></p>
   <form method="post" action="{{ url_for('dealer_portal_pull') }}"><button class="button primary" type="submit">Yeni sipariş isteklerini getir</button></form>
   <p>En fazla 20 istek alınır. Daha fazla sipariş varsa yeniden getirebilirsiniz. Eski portal denemeleri aktarılmaz.</p>
   {% if last_pull %}

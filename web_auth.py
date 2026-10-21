@@ -48,6 +48,9 @@ def install_web_auth(app, db=None):
                 setup_errors=configuration_errors,
             ), 503
         g.web_is_owner = False
+        # Exact machine endpoints validate their dedicated source, body signature and timestamp.
+        if request.endpoint in ('dealer_machine_orders','dealer_machine_account','dealer_machine_health'):
+            return None
         # This route authenticates its secret callback and fetches canonical Trello events.
         if request.endpoint == 'trello_chat_webhook' and request.method in ('HEAD','POST'):
             return None
