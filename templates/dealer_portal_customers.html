@@ -3,7 +3,7 @@
 {% block heading %}Bayi cari eşlemeleri{% endblock %}
 {% block content %}
 <section class="panel" style="padding:24px">
-<a href="{{ url_for('dealer_portal') }}">← Portal siparişleri</a>
+<a href="{{ url_for('dealer_portal') }}">← Bayi Portalı</a>
 <p>Bir bayi yalnızca burada eşleştirilen cari hesabın bakiyesini, ekstresini ve geçmiş satış siparişlerini görebilir. İsim benzerliğiyle otomatik eşleme yapılmaz. Eşlemeden önce firma ve BOS cari kodunu kontrol edin.</p>
 {% if error %}<p role="alert" class="flash error">{{ error }}</p>{% endif %}
 {% for customer in customers %}

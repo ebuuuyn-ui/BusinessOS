@@ -1,8 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Bayi portalı · Business OS{% endblock %}
-{% block heading %}Bayi portalı{% endblock %}
-{% block subheading %}Siparişleri al, müşteriyle eşleştir, onayla{% endblock %}
+{% block title %}Bayi Portalı · Business OS{% endblock %}
+{% block heading %}Bayi Portalı{% endblock %}
+{% block subheading %}Portal siparişleri, yeni üyelikler ve firma bilgisi değişiklikleri{% endblock %}
 {% block content %}
+<nav aria-label="Bayi portalı bölümleri" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px">
+{% for key,label in [('orders','Siparişler'),('members','Yeni üyelikler'),('changes','Bilgi değişiklikleri')] %}
+<a class="button {{ 'primary' if section==key }}" {% if section==key %}aria-current="page"{% endif %} href="{{ url_for('dealer_portal',section=key) }}">{{ label }}</a>
+{% endfor %}
+<a class="button" href="{{ url_for('dealer_portal_customers') }}">Bayi cari eşlemeleri</a>
+</nav>
+{% if section=='orders' %}
 <section class="panel" style="padding:24px;margin-bottom:24px">
   <h2>Portal siparişleri</h2>
   <p>Portalın otomatik gönderdiği siparişler burada onay bekler. İstekleri almak fatura, stok veya cari hareket oluşturmaz. Satış siparişi yalnızca yönetici onayıyla açılır. Bayi, bekleyen siparişini ve sonraki ilerlemeyi hesabında takip edebilir.</p>
@@ -28,4 +35,23 @@
 {% for row in rows %}<tr><td>{{ row.portal_order_id }}</td><td>{{ 'Portal bildirimi bekliyor' if row.ack_pending else 'Onaylandı' if row.order_id else 'Onay bekliyor' }}</td><td>{{ row.order_no or '—' }}</td><td><a class="button" href="{{ url_for('dealer_portal_detail',identity=row.id) }}">İncele</a></td></tr>
 {% else %}<tr><td colspan="4">Henüz sipariş isteği yok.</td></tr>{% endfor %}
 </tbody></table></section>
+{% else %}
+<section class="panel" style="padding:24px">
+<h2>{{ 'Yeni üyelikler' if section=='members' else 'Firma bilgisi değişiklikleri' }}</h2>
+<p>Bildirimler bu sayfa açıldığında portal bağlantısından alınır. E-posta gönderilmez. Bu kayıtlar BOS cari bilgilerini, eşlemeleri veya bakiyeleri otomatik değiştirmez.</p>
+<a class="button" href="{{ url_for('dealer_portal',section=section) }}">Bildirimleri yenile</a>
+{% if error or activity_error %}<p role="alert" class="flash error">{{ error or activity_error }} Kayıt bulunmadığı anlamına gelmez; bağlantıyı kontrol edip yeniden deneyin.</p>
+{% elif not connected or not installed %}<p>Portal bağlantısı henüz hazır değil.</p>
+{% else %}
+{% for event in activities %}
+<article style="padding:24px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere">
+<h3>{{ event.company }}</h3><p>{{ event.username }} · Portal no: {{ event.userId }} · {{ event.createdAt }} (Türkiye saati)</p>
+<div style="overflow-x:auto"><table><thead><tr><th>Alan</th>{% if section=='changes' %}<th>Önceki bilgi</th>{% endif %}<th>{{ 'Yeni bilgi' if section=='changes' else 'Üyelik bilgisi' }}</th></tr></thead><tbody>
+{% for change in event.changes %}<tr><th scope="row">{{ change.label }}</th>{% if section=='changes' %}<td style="white-space:pre-wrap">{{ change.before }}</td>{% endif %}<td style="white-space:pre-wrap">{{ change.after }}</td></tr>{% endfor %}
+</tbody></table></div></article>
+{% else %}<p>Henüz bildirim yok. Bu özellik etkinleştirildikten sonraki kayıtlar burada görünür.</p>{% endfor %}
+{% if next_before %}<p><a class="button" href="{{ url_for('dealer_portal',section=section,before=next_before) }}">Daha eski bildirimler</a></p>{% endif %}
+{% endif %}
+</section>
+{% endif %}
 {% endblock %}

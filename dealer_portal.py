@@ -12,6 +12,7 @@ import time
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 import requests
 from flask import abort, flash, g, has_request_context, redirect, render_template, request, session, url_for
 from vercel.headers import HeadersContext
@@ -123,6 +124,35 @@ def validate(record,source):
 def ready(conn):return all(inspect(conn).has_table(table.name) for table in meta.sorted_tables)
 
 
+def activity_page(config,kind,before):
+    """Read-only projection. No account matching or business record updates."""
+    result=remote(config,'GET',f'/api/bos/v1/activity?kind={kind}&before={before}')
+    if not isinstance(result,dict) or result.get('sourceId')!=config['source'] or not isinstance(result.get('events'),list) or len(result['events'])>30:
+        raise PortalError('Portal bildirim listesi doğrulanamadı.')
+    fields={'company':('Firma unvanı',200),'contactName':('Yetkili adı soyadı',160),
+            'email':('E-posta adresi',254),'phone':('Telefon numarası',30),'companyAddress':('Firma adresi',1000)}
+    rows=[];previous=before or 10**16
+    for event in result['events']:
+        if not isinstance(event,dict) or event.get('kind')!=kind:raise PortalError('Geçersiz portal bildirimi.')
+        identity=event.get('id');uid=event.get('userId');stamp=event.get('createdAt');username=event.get('username')
+        if type(identity) is not int or not 0<identity<previous or type(uid) is not int or not 0<uid<10**16:
+            raise PortalError('Bildirim sırası doğrulanamadı.')
+        if not isinstance(username,str) or not re.fullmatch(r'[a-z0-9._-]{3,40}',username):raise PortalError('Bildirim kullanıcısı doğrulanamadı.')
+        if type(stamp) is not int or not 0<stamp<253402300799:raise PortalError('Bildirim tarihi geçersiz.')
+        old=event.get('before');new=event.get('after')
+        if not isinstance(old,dict) or not isinstance(new,dict) or set(new)!=set(fields) or set(old)!=(set(fields) if kind=='profile_change' else set()):
+            raise PortalError('Bildirim alanları doğrulanamadı.')
+        for values in (old,new):
+            if any(not isinstance(value,str) or not 1<=len(value)<=fields[key][1] for key,value in values.items()):raise PortalError('Bildirim değeri geçersiz.')
+        changes=[{'label':label,'before':old.get(key,''),'after':new[key]} for key,(label,_) in fields.items() if old.get(key)!=new[key]]
+        rows.append({'id':identity,'userId':uid,'username':username,'company':new['company'],'changes':changes,
+                     'createdAt':datetime.fromtimestamp(stamp,timezone.utc).astimezone(ZoneInfo('Europe/Istanbul')).strftime('%d.%m.%Y %H:%M')})
+        previous=identity
+    cursor=result.get('nextBefore')
+    if cursor is not None and (type(cursor) is not int or not rows or cursor!=rows[-1]['id']):raise PortalError('Bildirim sayfası doğrulanamadı.')
+    return rows,cursor
+
+
 def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
     def owner():
         if not app.config.get('WEB_AUTH_ENABLED') or not getattr(g,'web_is_owner',False):abort(403)
@@ -148,6 +178,8 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
     @app.get('/yonetim/bayi-portali')
     def dealer_portal():
         owner();error=None;config=None
+        section=request.args.get('section','orders');before=request.args.get('before','0')
+        if section not in ('orders','members','changes') or not re.fullmatch(r'\d{1,16}',before):abort(400)
         try:config=settings()
         except PortalError as e:error=str(e)
         with db.engine.connect() as conn:
@@ -155,7 +187,12 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
             rows=conn.execute(select(inbox).where(inbox.c.source==config['source']).order_by(inbox.c.id.desc()).limit(100)).mappings().all() if installed and config else []
         last_pull=session.get('dealer_portal_last_pull')
         if not isinstance(last_pull,dict) or not config or last_pull.get('source')!=config['source']:last_pull=None
-        return render_template('dealer_portal.html',connected=bool(config),installed=installed,rows=rows,error=error,last_pull=last_pull)
+        activities=[];activity_error=None;next_before=None
+        if section!='orders' and config and installed:
+            try:activities,next_before=activity_page(config,'membership' if section=='members' else 'profile_change',int(before))
+            except PortalError as exc:activity_error=str(exc)
+        return render_template('dealer_portal.html',connected=bool(config),installed=installed,rows=rows,error=error,last_pull=last_pull,
+                               section=section,activities=activities,activity_error=activity_error,next_before=next_before)
 
     @app.post('/yonetim/bayi-portali/kur')
     def dealer_portal_init():

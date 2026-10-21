@@ -79,6 +79,38 @@ class DealerPortalTests(unittest.TestCase):
         p['payload']['customer']['company']='Changed';p['payloadHash']=hashlib.sha256(d.encoded(p['payload'])).hexdigest()
         self.assertEqual(self.machine('POST',path,p).status_code,409)
 
+    def test_portal_activity_is_owner_only_read_only_and_escaped(self):
+        self.init()
+        values={'company':'<script>TEST</script>','contactName':'Yetkili','email':'test@example.invalid','phone':'05550000000','companyAddress':'TEST adres'}
+        event={'id':4,'userId':7,'kind':'profile_change','createdAt':1792584000,'username':'testdealer',
+               'before':{**values,'company':'Eski firma'},'after':values}
+        result={'sourceId':'portal-fixture','events':[event],'nextBefore':4}
+        with patch('dealer_portal.remote',return_value=result) as call:
+            page=self.client.get(self.base+'?section=changes',base_url=BASE)
+            self.assertEqual(page.status_code,200)
+            self.assertIn('Bayi Portalı',page.text);self.assertNotIn('Bayi Portalı İstekleri',page.text)
+            self.assertIn('&lt;script&gt;TEST&lt;/script&gt;',page.text)
+            self.assertNotIn('<script>TEST</script>',page.text)
+            self.assertIn('Eski firma',page.text);self.assertIn('Daha eski bildirimler',page.text)
+            self.assertIn('Türkiye saati',page.text)
+            self.assertEqual(call.call_args.args[2],'/api/bos/v1/activity?kind=profile_change&before=0')
+        self.assertEqual(self.customer.name,'TEST BOS müşteri')
+        self.assertEqual(m.Order.query.count(),0)
+        self.assertEqual(m.db.session.execute(select(func.count()).select_from(d.links)).scalar(),0)
+        with patch('dealer_portal.remote') as call:
+            anonymous=self.app.test_client().get(self.base+'?section=members',base_url=BASE)
+            self.assertEqual(anonymous.status_code,302);call.assert_not_called()
+        for invalid in ({**result,'sourceId':'wrong'},{**result,'nextBefore':99},
+                        {**result,'events':[{**event,'after':{**values,'password':'secret'}}]}):
+            with patch('dealer_portal.remote',return_value=invalid):
+                page=self.client.get(self.base+'?section=changes',base_url=BASE)
+                self.assertEqual(page.status_code,200);self.assertIn('doğrulanamadı',page.text)
+                self.assertNotIn('secret',page.text)
+        with patch('dealer_portal.remote',side_effect=d.PortalError('Bağlantı kurulamadı')):
+            page=self.client.get(self.base+'?section=members',base_url=BASE)
+            self.assertIn('Kayıt bulunmadığı anlamına gelmez',page.text)
+        self.assertEqual(self.client.get(self.base+'?section=wrong',base_url=BASE).status_code,400)
+
     def test_account_isolation_period_balance_history_and_trello(self):
         self.init();row=self.pull();self.link(row)
         with patch('dealer_portal.remote',return_value={'acknowledged':True,'portalOrderId':1}):self.approve(row)

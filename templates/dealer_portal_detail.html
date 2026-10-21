@@ -3,7 +3,7 @@
 {% block heading %}{{ payload.portalOrderNo }}{% endblock %}
 {% block subheading %}Bayi portalı sipariş isteği{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('dealer_portal') }}">← Portal istekleri</a></p>
+<p><a href="{{ url_for('dealer_portal') }}">← Bayi Portalı</a></p>
 <section class="panel" style="padding:24px;margin-bottom:24px">
 <h2>{{ payload.customer.company }}</h2><p>{{ payload.customer.name }} · {{ payload.customer.phone }} · {{ payload.customer.email }}</p>
 <p>Teslimat: {{ payload.customer.address }}</p><p>{{ payload.customer.note }}</p>
