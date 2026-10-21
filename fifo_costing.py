@@ -3,18 +3,28 @@ from collections import defaultdict, deque
 from decimal import Decimal, ROUND_HALF_UP
 
 
-def calculate_fifo(events):
+def calculate_fifo(events, *, allow_late_purchases=False):
     """Events: date, priority, id, key, quantity, direction, unit_cost.
 
     Inputs precede outputs on the same date (documents have no movement time).
-    Uncovered outputs remain uncovered: later purchases cannot retroactively cost them.
+    By default later purchases cannot cost earlier outputs. The report may opt
+    into pooling known purchase layers before replaying sales and returns.
     """
     layers = defaultdict(deque)
     results = {}
     returned = defaultdict(lambda: Decimal("0"))
     return_value = defaultdict(lambda: Decimal("0"))
     return_cents = defaultdict(lambda: Decimal("0"))
-    for event in sorted(events, key=lambda e: (e['date'], e['priority'], e['id'])):
+    ordered = sorted(events, key=lambda e: (e['date'], e['priority'], e['id']))
+    if allow_late_purchases:
+        # Pool invoice-backed costs once, oldest purchase first. Keep sales,
+        # returns and unknown stock movements chronological. The same units
+        # cannot be reused by another sale, even across reporting periods.
+        def known_purchase(event):
+            return event['direction'] == 'in' and event.get('unit_cost') is not None
+        ordered = ([e for e in ordered if known_purchase(e)] +
+                   [e for e in ordered if not known_purchase(e)])
+    for event in ordered:
         quantity = Decimal(str(event['quantity']))
         if quantity <= 0:
             results[event['id']] = dict(cost=Decimal('0'), missing_quantity=Decimal('0'),
@@ -60,7 +70,13 @@ def calculate_fifo(events):
                 price = total / quantity
             queue.append([quantity, price, Decimal('0'), Decimal('0')])
             continue
-        remaining, cost, missing = quantity, Decimal('0'), Decimal('0')
+        manual = event.get('manual')
+        reserved_manual = Decimal('0')
+        if allow_late_purchases and manual:
+            candidate = Decimal(str(manual['quantity']))
+            if 0 < candidate <= quantity:
+                reserved_manual = candidate
+        remaining, cost, missing = quantity-reserved_manual, Decimal('0'), Decimal('0')
         allocations = []
         while remaining and queue:
             layer = queue[0]
@@ -81,6 +97,15 @@ def calculate_fifo(events):
         missing += remaining
         if remaining:
             allocations.append((remaining, None))
+        if reserved_manual:
+            # An explicit historical cost already covers these units. Do not
+            # consume newly imported purchases for the same manually costed units.
+            amount = Decimal(str(manual['amount']))
+            allocations.append((reserved_manual, amount/reserved_manual))
+            results[event['id']] = dict(cost=cost+amount, missing_quantity=missing,
+                raw_missing=missing+reserved_manual, manual_applied=True,
+                quantity=quantity, allocations=allocations)
+            continue
         raw_missing = missing
         manual = event.get('manual')
         applied = bool(manual and Decimal(str(manual['quantity'])) == missing and missing)

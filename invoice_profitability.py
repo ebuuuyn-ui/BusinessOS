@@ -38,7 +38,7 @@ def register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense
 
     def load(end):
         documents = Invoice.query.options(selectinload(Invoice.items), joinedload(Invoice.customer)).filter(
-            Invoice.invoice_date <= end).order_by(Invoice.invoice_date, Invoice.id).all()
+            (Invoice.invoice_date <= end) | (Invoice.invoice_type == 'Satın Alma')).order_by(Invoice.invoice_date, Invoice.id).all()
         items = {i.id: i for doc in documents for i in doc.items}
         inspector = inspect(db.session.connection())
         manual = {}
@@ -82,7 +82,7 @@ def register_profitability(app, db, Invoice, InvoiceItem, StockMovement, Expense
             events.append(dict(id=-movement.id, date=movement.movement_date, priority=0 if incoming else 1,
                 key=('product', movement.product_id), quantity=movement.quantity,
                 direction='in' if incoming else 'out', unit_cost=None))
-        results = calculate_fifo(events)
+        results = calculate_fifo(events, allow_late_purchases=True)
         # The engine allocates and reverses cents cumulatively per FIFO layer.
         for result in results.values():
             result['cost'] = cents(result['cost'])

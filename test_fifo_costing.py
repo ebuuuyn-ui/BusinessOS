@@ -58,4 +58,23 @@ class FifoTests(unittest.TestCase):
         self.assertEqual(r[2]['missing_quantity'],3)
         self.assertEqual(r[3]['cost'],D('1.00'))
 
+    def test_late_purchases_keep_manual_cost_and_available_units(self):
+        old=self.event(1,1,2,'out');old['manual']=dict(quantity=2,amount=D('75'))
+        events=[old,self.event(2,2,2,'out'),self.event(3,3,2,'in','40')]
+        r=calculate_fifo(events,allow_late_purchases=True)
+        self.assertEqual(r[1]['cost'],D('75'))
+        self.assertTrue(r[1]['manual_applied'])
+        self.assertEqual(r[2]['cost'],D('80'))
+        self.assertEqual(r[2]['missing_quantity'],0)
+
+    def test_late_purchase_pool_keeps_oldest_cost_and_product_isolation(self):
+        events=[self.event(1,1,3,'out'),self.event(2,2,2,'in','10'),
+                self.event(3,3,2,'in','20'),self.event(4,4,2,'out',key=2),
+                self.event(5,5,2,'out')]
+        r=calculate_fifo(events,allow_late_purchases=True)
+        self.assertEqual(r[1]['cost'],D('40'))
+        self.assertEqual(r[5]['cost'],D('20'))
+        self.assertEqual(r[5]['missing_quantity'],1)
+        self.assertEqual(r[4]['missing_quantity'],2)
+
 if __name__=='__main__': unittest.main()

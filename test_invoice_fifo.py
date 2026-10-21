@@ -125,4 +125,32 @@ class InvoiceFifoTests(unittest.TestCase):
         self.assertFalse(inspect(m.db.engine).has_table(journal.name))
         self.assertEqual(self.load()[2][item.id]['missing_quantity'],1)
 
+    def test_late_purchase_costs_prior_month_without_reusing_quantity(self):
+        self.make_product()
+        _,first=self.invoice('SALE-FIRST','Satış','2026-01-01',2,'100')
+        _,second=self.invoice('SALE-SECOND','Satış','2026-02-01',2,'100')
+        self.invoice('LATE-BUY','Satın Alma','2026-03-01',3,'30')
+        m.db.session.commit()
+        january=self.load('2026-01-31')[2];annual=self.load()[2]
+        self.assertEqual(january[first.id]['cost'],D('60'))
+        self.assertEqual(annual[first.id]['cost'],D('60'))
+        self.assertEqual(annual[second.id]['cost'],D('30'))
+        self.assertEqual(annual[second.id]['missing_quantity'],1)
+        self.assertEqual(m.StockMovement.query.count(),0)
+
+    def test_late_purchase_returns_preserve_cost_and_rounding(self):
+        self.make_product()
+        _,sale=self.invoice('SALE','Satış','2026-01-01',3,'50')
+        _,ret=self.invoice('RETURN','Satış İadesi','2026-01-02',1,'50')
+        link=m.db.metadata.tables['invoice_return_line']
+        m.db.session.execute(link.insert().values(return_item_id=ret.id,source_item_id=sale.id))
+        _,resale=self.invoice('RESALE','Satış','2026-01-03',1,'50')
+        buy,_=self.invoice('LATE','Satın Alma','2026-02-01',3,'33.33333333')
+        buy.source_net_amount=D('100')
+        m.db.session.commit();r=self.load('2026-01-31')[2]
+        self.assertEqual(r[sale.id]['cost'],D('100'))
+        self.assertEqual(r[ret.id]['cost'],D('-33.33'))
+        self.assertEqual(r[resale.id]['cost'],D('33.33'))
+        self.assertEqual(r[resale.id]['missing_quantity'],0)
+
 if __name__=='__main__':unittest.main()
