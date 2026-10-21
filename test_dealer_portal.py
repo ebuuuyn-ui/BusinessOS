@@ -79,6 +79,67 @@ class DealerPortalTests(unittest.TestCase):
         p['payload']['customer']['company']='Changed';p['payloadHash']=hashlib.sha256(d.encoded(p['payload'])).hexdigest()
         self.assertEqual(self.machine('POST',path,p).status_code,409)
 
+    def test_detailed_statement_matches_owner_export_and_is_customer_scoped(self):
+        from io import BytesIO
+        from openpyxl import load_workbook
+        self.init();self.link(self.pull())
+        other=m.Customer(name='PRIVATE OTHER CUSTOMER',code='OTHER')
+        order=m.Order(customer=self.customer,order_no='TEST-DETAIL',order_type='Satış')
+        order.items.append(m.OrderItem(product_name='TEST chair',quantity=2,unit_price=100,discount_rate=10,vat_rate=20))
+        invoice=m.Invoice(customer=self.customer,order=order,invoice_no='TEST-INVOICE',invoice_type='Satış',invoice_date=date(2026,9,5))
+        invoice.items.append(m.InvoiceItem(product_name='=SAFE PRODUCT',quantity=2,unit_price=100,discount_rate=10,vat_rate=20))
+        m.db.session.add_all([other,order,invoice])
+        for customer,day,dr,cr,ref in [(self.customer,date(2026,8,1),300,0,'OPEN'),
+                (self.customer,date(2026,9,6),0,50,'PAY'),(self.customer,date(2026,10,1),777,0,'FUTURE'),
+                (other,date(2026,9,1),999,0,'OTHER-SECRET')]:
+            m.db.session.add(m.AccountTransaction(customer=customer,transaction_date=day,transaction_type='Tahsilat',
+                debit=dr,credit=cr,reference_no=ref,payment_method='Kredi Kartı',card_installments=3,
+                description='PRIVATE card owner',card_customer_name='PRIVATE OWNER'))
+        m.db.session.commit()
+        path='/api/dealer-portal/v1/statement.xlsx?userId=7&start=2026-09-01&end=2026-09-30'
+        with patch('dealer_account.trello_states') as trello:
+            response=self.machine('GET',path)
+            trello.assert_not_called()
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.headers['X-BOS-Portal-User'],'7')
+        self.assertEqual(response.headers['X-BOS-Source'],'portal-fixture')
+        self.assertIn('no-store',response.headers['Cache-Control'])
+        owner=self.client.get(f'/musteriler/{self.customer.id}/cari-hesap/ekstre/ayrintili/excel?start_date=2026-09-01&end_date=2026-09-30',base_url=BASE)
+        self.assertEqual(owner.status_code,200)
+        book=load_workbook(BytesIO(response.data));original=load_workbook(BytesIO(owner.data))
+        self.assertEqual(book.sheetnames,['Ekstre','Fatura Kalemleri','Bağlı Sipariş Kalemleri','Ödeme ve Tahsilat'])
+        for sheet in book:
+            self.assertEqual(list(sheet.values),list(original[sheet.title].values))
+            self.assertEqual(sheet.freeze_panes,original[sheet.title].freeze_panes)
+            for row in sheet:
+                for cell in row:
+                    expected=original[sheet.title][cell.coordinate]
+                    self.assertEqual(cell.number_format,expected.number_format)
+                    self.assertEqual(cell._style,expected._style)
+        self.assertEqual(book['Ekstre']['F5'].value,300)
+        self.assertEqual(book['Ekstre']['F8'].value,466)
+        self.assertEqual(book['Fatura Kalemleri']['L5'].value,10)
+        self.assertEqual(book['Fatura Kalemleri']['D5'].data_type,'s')
+        values=str([list(sheet.values) for sheet in book])
+        for secret in ('PRIVATE','OTHER-SECRET','FUTURE'):self.assertNotIn(secret,values)
+        self.assertIn('3 taksit',values)
+        self.assertEqual(self.machine('GET',path.replace('userId=7','userId=8')).status_code,409)
+        self.assertEqual(self.app.test_client().get(path,base_url=BASE).status_code,401)
+        self.assertEqual(self.machine('GET',path,stamp=str(int(time.time())-121)).status_code,401)
+        self.assertEqual(self.machine('GET',path,headers={'Origin':BASE}).status_code,403)
+        for suffix in ('&customerId=1','&userId=8','&start=2026-08-01'):
+            self.assertEqual(self.machine('GET',path+suffix).status_code,400)
+        for bad in ('2026-02-30','2026-10-01','bad'):
+            self.assertEqual(self.machine('GET',path.replace('2026-09-01',bad)).status_code,400)
+        empty=self.machine('GET',path.replace('2026-09-01','2026-09-20'))
+        self.assertEqual(load_workbook(BytesIO(empty.data))['Ekstre']['F6'].value,466)
+        with patch('account_exports.export_xlsx',return_value=BytesIO(b'x'*3_000_001)):
+            self.assertEqual(self.machine('GET',path).status_code,413)
+        self.assertEqual(m.Invoice.query.count(),1)
+        self.assertEqual(m.AccountTransaction.query.count(),4)
+        order.customer=other;m.db.session.commit()
+        self.assertEqual(self.machine('GET',path).status_code,503)
+
     def test_portal_activity_is_owner_only_read_only_and_escaped(self):
         self.init()
         values={'company':'<script>TEST</script>','contactName':'Yetkili','email':'test@example.invalid','phone':'05550000000','companyAddress':'TEST adres'}

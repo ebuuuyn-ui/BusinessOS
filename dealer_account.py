@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from concurrent.futures import ThreadPoolExecutor
 from cryptography.fernet import Fernet
-from flask import abort, current_app, request, jsonify
+from flask import abort, current_app, request, jsonify, send_file
 from sqlalchemy import select, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -135,19 +135,48 @@ def register_dealer_account(app, db, Customer, Order, OrderItem, statement):
         if existing and existing['payload_hash']!=digest:return {'error':'Sipariş kimliği uyuşmuyor.'},409
         return {'received':True,'portalOrderId':payload['portalOrderId'],'payloadHash':digest}
 
-    @app.get('/api/dealer-portal/v1/account')
-    def dealer_machine_account():
+    def account_scope():
         config=authorize();uid=request.args.get('userId','')
-        if set(request.args)-{'userId','start','end'} or not re.fullmatch(r'[1-9]\d{0,9}',uid):abort(400)
+        if (set(request.args)-{'userId','start','end'} or any(len(request.args.getlist(k))!=1 for k in request.args)
+            or not re.fullmatch(r'[1-9]\d{0,9}',uid)):abort(400)
         uid=int(uid);start=request.args.get('start','');end=request.args.get('end','')
         try:
             for value in (start,end):
                 if value and (not re.fullmatch(r'\d{4}-\d{2}-\d{2}',value) or date.fromisoformat(value).isoformat()!=value):raise ValueError()
             if start and end and start>end:raise ValueError()
         except ValueError:abort(400)
-        result={'sourceId':config['source'],'portalUserId':uid,'linked':False,'orders':[]}
         link=db.session.execute(select(links).where(links.c.source==config['source'],links.c.portal_user_id==uid)).mappings().first()
         customer=db.session.get(Customer,link['customer_id']) if link else None
+        return config,uid,start,end,customer
+
+    @app.get('/api/dealer-portal/v1/statement.xlsx')
+    def dealer_machine_statement():
+        config,uid,start,end,customer=account_scope()
+        if customer is None:return {'error':'Cari hesap eşleştirilmedi.'},409
+        # Reuse the exact BOS detailed export, without querying Trello or order history.
+        from account_exports import statement_period, export_xlsx
+        start_date=date.fromisoformat(start) if start else None
+        end_date=date.fromisoformat(end) if end else None
+        period=statement_period(statement(customer),start_date,end_date)
+        # A malformed cross-customer invoice/order link must not expose another account.
+        for entry in period['entries']:
+            invoice=entry.get('invoice')
+            if invoice and invoice.order and invoice.order.customer_id!=customer.id:abort(503)
+        output=export_xlsx(customer,period,start_date.strftime('%d.%m.%Y') if start_date else '',
+                           end_date.strftime('%d.%m.%Y') if end_date else '',detailed=True)
+        if output.getbuffer().nbytes>3_000_000:
+            return {'error':'Ekstre çok büyük. Daha kısa bir tarih aralığı seçin.'},413
+        response=send_file(output,as_attachment=True,download_name='abika-ayrintili-hesap-ekstresi.xlsx',
+                           mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                           conditional=False,etag=False)
+        response.headers.update({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',
+                                 'X-BOS-Source':config['source'],'X-BOS-Portal-User':str(uid)})
+        return response
+
+    @app.get('/api/dealer-portal/v1/account')
+    def dealer_machine_account():
+        config,uid,start,end,customer=account_scope()
+        result={'sourceId':config['source'],'portalUserId':uid,'linked':False,'orders':[]}
         if customer is None:return result
         entries=statement(customer)
         current=sum(cents(e['debit'])-cents(e['credit']) for e in entries)
