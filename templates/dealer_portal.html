@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Bayi Portalı · Business OS{% endblock %}
 {% block heading %}Bayi Portalı{% endblock %}
-{% block subheading %}Portal siparişleri, yeni üyelikler ve firma bilgisi değişiklikleri{% endblock %}
+{% block subheading %}Portal siparişleri, üyelikler, bilgi değişiklikleri ve bayi mesajları{% endblock %}
 {% block content %}
 <nav aria-label="Bayi portalı bölümleri" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px">
-{% for key,label in [('orders','Siparişler'),('members','Yeni üyelikler'),('changes','Bilgi değişiklikleri')] %}
+{% for key,label in [('orders','Siparişler'),('members','Yeni üyelikler'),('changes','Bilgi değişiklikleri'),('feedback','Öneri ve şikâyetler')] %}
 <a class="button {{ 'primary' if section==key }}" {% if section==key %}aria-current="page"{% endif %} href="{{ url_for('dealer_portal',section=key) }}">{{ label }}</a>
 {% endfor %}
 <a class="button" href="{{ url_for('dealer_portal_customers') }}">Bayi cari eşlemeleri</a>
@@ -35,6 +35,27 @@
 {% for row in rows %}<tr><td>{{ row.portal_order_id }}</td><td>{{ 'Portal bildirimi bekliyor' if row.ack_pending else 'Onaylandı' if row.order_id else 'Onay bekliyor' }}</td><td>{{ row.order_no or '—' }}</td><td><a class="button" href="{{ url_for('dealer_portal_detail',identity=row.id) }}">İncele</a></td></tr>
 {% else %}<tr><td colspan="4">Henüz sipariş isteği yok.</td></tr>{% endfor %}
 </tbody></table></section>
+{% elif section=='feedback' %}
+<section class="panel" style="padding:24px">
+<h2>Bayi öneri, istek ve şikâyetleri</h2>
+<p>Portal veya ürünlerle ilgili bayi mesajları. Sayfa açıldığında güncellenir; e-posta gönderilmez.</p>
+<a class="button" href="{{ url_for('dealer_portal',section='feedback') }}">Mesajları yenile</a>
+{% if error or activity_error %}<p role="alert" class="flash error">{{ error or activity_error }} Mesaj bulunmadığı anlamına gelmez; bağlantıyı kontrol edip yeniden deneyin.</p>
+{% elif not connected or not installed %}<p>Portal bağlantısı henüz hazır değil.</p>
+{% else %}
+{% for message in activities %}
+<article style="padding:24px 0;border-bottom:1px solid #ddd;overflow-wrap:anywhere">
+<h3>{{ message.subject }}</h3>
+<p>{{ message.categoryLabel }} · {{ message.typeLabel }} · #{{ message.id }} · {{ message.dateLabel }} (Türkiye saati)</p>
+<p><strong>{{ message.company }}</strong> · {{ message.username }} · Portal bayi no: {{ message.userId }}</p>
+<p>{{ message.contactName }} · {{ message.email }} · {{ message.phone }}</p>
+{% if message.product %}<p>İlgili ürün / model: {{ message.product }}</p>{% endif %}
+<p style="white-space:pre-wrap">{{ message.message }}</p>
+</article>
+{% else %}<p>Henüz öneri, istek veya şikâyet mesajı yok.</p>{% endfor %}
+{% if next_before %}<p><a class="button" href="{{ url_for('dealer_portal',section='feedback',before=next_before) }}">Daha eski mesajlar</a></p>{% endif %}
+{% endif %}
+</section>
 {% else %}
 <section class="panel" style="padding:24px">
 <h2>{{ 'Yeni üyelikler' if section=='members' else 'Firma bilgisi değişiklikleri' }}</h2>

@@ -153,6 +153,31 @@ def activity_page(config,kind,before):
     return rows,cursor
 
 
+def feedback_page(config,before):
+    result=remote(config,'GET',f'/api/bos/v1/feedback?before={before}')
+    if not isinstance(result,dict) or result.get('sourceId')!=config['source'] or not isinstance(result.get('messages'),list) or len(result['messages'])>30:
+        raise PortalError('Portal mesaj listesi doğrulanamadı.')
+    categories={'portal':'Portal','product':'Ürünler'};types={'suggestion':'Öneri','request':'İstek','complaint':'Şikâyet'}
+    limits={'username':40,'company':200,'contactName':160,'email':254,'phone':30,'subject':120,'message':4000,'product':160}
+    rows=[];previous=before or 10**16
+    for message in result['messages']:
+        if not isinstance(message,dict) or set(message)!=set(limits)|{'id','userId','createdAt','category','type'}:
+            raise PortalError('Mesaj alanları doğrulanamadı.')
+        if any(not isinstance(message[key],str) or len(message[key])>limit or ('\x00' in message[key]) or (key!='product' and not message[key].strip()) for key,limit in limits.items()):
+            raise PortalError('Mesaj içeriği doğrulanamadı.')
+        identity=message['id'];stamp=message['createdAt'];uid=message['userId']
+        if type(identity) is not int or not 0<identity<previous or type(uid) is not int or not 0<uid<10**16 or type(stamp) is not int or not 0<stamp<253402300799:
+            raise PortalError('Mesaj sırası veya tarihi doğrulanamadı.')
+        if not isinstance(message['category'],str) or message['category'] not in categories or not isinstance(message['type'],str) or message['type'] not in types:
+            raise PortalError('Mesaj türü doğrulanamadı.')
+        rows.append({**message,'categoryLabel':categories[message['category']],'typeLabel':types[message['type']],
+                     'dateLabel':datetime.fromtimestamp(stamp,timezone.utc).astimezone(ZoneInfo('Europe/Istanbul')).strftime('%d.%m.%Y %H:%M')})
+        previous=identity
+    cursor=result.get('nextBefore')
+    if cursor is not None and (type(cursor) is not int or not rows or cursor!=rows[-1]['id']):raise PortalError('Mesaj sayfası doğrulanamadı.')
+    return rows,cursor
+
+
 def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
     def owner():
         if not app.config.get('WEB_AUTH_ENABLED') or not getattr(g,'web_is_owner',False):abort(403)
@@ -179,7 +204,7 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
     def dealer_portal():
         owner();error=None;config=None
         section=request.args.get('section','orders');before=request.args.get('before','0')
-        if section not in ('orders','members','changes') or not re.fullmatch(r'\d{1,16}',before):abort(400)
+        if section not in ('orders','members','changes','feedback') or not re.fullmatch(r'\d{1,16}',before):abort(400)
         try:config=settings()
         except PortalError as e:error=str(e)
         with db.engine.connect() as conn:
@@ -189,7 +214,9 @@ def register_portal(app,db,Customer,Product,Order,OrderItem,OrderHistory):
         if not isinstance(last_pull,dict) or not config or last_pull.get('source')!=config['source']:last_pull=None
         activities=[];activity_error=None;next_before=None
         if section!='orders' and config and installed:
-            try:activities,next_before=activity_page(config,'membership' if section=='members' else 'profile_change',int(before))
+            try:
+                if section=='feedback':activities,next_before=feedback_page(config,int(before))
+                else:activities,next_before=activity_page(config,'membership' if section=='members' else 'profile_change',int(before))
             except PortalError as exc:activity_error=str(exc)
         return render_template('dealer_portal.html',connected=bool(config),installed=installed,rows=rows,error=error,last_pull=last_pull,
                                section=section,activities=activities,activity_error=activity_error,next_before=next_before)

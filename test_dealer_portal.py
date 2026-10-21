@@ -111,6 +111,36 @@ class DealerPortalTests(unittest.TestCase):
             self.assertIn('Kayıt bulunmadığı anlamına gelmez',page.text)
         self.assertEqual(self.client.get(self.base+'?section=wrong',base_url=BASE).status_code,400)
 
+    def test_feedback_is_owner_only_paginated_and_escaped(self):
+        self.init()
+        message={'id':8,'userId':7,'createdAt':1792584000,'username':'testdealer','company':'TEST Bayi',
+                 'contactName':'Test Yetkili','email':'test@example.invalid','phone':'05550000000',
+                 'category':'product','type':'complaint','subject':'<script>title</script>',
+                 'product':'M01801','message':'TEST mesaj <img src=x onerror=alert(1)>'}
+        result={'sourceId':'portal-fixture','messages':[message],'nextBefore':8}
+        with patch('dealer_portal.remote',return_value=result) as call:
+            page=self.client.get(self.base+'?section=feedback',base_url=BASE)
+            self.assertEqual(page.status_code,200)
+            self.assertIn('Öneri ve şikâyetler',page.text)
+            self.assertIn('&lt;script&gt;title&lt;/script&gt;',page.text)
+            self.assertIn('&lt;img src=x onerror=alert(1)&gt;',page.text)
+            self.assertNotIn('<script>title</script>',page.text)
+            self.assertIn('Şikâyet',page.text);self.assertIn('Daha eski mesajlar',page.text)
+            self.assertEqual(call.call_args.args[2],'/api/bos/v1/feedback?before=0')
+        with patch('dealer_portal.remote') as call:
+            self.assertEqual(self.app.test_client().get(self.base+'?section=feedback',base_url=BASE).status_code,302)
+            call.assert_not_called()
+        for invalid in ({**result,'sourceId':'wrong'},{**result,'nextBefore':4},
+                        {**result,'messages':[{**message,'type':['bad']}]},
+                        {**result,'messages':[{**message,'message':'x'*4001}]},
+                        {**result,'messages':[{**message,'password':'private'}]}):
+            with patch('dealer_portal.remote',return_value=invalid):
+                page=self.client.get(self.base+'?section=feedback',base_url=BASE)
+                self.assertIn('doğrulanamadı',page.text)
+                self.assertNotIn('private',page.text)
+        self.assertEqual(m.Order.query.count(),0)
+        self.assertEqual(self.customer.name,'TEST BOS müşteri')
+
     def test_account_isolation_period_balance_history_and_trello(self):
         self.init();row=self.pull();self.link(row)
         with patch('dealer_portal.remote',return_value={'acknowledged':True,'portalOrderId':1}):self.approve(row)
