@@ -314,6 +314,46 @@ class FundTests(unittest.TestCase):
         self.assertIn(route,self.client.get('/kasa-cek').text)
         self.assertIn(route,self.client.get('/kasa-cek/kasalar').text)
 
+    def test_consolidate_preserves_history_mirrors_and_internal_transfers(self):
+        import re,json
+        self.post(action='setup_cards');self.ids={r['slug']:r['id'] for r in self.ext['rows']()}
+        self.link();t=self.tx();self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['ahmet'])
+        for source,target,amount in [('kuveyt','enpara','83'),('kuveyt','card-maximum','280'),('enpara','card-garanti','234')]:
+            self.post(action='transfer',from_id=self.ids[source],to_id=self.ids[target],date=date.today().isoformat(),amount=amount,description='Original note',token=self.context()['token'])
+        before=[dict(r) for r in m.db.session.execute(select(self.postings).order_by(self.postings.c.id)).mappings()]
+        balance=self.ext['total_balance']();cari=self.ahmet.balance;txcount=m.AccountTransaction.query.count()
+        route='/kasa-cek/kasalar/birlestir'
+        html=self.client.get(route).text
+        token=re.search(r'name="version" value="([^"]+)"',html).group(1)
+        self.assertEqual(self.client.post(route,data={'version':token}).status_code,302)
+        rows=self.ext['rows']();self.assertEqual(len(rows),5)
+        self.assertEqual({a['name'] for a in rows},{'Nakit Kasa','Banka Hesabı','Ahmet Emin Uyan','Doğrudan Tedarikçi Aktarımı','Kredi Kartı'})
+        mapping={self.ids['enpara']:self.ids['kuveyt'],self.ids['card-maximum']:self.ids['card-garanti']}
+        after=[dict(r) for r in m.db.session.execute(select(self.postings).order_by(self.postings.c.id)).mappings()]
+        self.assertEqual(after,[dict(p,account_id=mapping.get(p['account_id'],p['account_id'])) for p in before])
+        self.assertEqual(self.ext['total_balance'](),balance);self.assertEqual(self.ahmet.balance,cari)
+        self.assertEqual(m.AccountTransaction.query.count(),txcount)
+        record=m.db.session.execute(select(self.audit).where(self.audit.c.action=='consolidate_20261022')).mappings().one()
+        self.assertEqual(len(json.loads(record['detail'])['postings']),len(before))
+        self.client.post(route,data={'version':token});self.post(action='setup');self.post(action='setup_cards')
+        self.assertEqual(len(self.ext['rows']()),5);self.assertEqual(self.count(),len(before))
+        internal=next(p for p in after if p['source_key'].endswith(':out') and p['amount']==-83)
+        edit='/kasa-cek/virman/'+internal['batch']+'/duzenle'
+        self.assertEqual(self.client.get(edit).status_code,200)
+        html=self.client.get(edit).text;version=re.search(r'name="version" value="([^"]+)"',html).group(1)
+        self.client.post(edit,data=dict(action='save',version=version,amount='90',date=date.today().isoformat(),description='Updated'))
+        self.assertEqual(self.ext['total_balance'](),balance)
+
+    def test_consolidation_rejects_stale_snapshot(self):
+        import re
+        self.post(action='setup_cards')
+        route='/kasa-cek/kasalar/birlestir'
+        token=re.search(r'name="version" value="([^"]+)"',self.client.get(route).text).group(1)
+        t=self.tx(method='Nakit');self.post(action='assign',source_key='tx:'+str(t.id),account_id=self.ids['cash'])
+        self.client.post(route,data={'version':token})
+        self.assertEqual(len(self.ext['rows']()),7)
+        self.assertFalse(m.db.session.execute(select(self.audit.c.id).where(self.audit.c.action=='consolidate_20261022')).first())
+
     def test_invalid_transfers_no_partial_posting(self):
         for amount in ['NaN','-1','0','1.2345','251.7489','1,234','1.23.456']:
             self.post(action='transfer',from_id=self.ids['ahmet'],to_id=self.ids['enpara'],date=date.today().isoformat(),amount=amount,description='Test',token=self.context()['token'])

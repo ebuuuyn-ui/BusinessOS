@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}Hesapları Birleştir{% endblock %}
+{% block heading %}Hesapları Birleştir{% endblock %}
+{% block content %}<div class="panel"><div class="panel-head"><h2>Yeni Hesap Düzeni</h2></div>
+<div class="table-wrap"><table class="compact-table"><thead><tr><th>Mevcut Hesaplar</th><th>Yeni Hesap</th><th>Hareket</th><th>Bakiye</th></tr></thead><tbody>{% for row in preview %}<tr><td>{{ row.old_names }}</td><td>{{ row.name }}</td><td>{{ row.count }}</td><td>₺{{ row.balance|money }}</td></tr>{% endfor %}</tbody></table></div>
+<p>Nakit Kasa ve Doğrudan Tedarikçi Aktarımı korunur. Hareketler, tutarlar ve Ahmet carisi bağlantısı korunarak hesaplar birleştirilir. Eski hesaplar seçim listesinden kaldırılır. Birleşen hesaplar arasındaki eski virmanlar geçmişte kalır ve net bakiyeyi değiştirmez.</p>
+<form method="post"><input type="hidden" name="version" value="{{ version }}"><button class="button primary">Birleştirmeyi Uygula</button> <a class="button" href="{{ url_for('treasury_accounts_page') }}">Vazgeç</a></form></div>{% endblock %}

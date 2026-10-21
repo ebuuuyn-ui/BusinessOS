@@ -274,7 +274,7 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         if not pair: abort(404)
         outgoing=next((p for p in pair if p['source_key']=='transfer:'+batch+':out'),None)
         incoming=next((p for p in pair if p['source_key']=='transfer:'+batch+':in'),None)
-        if len(pair)!=2 or not outgoing or not incoming or outgoing['amount']>=0 or incoming['amount']!=-outgoing['amount'] or outgoing['account_id']==incoming['account_id']:
+        if len(pair)!=2 or not outgoing or not incoming or outgoing['amount']>=0 or incoming['amount']!=-outgoing['amount'] :
             abort(409,description='Virmanın iki tarafı tutarsız; kayıt değiştirilmedi.')
         a=account(outgoing['account_id']);b=account(incoming['account_id'])
         serializer=URLSafeTimedSerializer(app.secret_key,salt='treasury-transfer-edit')
@@ -315,6 +315,74 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                 db.session.rollback();flash(str(error),'error')
         return render_template('treasury_transfer_edit.html',source=a,target=b,values=values,version=serializer.dumps(snapshot))
 
+    def consolidation_done():
+        return ready() and bool(db.session.execute(select(audit.c.id).where(audit.c.action=='consolidate_20261022').limit(1)).first())
+
+    @app.route('/kasa-cek/kasalar/birlestir', methods=['GET','POST'])
+    def consolidate_treasury_accounts():
+        if not ready(): abort(404)
+        if consolidation_done():
+            flash('Hesaplar zaten birleştirilmiş.','success')
+            return redirect(url_for('treasury_accounts_page'))
+        original=[dict(r) for r in db.session.execute(select(accounts).order_by(accounts.c.id).with_for_update()).mappings()]
+        entries=[dict(r) for r in db.session.execute(select(postings).order_by(postings.c.id).with_for_update()).mappings()]
+        byslug={a['slug']:a for a in original}
+        groups=[('kuveyt',['enpara'],'Banka Hesabı','Banka'),
+                ('card-garanti',['card-maximum','card-bonus'],'Kredi Kartı','Kredi Kartı')]
+        mapping={}; names={}; preview=[]
+        try:
+            for target_slug,source_slugs,name,kind in groups:
+                target=byslug.get(target_slug)
+                if not target or target['kind']!=kind or target['customer_id']:
+                    raise ValueError('Birleştirilecek hesapları kontrol edin: '+name)
+                members=[target]
+                for slug in source_slugs:
+                    source=byslug.get(slug)
+                    if not source: continue
+                    if source['kind'] not in (kind,'Birleştirildi') or source['customer_id']:
+                        raise ValueError('Hesap türü veya cari bağlantısı uygun değil: '+source['name'])
+                    members.append(source);mapping[source['id']]=target['id']
+                names[target['id']]=name
+                ids={a['id'] for a in members}
+                preview.append(dict(name=name,old_names=' + '.join(a['name'] for a in members if a['kind']!='Birleştirildi'),
+                    balance=sum((p['amount'] for p in entries if p['account_id'] in ids),Decimal(0)),
+                    count=sum(p['account_id'] in ids for p in entries)))
+            ahmet=byslug.get('ahmet')
+            if not ahmet or ahmet['kind']!='Tahsilat Sistemi': raise ValueError('Ahmet hesabı bulunamadı.')
+            names[ahmet['id']]='Ahmet Emin Uyan'
+            preview.append(dict(name='Ahmet Emin Uyan',old_names=ahmet['name'],
+                balance=sum((p['amount'] for p in entries if p['account_id']==ahmet['id']),Decimal(0)),
+                count=sum(p['account_id']==ahmet['id'] for p in entries)))
+        except ValueError as error:
+            flash(str(error),'error');return redirect(url_for('treasury_accounts_page'))
+        snapshot=json.dumps(dict(accounts=original,postings=entries),sort_keys=True,default=str,ensure_ascii=False)
+        import hashlib
+        digest=hashlib.sha256(snapshot.encode()).hexdigest()
+        signer=URLSafeTimedSerializer(app.secret_key,salt='treasury-consolidation')
+        if request.method=='POST':
+            try:
+                try: approved=signer.loads(request.form.get('version',''),max_age=3600)
+                except BadSignature: raise ValueError('Birleştirme önizlemesini yenileyin.')
+                if approved!=digest: raise ValueError('Hesaplarda değişiklik olmuş. Güncel önizlemeyi kontrol edin.')
+                backup()
+                # Full pre-change snapshot is durable on PostgreSQL as well as SQLite.
+                log('consolidate_20261022',snapshot)
+                for old,new in mapping.items():
+                    db.session.execute(postings.update().where(postings.c.account_id==old).values(account_id=new))
+                    db.session.execute(accounts.update().where(accounts.c.id==old).values(kind='Birleştirildi'))
+                for aid,name in names.items():
+                    db.session.execute(accounts.update().where(accounts.c.id==aid).values(name=name))
+                after=[dict(r) for r in db.session.execute(select(postings).order_by(postings.c.id)).mappings()]
+                expected=[dict(p,account_id=mapping.get(p['account_id'],p['account_id'])) for p in entries]
+                if after!=expected: raise ValueError('Hareket doğrulaması başarısız; birleştirme geri alındı.')
+                db.session.commit()
+                flash('Hesaplar birleştirildi. Tüm hareketler, toplam bakiye ve cari bağlantıları korundu.','success')
+                return redirect(url_for('treasury_accounts_page'))
+            except ValueError as error:
+                db.session.rollback();flash(str(error),'error')
+                return redirect(url_for('consolidate_treasury_accounts'))
+        return render_template('treasury_consolidate.html',preview=preview,version=signer.dumps(digest))
+
     @app.route('/kasa-cek/kasalar',methods=['GET','POST'])
     def treasury_accounts_page():
         if request.method=='POST':
@@ -323,13 +391,14 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
                 if action=='setup':
                     backup()
                     for t in tables: t.create(bind=db.session.connection(),checkfirst=True)
-                    existing={a['slug'] for a in rows()}
+                    existing=set(db.session.execute(select(accounts.c.slug)).scalars())
                     for slug,name,kind in DEFAULTS:
                         if slug not in existing: db.session.execute(accounts.insert().values(slug=slug,name=name,kind=kind,created_at=datetime.utcnow()))
                     log('setup','Default accounts; no source assignments or linked customers')
                 elif not ready(): raise ValueError('Önce kasaları hazırlayın.')
                 elif action=='setup_cards':
-                    backup();existing={a['slug'] for a in rows()}
+                    if consolidation_done(): raise ValueError('Birleşik kredi kartı hesabı zaten hazır.')
+                    backup();existing=set(db.session.execute(select(accounts.c.slug)).scalars())
                     for slug,name in CARD_DEFAULTS:
                         if slug not in existing: db.session.execute(accounts.insert().values(slug=slug,name=name,kind='Kredi Kartı',created_at=datetime.utcnow()))
                     log('setup_cards','Credit card accounts; no historical assignments')
@@ -432,4 +501,4 @@ def register_accounts(app, db, Customer, Transaction, Expense, Cash, backup):
         for e in transfers: e['account']=amap[e['account_id']]
         from itsdangerous import URLSafeTimedSerializer
         token=URLSafeTimedSerializer(app.secret_key,salt='treasury-transfer').dumps(str(uuid4()))
-        return render_template('treasury_accounts.html',accounts=data,pending=pending,transfers=transfers,selected=selected,query=q,customers=Customer.query.order_by(Customer.name).all(),token=token,today=date.today().isoformat())
+        return render_template('treasury_accounts.html',accounts=data,pending=pending,transfers=transfers,selected=selected,query=q,consolidated=consolidation_done(),customers=Customer.query.order_by(Customer.name).all(),token=token,today=date.today().isoformat())
