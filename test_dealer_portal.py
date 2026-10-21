@@ -156,6 +156,12 @@ class DealerPortalTests(unittest.TestCase):
         self.assertEqual((body['currentCents'],body['openingCents'],body['creditCents']),(7500,10000,2500))
         self.assertEqual(body['orders'][0]['status'],'Üretimde')
         self.assertEqual(body['orders'][0]['portalOrderId'],1)
+        price=body['orders'][0]['items'][0]['pricing']
+        self.assertEqual(price['listUnitCents'],1248500)
+        self.assertEqual(price['discountRate'],45)
+        self.assertEqual(price['discountCents'],1123650)
+        self.assertEqual(price['netCents'],1373350)
+        self.assertEqual(price['totalCents'],1648020)
         self.assertNotIn('SECRET OTHER',response.text);self.assertNotIn('cost_unit_price',response.text)
         unlinked=self.machine('GET','/api/dealer-portal/v1/account?userId=8').json
         self.assertFalse(unlinked['linked']);self.assertNotIn('currentCents',unlinked)

@@ -20,6 +20,19 @@ def cents(value):
     return int((Decimal(value or 0)*100).quantize(Decimal('1'),rounding=ROUND_HALF_UP))
 
 
+def item_pricing(item):
+    """Use the historical sales line, never today's product card or internal cost."""
+    unit=Decimal(item.unit_price or 0)
+    rate=max(Decimal('0'),min(Decimal(item.discount_rate or 0),Decimal('100')))
+    discounted=unit*(100-rate)/100
+    gross=unit*item.quantity
+    return {'listUnitCents':cents(unit),'listLineCents':cents(gross),
+            'discountRate':float(rate),'discountCents':cents(gross)-cents(discounted*item.quantity),
+            'discountedUnitCents':cents(discounted),'priceIncludesVat':bool(item.vat_included),
+            'vatRate':float(item.vat_rate or 0),'netCents':cents(item.net_amount),
+            'vatCents':cents(item.vat_amount),'totalCents':cents(item.total_amount)}
+
+
 def trello_client(app,db):
     from supplier_trello import connection, personal_connections, Client, TrelloError
     value=None
@@ -158,6 +171,7 @@ def register_dealer_account(app, db, Customer, Order, OrderItem, statement):
         for order in orders:
             items=[{'name':item.product_name,'code':item.product.code if item.product else '',
                     'quantity':float(item.quantity),'detail':item.description or '', 'colorLabel':item.variant or '',
+                    'pricing':item_pricing(item),
                     'status':states.get(item.id,'Takip bilgisi bekleniyor'),'statusSource':'Trello' if item.id in states else None}
                    for item in order.items]
             labels=list(dict.fromkeys(i['status'] for i in items if i['statusSource']))
